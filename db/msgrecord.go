@@ -1,0 +1,509 @@
+package db
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+	"unicode"
+
+	"github.com/LittleSongxx/TinyClaw/conf"
+	"github.com/LittleSongxx/TinyClaw/logger"
+	"github.com/LittleSongxx/TinyClaw/param"
+)
+
+type MsgRecordInfo struct {
+	AQs        []*AQ
+	updateTime int64
+}
+
+type UserRecords struct {
+	UserId  string `json:"user_id"`
+	Records []*AQ  `json:"records"`
+}
+
+type AQ struct {
+	Question   string `json:"question"`
+	Answer     string `json:"answer"`
+	Content    string `json:"content"`
+	Token      int    `json:"token"`
+	Mode       string `json:"mode"`
+	CreateTime int64  `json:"create_time"`
+}
+
+type Record struct {
+	ID         int64  `json:"id"`
+	UserId     string `json:"user_id"`
+	Question   string `json:"question"`
+	Answer     string `json:"answer"`
+	Content    string `json:"content"`
+	Token      int    `json:"token"`
+	IsDeleted  int    `json:"is_deleted"`
+	CreateTime int64  `json:"create_time"`
+	RecordType int    `json:"record_type"`
+	Mode       string `json:"mode"`
+	UpdateTime int64  `json:"update_time"`
+}
+
+var MsgRecord = sync.Map{}
+
+func InsertMsgRecord(ctx context.Context, userId string, aq *AQ, insertDB bool) {
+	var msgRecord *MsgRecordInfo
+	msgRecordInter, ok := MsgRecord.Load(userId)
+	if !ok {
+		msgRecord = &MsgRecordInfo{
+			AQs:        []*AQ{aq},
+			updateTime: time.Now().Unix(),
+		}
+	} else {
+		msgRecord = msgRecordInter.(*MsgRecordInfo)
+		msgRecord.AQs = append(msgRecord.AQs, aq)
+		if len(msgRecord.AQs) > conf.BaseConfInfo.MaxQAPair {
+			msgRecord.AQs = msgRecord.AQs[1:]
+		}
+		msgRecord.updateTime = time.Now().Unix()
+	}
+	MsgRecord.Store(userId, msgRecord)
+
+	if insertDB {
+		go InsertRecordInfo(ctx, &Record{
+			UserId:     userId,
+			Question:   aq.Question,
+			Answer:     aq.Answer,
+			Content:    aq.Content,
+			Token:      aq.Token,
+			Mode:       aq.Mode,
+			RecordType: param.TextRecordType,
+		})
+	}
+}
+
+func GetMsgRecord(userId string) *MsgRecordInfo {
+	msgRecord, ok := MsgRecord.Load(userId)
+	if !ok {
+		return nil
+	}
+	return msgRecord.(*MsgRecordInfo)
+}
+
+func DeleteMsgRecord(ctx context.Context, userId string) {
+	MsgRecord.Delete(userId)
+	err := DeleteRecord(userId)
+	if err != nil {
+		logger.ErrorCtx(ctx, "Error deleting record", "err", err)
+	}
+}
+
+func InsertRecord(ctx context.Context) {
+	users, err := GetUsers()
+	if err != nil {
+		logger.ErrorCtx(ctx, "InsertRecord GetUsers err", "err", err)
+	}
+
+	for _, user := range users {
+		records, err := getRecordsByUserId(user.UserId)
+		if err != nil {
+			logger.Error("InsertRecord GetUsers err", "err", err)
+		}
+		for i := len(records) - 1; i >= 0; i-- {
+			record := records[i]
+			InsertMsgRecord(ctx, user.UserId, &AQ{
+				Question:   record.Question,
+				Answer:     record.Answer,
+				Content:    record.Content,
+				CreateTime: record.CreateTime,
+			}, false)
+		}
+	}
+
+}
+
+// getRecordsByUserId get latest 10 records by user_id
+func getRecordsByUserId(userId string) ([]Record, error) {
+	// construct SQL statements
+	query := fmt.Sprintf("SELECT id, user_id, question, answer, content, mode, create_time FROM records WHERE user_id =  ? " +
+		"and is_deleted = 0 and record_type = 0 order by create_time desc limit ?")
+
+	// execute query
+	rows, err := DB.Query(query, userId, conf.BaseConfInfo.MaxQAPair)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []Record
+	for rows.Next() {
+		var record Record
+		err := rows.Scan(&record.ID, &record.UserId, &record.Question, &record.Answer, &record.Content, &record.Mode, &record.CreateTime)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+
+	return records, nil
+}
+
+// InsertRecordInfo insert record
+func InsertRecordInfo(ctx context.Context, record *Record) (int64, error) {
+	query := `INSERT INTO records (user_id, question, answer, content, token, create_time, is_deleted, record_type, mode, from_bot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	result, err := DB.Exec(query, record.UserId, record.Question, record.Answer, record.Content, record.Token, time.Now().Unix(), record.IsDeleted, record.RecordType, record.Mode, conf.BaseConfInfo.BotName)
+	if err != nil {
+		logger.ErrorCtx(ctx, "insertRecord err", "err", err)
+		return 0, err
+	}
+
+	err = AddToken(record.UserId, record.Token)
+	if err != nil {
+		logger.ErrorCtx(ctx, "Error update token by user", "err", err)
+	}
+
+	return result.LastInsertId()
+}
+
+// DeleteRecord delete record
+func DeleteRecord(userId string) error {
+	query := `UPDATE records set is_deleted = 1, update_time = ? WHERE user_id = ?`
+	_, err := DB.Exec(query, time.Now().Unix(), userId)
+	return err
+}
+
+func GetTokenByUserIdAndTime(userId string, start, end int64) (int, error) {
+	querySQL := `SELECT sum(token) FROM records WHERE user_id = ? and create_time >= ? and create_time <= ?`
+	row := DB.QueryRow(querySQL, userId, start, end)
+
+	// scan row get result
+	var user User
+	err := row.Scan(&user.Token)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// 如果没有找到数据，返回 nil
+			return 0, nil
+		}
+		return 0, err
+	}
+	return user.Token, nil
+}
+
+func GetLastImageRecord(userId string) (*Record, error) {
+	query := fmt.Sprintf("SELECT id, user_id, question, answer, content FROM records WHERE user_id =  ? and record_type = ? and is_deleted = 0 order by id desc")
+
+	// execute query
+	rows, err := DB.Query(query, userId, param.ImageRecordType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []Record
+	for rows.Next() {
+		var record Record
+		err := rows.Scan(&record.ID, &record.UserId, &record.Question, &record.Answer, &record.Content)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+
+	if len(records) == 0 {
+		return nil, nil
+	}
+
+	return &records[0], nil
+}
+
+func GetRecordCount(userId string, isDeleted int, recordType string) (int, error) {
+	var count int
+	query := "SELECT COUNT(*) FROM records"
+	var args []interface{}
+	var conditions []string
+
+	if userId != "" {
+		conditions = append(conditions, "user_id = ?")
+		args = append(args, userId)
+	}
+
+	if isDeleted >= 0 {
+		conditions = append(conditions, "is_deleted = ?")
+		args = append(args, isDeleted)
+	}
+
+	if recordType != "" {
+		types := strings.Split(recordType, ",")
+		if len(types) > 0 {
+			placeholders := make([]string, len(types))
+			for i := range types {
+				placeholders[i] = "?"
+			}
+			conditions = append(conditions, "record_type IN ("+strings.Join(placeholders, ",")+")")
+			for _, t := range types {
+				args = append(args, strings.TrimSpace(t))
+			}
+		}
+	}
+
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	err := DB.QueryRow(query, args...).Scan(&count)
+	return count, err
+}
+
+func GetRecordList(userId string, page, pageSize, isDeleted int, recordType string) ([]Record, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+	offset := (page - 1) * pageSize
+
+	query := `
+		SELECT id, user_id, question, answer, content, token, is_deleted, create_time, mode, update_time
+		FROM records`
+	var args []interface{}
+	var conditions []string
+
+	if userId != "" {
+		conditions = append(conditions, "user_id = ?")
+		args = append(args, userId)
+	}
+	if isDeleted >= 0 {
+		conditions = append(conditions, "is_deleted = ?")
+		args = append(args, isDeleted)
+	}
+
+	if recordType != "" {
+		types := strings.Split(recordType, ",")
+		if len(types) > 0 {
+			placeholders := make([]string, len(types))
+			for i := range types {
+				placeholders[i] = "?"
+			}
+			conditions = append(conditions, "record_type IN ("+strings.Join(placeholders, ",")+")")
+			for _, t := range types {
+				args = append(args, strings.TrimSpace(t))
+			}
+		}
+	}
+
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	query += " ORDER BY id DESC LIMIT ? OFFSET ?"
+	args = append(args, pageSize, offset)
+
+	rows, err := DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []Record
+	for rows.Next() {
+		var r Record
+		if err := rows.Scan(&r.ID, &r.UserId, &r.Question, &r.Answer, &r.Content, &r.Token, &r.IsDeleted, &r.CreateTime, &r.Mode, &r.UpdateTime); err != nil {
+			return nil, err
+		}
+		records = append(records, r)
+	}
+	return records, nil
+}
+
+func GetDailyNewRecords(days int) ([]DailyStat, error) {
+	var query string
+	var intervalSeconds int64
+
+	if days <= 3 {
+		intervalSeconds = 3600 // 每小时
+	} else if days <= 7 {
+		intervalSeconds = 3 * 3600 // 每3小时
+	} else {
+		intervalSeconds = 86400 // 每天
+	}
+
+	if conf.BaseConfInfo.DBType == "mysql" {
+		query = `
+			SELECT
+				FLOOR(create_time / ?) * ? AS time_group,
+				COUNT(*) AS new_count
+			FROM records
+			WHERE create_time >= UNIX_TIMESTAMP(DATE_SUB(NOW(), INTERVAL ? DAY))
+			GROUP BY time_group
+			ORDER BY time_group DESC;
+		`
+	} else if conf.BaseConfInfo.DBType == "sqlite3" {
+		query = `
+			SELECT
+				(create_time / ?) * ? AS time_group,
+				COUNT(*) AS new_count
+			FROM records
+			WHERE create_time >= strftime('%s', date('now', ? || ' days'))
+			GROUP BY time_group
+			ORDER BY time_group DESC;
+		`
+	} else {
+		return nil, fmt.Errorf("unsupported DBType: %s", conf.BaseConfInfo.DBType)
+	}
+
+	var rows *sql.Rows
+	var err error
+	if conf.BaseConfInfo.DBType == "sqlite3" {
+		rows, err = DB.Query(query, intervalSeconds, intervalSeconds, -days)
+	} else {
+		rows, err = DB.Query(query, intervalSeconds, intervalSeconds, days)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stats []DailyStat
+	for rows.Next() {
+		var stat DailyStat
+		if err := rows.Scan(&stat.Date, &stat.NewCount); err != nil {
+			return nil, err
+		}
+		stats = append(stats, stat)
+	}
+
+	return stats, nil
+}
+
+func UpdateRecordInfo(record *Record) error {
+	query := `UPDATE records
+			  SET answer = ?, token = token + ?, mode = ?, update_time = ?
+			  WHERE id = ?`
+
+	_, err := DB.Exec(query,
+		record.Answer,
+		record.Token,
+		record.Mode,
+		time.Now().Unix(),
+		record.ID,
+	)
+	if err != nil {
+		logger.Error("updateRecord err", "err", err)
+		return err
+	}
+
+	err = AddToken(record.UserId, record.Token)
+	if err != nil {
+		logger.Error("add token fail", "err", err)
+		return err
+	}
+
+	return nil
+}
+
+func AddRecordToken(ctx context.Context, recordID int64, userId string, token int) error {
+	query := `UPDATE records
+			  SET token = token + ?, update_time = ?
+			  WHERE id = ?`
+
+	_, err := DB.Exec(query, token, time.Now().Unix(), recordID)
+	if err != nil {
+		logger.ErrorCtx(ctx, "addRecordToken err", "err", err)
+		return err
+	}
+
+	err = AddToken(userId, token)
+	if err != nil {
+		logger.ErrorCtx(ctx, "add token fail", "err", err)
+		return err
+	}
+
+	return nil
+}
+
+func AddRecordContent(recordID int64, content string) error {
+	query := `UPDATE records
+			  SET content = ?, update_time = ?
+			  WHERE id = ?`
+
+	_, err := DB.Exec(query, content, time.Now().Unix(), recordID)
+	if err != nil {
+		logger.Error("addRecordToken err", "err", err)
+		return err
+	}
+
+	return nil
+}
+
+// EstimateTokens calculate token
+func EstimateTokens(text string) int {
+	count := 0
+	for _, r := range text {
+		if unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r) || unicode.IsLetter(r) || unicode.IsDigit(r) {
+			count++
+		} else if unicode.IsSpace(r) {
+			continue
+		} else {
+			count++
+		}
+	}
+	return count
+}
+
+func FilterByMaxContextFromLatest(aqs []*AQ, maxContext int) []*AQ {
+	n := len(aqs)
+	if n == 0 {
+		return nil
+	}
+
+	var result []*AQ
+	cumulative := 0
+
+	for i := n - 1; i >= 0; i-- {
+		totalText := aqs[i].Question + " " + aqs[i].Answer
+		tokens := EstimateTokens(totalText)
+
+		if cumulative+tokens > maxContext {
+			break
+		}
+
+		aq := aqs[i]
+		aq.Token = tokens
+		result = append(result, aq)
+		cumulative += tokens
+	}
+
+	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
+		result[i], result[j] = result[j], result[i]
+	}
+
+	return result
+}
+
+func InsertUserRecords(ur *UserRecords) error {
+	query := `
+		INSERT INTO records (
+			user_id, question, answer, content, token, create_time, is_deleted, record_type, mode, from_bot
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	now := time.Now().Unix()
+
+	for _, r := range ur.Records {
+		_, err := DB.Exec(query,
+			ur.UserId,
+			r.Question,
+			r.Answer,
+			"",
+			0,
+			now,
+			0,
+			param.TextRecordType,
+			"manual",
+			"",
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

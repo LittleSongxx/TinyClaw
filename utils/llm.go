@@ -1,0 +1,436 @@
+package utils
+
+import (
+	godeepseek "github.com/cohesion-org/deepseek-go"
+	"github.com/devinyf/dashscopego/qwen"
+	"github.com/goccy/go-json"
+	"github.com/sashabaranov/go-openai"
+	"github.com/LittleSongxx/TinyClaw/conf"
+	"github.com/LittleSongxx/TinyClaw/param"
+)
+
+func GetDefaultLLMConfig() string {
+	llmConf := param.LLMConfig{
+		TxtType:    conf.BaseConfInfo.Type,
+		ImgType:    conf.BaseConfInfo.MediaType,
+		VideoType:  conf.BaseConfInfo.MediaType,
+		TTSType:    conf.AudioConfInfo.TTSType,
+		TxtModel:   GetTxtModel(conf.BaseConfInfo.Type),
+		ImgModel:   GetImgModel(conf.BaseConfInfo.MediaType),
+		VideoModel: GetVideoModel(conf.BaseConfInfo.MediaType),
+		TTSModel:   GetTTSModel(conf.AudioConfInfo.TTSType),
+	}
+	b, _ := json.Marshal(llmConf)
+	return string(b)
+}
+
+func GetTxtType(llmConf *param.LLMConfig) string {
+	if llmConf == nil {
+		return conf.BaseConfInfo.Type
+	}
+
+	aType := GetAvailTxtType()
+	for _, v := range aType {
+		if v == llmConf.TxtType {
+			return v
+		}
+	}
+
+	if len(aType) > 0 {
+		return aType[0]
+	}
+
+	return conf.BaseConfInfo.Type
+}
+
+func GetImgType(llmConf *param.LLMConfig) string {
+	if llmConf == nil {
+		return conf.BaseConfInfo.MediaType
+	}
+
+	aType := GetAvailImgType()
+	for _, v := range aType {
+		if v == llmConf.ImgType {
+			return v
+		}
+	}
+
+	if len(aType) > 0 {
+		return aType[0]
+	}
+
+	return conf.BaseConfInfo.MediaType
+}
+
+func GetVideoType(llmConf *param.LLMConfig) string {
+	if llmConf == nil {
+		return conf.BaseConfInfo.MediaType
+	}
+
+	aType := GetAvailVideoType()
+	for _, v := range aType {
+		if v == llmConf.VideoType {
+			return v
+		}
+	}
+
+	if len(aType) > 0 {
+		return aType[0]
+	}
+
+	return conf.BaseConfInfo.MediaType
+}
+
+func GetTTSType(llmConf *param.LLMConfig) string {
+	if llmConf == nil {
+		return conf.BaseConfInfo.MediaType
+	}
+
+	aType := GetAvailTTSType()
+	for _, v := range aType {
+		if v == llmConf.TTSType {
+			return v
+		}
+	}
+
+	if len(aType) > 0 {
+		return aType[0]
+	}
+
+	return conf.BaseConfInfo.MediaType
+}
+
+func GetImgModel(t string) string {
+	switch t {
+	case param.Gemini:
+		return conf.PhotoConfInfo.GeminiImageModel
+	case param.OpenAi:
+		return conf.PhotoConfInfo.OpenAIImageModel
+	case param.Aliyun:
+		return conf.PhotoConfInfo.AliyunImageModel
+	case param.AI302:
+		return conf.PhotoConfInfo.MixImageModel
+	case param.Vol:
+		return conf.PhotoConfInfo.VolImageModel
+	case param.ChatAnyWhere:
+		return conf.PhotoConfInfo.OpenAIImageModel
+	}
+
+	return ""
+}
+
+func GetVideoModel(t string) string {
+	switch t {
+	case param.Gemini:
+		return conf.VideoConfInfo.GeminiVideoModel
+	case param.Aliyun:
+		return conf.VideoConfInfo.AliyunVideoModel
+	case param.AI302:
+		return conf.VideoConfInfo.AI302VideoModel
+	case param.Vol:
+		return conf.VideoConfInfo.VolVideoModel
+	}
+
+	return ""
+}
+
+func GetTTSModel(t string) string {
+	switch t {
+	case param.Gemini:
+		return conf.AudioConfInfo.GeminiAudioModel
+	case param.Aliyun:
+		return conf.AudioConfInfo.AliyunAudioModel
+	case param.Vol:
+		return conf.AudioConfInfo.VolAudioTTSCluster
+	case param.OpenAi:
+		return conf.AudioConfInfo.OpenAIAudioModel
+	}
+
+	return ""
+}
+
+func GetTxtModel(t string) string {
+	if conf.BaseConfInfo.DefaultModel != "" {
+		return conf.BaseConfInfo.DefaultModel
+	}
+
+	switch t {
+	case param.DeepSeek:
+		return godeepseek.DeepSeekChat
+	case param.Gemini:
+		return param.ModelGemini25Flash
+	case param.OpenAi:
+		return openai.GPT3Dot5Turbo
+	case param.OpenRouter:
+		return param.DeepseekDeepseekR1_0528Free
+	case param.AI302:
+		return param.DeepseekDeepseekR1_0528
+	case param.Ollama:
+		return "deepseek-r1"
+	case param.Vol:
+		return param.ModelDeepSeekR1_528
+	case param.Aliyun:
+		return qwen.QwenMax
+	case param.ChatAnyWhere:
+		return openai.GPT3Dot5Turbo
+	}
+
+	return godeepseek.DeepSeekChat
+}
+
+func GetAvailTxtType() []string {
+	res := []string{}
+	if conf.BaseConfInfo.DeepseekToken != "" {
+		res = append(res, param.DeepSeek)
+	}
+	if conf.BaseConfInfo.GeminiToken != "" {
+		res = append(res, param.Gemini)
+	}
+	if conf.BaseConfInfo.OpenAIToken != "" {
+		res = append(res, param.OpenAi)
+	}
+	if conf.BaseConfInfo.AliyunToken != "" {
+		res = append(res, param.Aliyun)
+	}
+	if conf.BaseConfInfo.VolToken != "" {
+		res = append(res, param.Vol)
+	}
+	if conf.BaseConfInfo.ChatAnyWhereToken != "" {
+		res = append(res, param.ChatAnyWhere)
+	}
+	if conf.BaseConfInfo.AI302Token != "" {
+		res = append(res, param.AI302)
+	}
+	if conf.BaseConfInfo.OpenRouterToken != "" {
+		res = append(res, param.OpenRouter)
+	}
+	if conf.BaseConfInfo.Type == param.Ollama {
+		res = append(res, param.Ollama)
+	}
+	return res
+}
+
+func GetAvailImgType() []string {
+	res := []string{}
+
+	if conf.BaseConfInfo.GeminiToken != "" {
+		res = append(res, param.Gemini)
+	}
+	if conf.BaseConfInfo.OpenAIToken != "" {
+		res = append(res, param.OpenAi)
+	}
+	if conf.BaseConfInfo.OpenRouterToken != "" {
+		res = append(res, param.OpenRouter)
+	}
+	if conf.BaseConfInfo.AliyunToken != "" {
+		res = append(res, param.Aliyun)
+	}
+	if conf.BaseConfInfo.AI302Token != "" {
+		res = append(res, param.AI302)
+	}
+	if conf.BaseConfInfo.VolToken != "" {
+		res = append(res, param.Vol)
+	}
+	if conf.BaseConfInfo.ChatAnyWhereToken != "" {
+		res = append(res, param.ChatAnyWhere)
+	}
+
+	return res
+}
+
+func GetAvailVideoType() []string {
+	res := []string{}
+	if conf.BaseConfInfo.GeminiToken != "" {
+		res = append(res, param.Gemini)
+	}
+	if conf.BaseConfInfo.AliyunToken != "" {
+		res = append(res, param.Aliyun)
+	}
+	if conf.BaseConfInfo.AI302Token != "" {
+		res = append(res, param.AI302)
+	}
+	if conf.BaseConfInfo.VolToken != "" {
+		res = append(res, param.Vol)
+	}
+
+	return res
+}
+
+func GetAvailTTSType() []string {
+	res := []string{}
+	if conf.BaseConfInfo.GeminiToken != "" {
+		res = append(res, param.Gemini)
+	}
+	if conf.BaseConfInfo.AliyunToken != "" {
+		res = append(res, param.Aliyun)
+	}
+	if conf.BaseConfInfo.VolcAK != "" {
+		res = append(res, param.Vol)
+	}
+	if conf.BaseConfInfo.OpenAIToken != "" {
+		res = append(res, param.OpenAi)
+	}
+
+	return res
+}
+
+func GetAvailRecType() []string {
+	res := []string{}
+
+	if conf.BaseConfInfo.GeminiToken != "" {
+		res = append(res, param.Gemini)
+	}
+	if conf.BaseConfInfo.OpenAIToken != "" {
+		res = append(res, param.OpenAi)
+	}
+	if conf.BaseConfInfo.AliyunToken != "" {
+		res = append(res, param.Aliyun)
+	}
+	if conf.BaseConfInfo.AI302Token != "" {
+		res = append(res, param.AI302)
+	}
+	if conf.BaseConfInfo.VolToken != "" {
+		res = append(res, param.Vol)
+	}
+
+	return res
+}
+
+func GetRecType(llmConf *param.LLMConfig) string {
+	if llmConf == nil {
+		return conf.BaseConfInfo.MediaType
+	}
+
+	aType := GetAvailRecType()
+	for _, v := range aType {
+		if v == llmConf.RecType {
+			return v
+		}
+	}
+
+	if len(aType) > 0 {
+		return aType[0]
+	}
+
+	return conf.BaseConfInfo.MediaType
+}
+
+func GetUsingImgModel(ty string, model string) string {
+	switch ty {
+	case param.Gemini:
+		if param.GeminiImageModels[model] {
+			return model
+		}
+		return param.GeminiImageGenV2_5
+	case param.Aliyun:
+		if param.AliyunImageModels[model] {
+			return model
+		}
+		return param.QwenImagePlus
+	case param.Vol:
+		if param.VolImageModels[model] {
+			return model
+		}
+		return param.DoubaoSeed16VisionPro
+	default:
+		return model
+	}
+}
+
+func GetUsingVideoModel(ty string, model string) string {
+	switch ty {
+	case param.Gemini:
+		if param.GeminiVideoModels[model] {
+			return model
+		}
+		return param.GeminiVideoVeo3_1FastPreview
+
+	case param.Aliyun:
+		if param.AliyunVideoModels[model] {
+			return model
+		}
+		return param.Wan2_5T2VPreview
+	case param.AI302:
+		return model
+	case param.Vol:
+		if param.VolVideoModels[model] {
+			return model
+		}
+		return param.DoubaoSeedance1_0Pro
+	}
+
+	return ""
+}
+
+func GetUsingRecModel(ty string, model string) string {
+	switch ty {
+	case param.Gemini:
+		if param.GeminiRecModels[model] {
+			return model
+		}
+		return param.ModelGemini25Flash
+	case param.Aliyun:
+		if param.AliyunRecModels[model] {
+			return model
+		}
+		return param.QwenVlMax
+	case param.Vol:
+		if param.VolRecModels[model] {
+			return model
+		}
+		return param.DoubaoSeed16VisionPro
+	default:
+		return model
+	}
+}
+
+func GetUsingTxtModel(ty string, model string) string {
+	switch ty {
+	case param.DeepSeek:
+		if param.DeepseekModels[model] {
+			return model
+		}
+		return godeepseek.DeepSeekChat
+	case param.Gemini:
+		if param.GeminiModels[model] {
+			return model
+		}
+		return param.ModelGemini25Flash
+	case param.Vol:
+		if param.VolModels[model] {
+			return model
+		}
+		return param.ModelDeepSeekR1_528
+	case param.Aliyun:
+		if param.AliyunModel[model] {
+			return model
+		}
+		return qwen.QwenMax
+	}
+
+	return model
+}
+
+func GetUsingTTSModel(ty string, model string) string {
+	switch ty {
+	case param.OpenAi:
+		return model
+	case param.Gemini:
+		if param.GeminiTTSModels[model] {
+			return model
+		}
+		return param.Gemini2_5FlashPreviewTTS
+	case param.Vol:
+		if param.VolTTSModels[model] {
+			return model
+		}
+		return param.VolTTS
+	case param.Aliyun:
+		if param.AliyunTTSModels[model] {
+			return model
+		}
+		return param.Qwen3TTSFlash
+	}
+
+	return model
+}

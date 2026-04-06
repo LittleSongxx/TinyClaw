@@ -1,0 +1,67 @@
+package main
+
+import (
+	"context"
+	"os"
+	"testing"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/stretchr/testify/assert"
+	"github.com/LittleSongxx/TinyClaw/conf"
+	"github.com/LittleSongxx/TinyClaw/db"
+	"github.com/LittleSongxx/TinyClaw/i18n"
+	"github.com/LittleSongxx/TinyClaw/llm"
+	"github.com/LittleSongxx/TinyClaw/param"
+	"github.com/LittleSongxx/TinyClaw/robot"
+)
+
+func TestMain(m *testing.M) {
+	setup()
+
+	code := m.Run()
+
+	os.Exit(code)
+}
+
+func setup() {
+	conf.InitConf()
+	db.InitTable()
+	i18n.InitI18n()
+}
+
+func TestSendTelegramMsg(t *testing.T) {
+	messageChan := make(chan *param.MsgInfo)
+
+	go func() {
+		bot := robot.CreateBot(context.Background())
+		t := robot.NewTelegramRobot(tgbotapi.Update{
+			Message: &tgbotapi.Message{
+				MessageID: 1,
+				From: &tgbotapi.User{
+					ID: 5542540980,
+				},
+				Chat: &tgbotapi.Chat{
+					ID: 5542540980,
+				},
+			},
+		}, bot)
+		t.Robot = robot.NewRobot(robot.WithRobot(t))
+		t.Robot.HandleUpdate(&robot.MsgChan{
+			NormalMessageChan: messageChan,
+		}, "")
+	}()
+
+	conf.BaseConfInfo.Type = param.DeepSeek
+
+	ctx := context.WithValue(context.Background(), "user_info", &db.User{
+		LLMConfig:    `{"type":"deepseek"}`,
+		LLMConfigRaw: &param.LLMConfig{TxtType: param.DeepSeek},
+	})
+
+	callLLM := llm.NewLLM(llm.WithChatId("1"), llm.WithMsgId("2"), llm.WithUserId("3"),
+		llm.WithMessageChan(messageChan), llm.WithContent("hi"), llm.WithContext(ctx))
+	callLLM.LLMClient.GetModel(callLLM)
+	callLLM.GetMessages("3", "hi")
+	err := callLLM.LLMClient.Send(ctx, callLLM)
+	assert.Equal(t, nil, err)
+}

@@ -1,0 +1,63 @@
+//go:build linux || darwin
+// +build linux darwin
+
+package utils
+
+import (
+	"fmt"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"syscall"
+
+	"github.com/LittleSongxx/TinyClaw/utils"
+)
+
+func StartDetachedProcess(argsStr string) error {
+	argsStr += "\n"
+	lines := strings.Split(argsStr, "\n")
+	execName := "TinyClaw"
+
+	exePath := filepath.Join(utils.GetAbsPath(""), execName)
+
+	var args []string
+	for _, l := range lines {
+		trimmed := strings.TrimSpace(l)
+		kvs := strings.SplitN(l, "=", 2)
+		if trimmed != "" {
+			args = append(args, kvs[0]+"='"+escapeForAppleScript(kvs[1])+"'")
+		}
+	}
+
+	switch runtime.GOOS {
+	case "darwin":
+		cmdStr := fmt.Sprintf("%s %s", exePath, strings.Join(args, " "))
+		script := fmt.Sprintf(`tell application "Terminal"
+	activate
+	do script "%s"
+end tell`, cmdStr)
+
+		cmd := exec.Command("osascript", "-e", script)
+		return cmd.Start()
+
+	default: // Linux 或其他
+		cmd := exec.Command(exePath, args...)
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Setpgid: true, // 独立进程组
+		}
+		cmd.Stdin = nil
+		cmd.Stdout = nil
+		cmd.Stderr = nil
+		return cmd.Start()
+	}
+}
+
+func escapeForAppleScript(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `'`, `\'`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", "")
+	return s
+}

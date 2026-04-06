@@ -1,0 +1,16 @@
+[Unit]
+Description=TinyClaw
+Documentation=https://github.com/LittleSongxx/TinyClaw
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/PATH/TO/TinyClaw
+EnvironmentFile=/PATH/TO/TinyClaw/conf/systemd/.env
+ExecStart=/PATH/TO/TinyClaw/TinyClaw
+Restart=on-failure
+RestartSec=60s
+
+[Install]
+WantedBy=multi-user.target

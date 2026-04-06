@@ -1,0 +1,14 @@
+### Конфигурация параметров видео
+
+Документация: [VolcEngine Video Processing](https://www.volcengine.com/docs/82379/1393047)
+
+| Название параметра      | Тип      | Обязательный/Необязательный | Описание                                                                                                                                                                                              |
+|-------------------------|----------|-----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `VOL_AUDIO_APP_ID`      | `string` | Необязательный              | Идентификатор приложения (AppID) Volcengine Audio                                                                                                                                                     |
+| `VOL_AUDIO_TOKEN`       | `string` | Необязательный              | Токен доступа Volcengine Audio                                                                                                                                                                        |
+| `VOL_AUDIO_REC_CLUSTER` | `string` | Необязательный              | Кластер для распознавания речи Volcengine (по умолчанию: `volcengine_input_common`), см. [документацию по моделям распознавания речи](https://www.volcengine.com/docs/6561/80816)                     |
+| `VOL_AUDIO_VOICE_TYPE`  | `string` | Необязательный              | Тип голоса для Volcengine Audio                                                                                                                                                                       |
+| `VOL_AUDIO_TTS_CLUSTER` | `string` | Необязательный              | Кластер TTS Volcengine (по умолчанию: `volcano_tts`), возможные значения: [volcano\_tts](https://www.volcengine.com/docs/6561/1257584) / [volcano\_icl](https://www.volcengine.com/docs/6561/1305191) |
+| `GEMINI_AUDIO_MODEL`    | `string` | Необязательный              | Аудиомодель Gemini (по умолчанию: `gemini-2.5-flash-preview-tts`)                                                                                                                                     |
+| `GEMINI_VOICE_NAME`     | `string` | Необязательный              | Имя голоса Gemini (по умолчанию: `Kore`)                                                                                                                                                              |
+| `TTS_TYPE`              | `string` | Необязательный              | Тип TTS: `vol` (Volcengine) или `gemini` (Gemini)                                                                                                                                                     |

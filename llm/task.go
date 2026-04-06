@@ -1,0 +1,225 @@
+package llm
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"regexp"
+
+	"github.com/sashabaranov/go-openai"
+	"github.com/LittleSongxx/TinyClaw/conf"
+	"github.com/LittleSongxx/TinyClaw/i18n"
+	"github.com/LittleSongxx/TinyClaw/logger"
+	"github.com/LittleSongxx/TinyClaw/metrics"
+	"github.com/LittleSongxx/TinyClaw/param"
+)
+
+var (
+	jsonRe = regexp.MustCompile(`(?s)\{[\s\r\n]*"plan"\s*:\s*\[.*?][\s\r\n]*}`)
+)
+
+type LLMTaskReq struct {
+	MessageChan chan *param.MsgInfo
+	HTTPMsgChan chan string
+	Content     string
+	Model       string
+	Token       int
+	PerMsgLen   int
+
+	UserId string
+	ChatId string
+	MsgId  string
+
+	Cs  *param.ContextState
+	Ctx context.Context
+}
+
+type Task struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+type TaskInfo struct {
+	Plan []*Task `json:"plan"`
+}
+
+type TaskResult struct {
+	TaskName   string
+	TaskResult string
+}
+
+// ExecuteTask execute task command
+func (d *LLMTaskReq) ExecuteTask() error {
+	logger.InfoCtx(d.Ctx, "task content", "content", d.Content)
+	taskParam := make(map[string]interface{})
+	taskParam["assign_param"] = make([]map[string]string, 0)
+	taskParam["user_task"] = d.Content
+	conf.TaskTools.Range(func(name, value any) bool {
+		tool := value.(*conf.AgentInfo)
+		taskParam["assign_param"] = append(taskParam["assign_param"].([]map[string]string), map[string]string{
+			"tool_name": name.(string),
+			"tool_desc": tool.Description,
+		})
+		return true
+	})
+
+	prompt := i18n.GetMessage("assign_task_prompt", taskParam)
+	llm := NewLLM(WithUserId(d.UserId), WithChatId(d.ChatId), WithMsgId(d.MsgId),
+		WithMessageChan(d.MessageChan), WithContent(prompt), WithHTTPMsgChan(d.HTTPMsgChan),
+		WithPerMsgLen(d.PerMsgLen), WithContext(d.Ctx), WithCS(d.Cs))
+	llm.GetMessages(d.UserId, prompt)
+	llm.LLMClient.GetModel(llm)
+
+	metrics.APIRequestCount.WithLabelValues(llm.Model).Inc()
+	c, err := llm.LLMClient.SyncSend(d.Ctx, llm)
+	if err != nil {
+		logger.ErrorCtx(d.Ctx, "get message fail", "err", err)
+		return err
+	}
+
+	d.Token += llm.Cs.Token
+
+	matches := jsonRe.FindAllString(c, -1)
+	plans := new(TaskInfo)
+	for _, match := range matches {
+		err = json.Unmarshal([]byte(match), &plans)
+		if err != nil {
+			logger.WarnCtx(d.Ctx, "json umarshal fail", "err", err)
+		}
+	}
+
+	logger.InfoCtx(d.Ctx, "task plan", "plan", plans)
+
+	if len(plans.Plan) == 0 {
+		logger.InfoCtx(d.Ctx, "no plan created!")
+
+		finalLLM := NewLLM(WithUserId(d.UserId), WithChatId(d.ChatId), WithMsgId(d.MsgId),
+			WithMessageChan(d.MessageChan), WithContent(d.Content), WithHTTPMsgChan(d.HTTPMsgChan),
+			WithPerMsgLen(d.PerMsgLen), WithContext(d.Ctx))
+		finalLLM.LLMClient.GetMessage(openai.ChatMessageRoleUser, c)
+		finalLLM.LLMClient.GetModel(finalLLM)
+
+		metrics.APIRequestCount.WithLabelValues(finalLLM.Model).Inc()
+		err = finalLLM.LLMClient.Send(d.Ctx, finalLLM)
+		if err != nil {
+			logger.ErrorCtx(d.Ctx, "request summary fail", "err", err)
+		}
+		return err
+	}
+
+	llm.DirectSendMsg(c, false)
+	llm.LLMClient.GetMessage(openai.ChatMessageRoleAssistant, c)
+	err = d.loopTask(d.Ctx, plans, c, llm, 0)
+	if err != nil {
+		logger.ErrorCtx(d.Ctx, "loopTask fail", "err", err)
+		return err
+	}
+
+	// summary
+	summaryParam := make(map[string]interface{})
+	summaryParam["user_task"] = d.Content
+	summaryPrompt := i18n.GetMessage("summary_task_prompt", summaryParam)
+	llm.LLMClient.GetMessage(openai.ChatMessageRoleUser, summaryPrompt)
+	llm.Content = summaryPrompt
+
+	metrics.APIRequestCount.WithLabelValues(llm.Model).Inc()
+	err = llm.LLMClient.Send(d.Ctx, llm)
+	if err != nil {
+		logger.ErrorCtx(d.Ctx, "request summary fail", "err", err)
+		return err
+	}
+
+	err = llm.InsertOrUpdate()
+	if err != nil {
+		logger.ErrorCtx(d.Ctx, "insertOrUpdate fail", "err", err)
+	}
+	return err
+}
+
+// loopTask loop task
+func (d *LLMTaskReq) loopTask(ctx context.Context, plans *TaskInfo, lastPlan string, llm *LLM, loop int) error {
+	if loop > MostLoop {
+		return errors.New("too many loops")
+	}
+
+	completeTasks := map[string]bool{}
+	taskLLM := NewLLM(WithUserId(d.UserId), WithChatId(d.ChatId), WithMsgId(d.MsgId),
+		WithMessageChan(d.MessageChan), WithHTTPMsgChan(d.HTTPMsgChan), WithPerMsgLen(d.PerMsgLen),
+		WithContext(d.Ctx))
+	for _, plan := range plans.Plan {
+		toolInter, ok := conf.TaskTools.Load(plan.Name)
+		var tool *conf.AgentInfo
+		if ok {
+			tool = toolInter.(*conf.AgentInfo)
+		}
+		WithTaskTools(tool)(taskLLM)
+		taskLLM.LLMClient.GetMessage(openai.ChatMessageRoleUser, plan.Description)
+		taskLLM.Content = plan.Description
+		taskLLM.LLMClient.GetModel(taskLLM)
+		logger.InfoCtx(d.Ctx, "execute task", "task", plan.Name, "task desc", plan.Description)
+		err := d.requestTask(ctx, taskLLM, plan)
+		if err != nil {
+			return err
+		}
+		d.Token += taskLLM.Cs.Token
+		completeTasks[plan.Description] = true
+	}
+
+	llm.LLMClient.AppendMessages(taskLLM.LLMClient)
+
+	taskParam := map[string]interface{}{
+		"user_task":      d.Content,
+		"complete_tasks": completeTasks,
+		"last_plan":      lastPlan,
+	}
+
+	llm.LLMClient.GetMessage(openai.ChatMessageRoleUser, i18n.GetMessage("loop_task_prompt", taskParam))
+	llm.LLMClient.GetModel(llm)
+
+	metrics.APIRequestCount.WithLabelValues(llm.Model).Inc()
+	c, err := llm.LLMClient.SyncSend(ctx, llm)
+	if err != nil {
+		logger.ErrorCtx(d.Ctx, "ChatCompletionStream error", "err", err)
+		return err
+	}
+
+	if len(c) == 0 {
+		logger.ErrorCtx(d.Ctx, "response is emtpy", "response", c)
+		return errors.New("response is emtpy")
+	}
+
+	d.Token += llm.Cs.Token
+
+	matches := jsonRe.FindAllString(c, -1)
+	plans = new(TaskInfo)
+	for _, match := range matches {
+		err := json.Unmarshal([]byte(match), &plans)
+		if err != nil {
+			logger.ErrorCtx(d.Ctx, "json umarshal fail", "err", err)
+		}
+	}
+
+	llm.LLMClient.GetMessage(openai.ChatMessageRoleAssistant, c)
+
+	if len(plans.Plan) == 0 {
+		return nil
+	}
+
+	return d.loopTask(ctx, plans, c, llm, loop+1)
+}
+
+// requestTask request task
+func (d *LLMTaskReq) requestTask(ctx context.Context, llm *LLM, plan *Task) error {
+	metrics.APIRequestCount.WithLabelValues(llm.Model).Inc()
+	c, err := llm.LLMClient.SyncSend(ctx, llm)
+	if err != nil {
+		logger.ErrorCtx(d.Ctx, "ChatCompletionStream error", "err", err)
+		return err
+	}
+
+	// llm response merge into msg
+	c += "\n\n" + plan.Name + " is completed"
+	llm.LLMClient.GetMessage(openai.ChatMessageRoleAssistant, c)
+
+	return nil
+}

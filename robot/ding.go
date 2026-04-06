@@ -1,0 +1,632 @@
+package robot
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"runtime/debug"
+	"strconv"
+	"strings"
+	"time"
+
+	openapi "github.com/alibabacloud-go/darabonba-openapi/v2/client"
+	dingtalkaiinteraction "github.com/alibabacloud-go/dingtalk/ai_interaction_1_0"
+	dingtalkoauth2 "github.com/alibabacloud-go/dingtalk/oauth2_1_0"
+	dingtalkrobot "github.com/alibabacloud-go/dingtalk/robot_1_0"
+	teaUtil "github.com/alibabacloud-go/tea-utils/v2/service"
+	"github.com/alibabacloud-go/tea/tea"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
+	"github.com/open-dingtalk/dingtalk-stream-sdk-go/client"
+	dingLogger "github.com/open-dingtalk/dingtalk-stream-sdk-go/logger"
+	dingUtils "github.com/open-dingtalk/dingtalk-stream-sdk-go/utils"
+	"github.com/LittleSongxx/TinyClaw/conf"
+	"github.com/LittleSongxx/TinyClaw/i18n"
+	"github.com/LittleSongxx/TinyClaw/logger"
+	"github.com/LittleSongxx/TinyClaw/metrics"
+	"github.com/LittleSongxx/TinyClaw/param"
+	"github.com/LittleSongxx/TinyClaw/utils"
+)
+
+var (
+	DingBotClient   *client.StreamClient
+	accessTokenInfo = new(AccessToken)
+)
+
+type AccessToken struct {
+	AccessToken string `json:"access_token"`
+	ExpiredTime int64  `json:"expired_time"`
+}
+
+type DingRobot struct {
+	Robot   *RobotInfo
+	Client  *client.StreamClient
+	Message *chatbot.BotCallbackDataModel
+
+	Command      string
+	Prompt       string
+	BotName      string
+	OriginPrompt string
+	ImageContent []byte
+	AudioContent []byte
+	UserName     string
+}
+
+type DingResp struct {
+	ErrCode int32  `json:"errcode"`
+	ErrMsg  string `json:"errmsg"`
+}
+
+func StartDingRobot(ctx context.Context) {
+	dingLogger.SetLogger(logger.Logger)
+	DingBotClient = client.NewStreamClient(
+		client.WithAppCredential(client.NewAppCredentialConfig(conf.BaseConfInfo.DingClientId, conf.BaseConfInfo.DingClientSecret)),
+		client.WithUserAgent(client.NewDingtalkGoSDKUserAgent()),
+		client.WithProxy(conf.BaseConfInfo.RobotProxy),
+		client.WithSubscription(dingUtils.SubscriptionTypeKCallback, "/v1.0/im/bot/messages/get",
+			chatbot.NewDefaultChatBotFrameHandler(OnChatReceive).OnEventReceived),
+	)
+
+	err := DingBotClient.Start(ctx)
+	if err != nil {
+		logger.ErrorCtx(ctx, "start dingbot fail", "err", err)
+		return
+	}
+
+	logger.Info("DingRobot Info", "username", DingBotClient.UserAgent)
+}
+
+func OnChatReceive(ctx context.Context, message *chatbot.BotCallbackDataModel) ([]byte, error) {
+	d := NewDingRobot(message)
+	d.Robot = NewRobot(WithRobot(d), WithContext(ctx))
+	go func() {
+		defer func() {
+			if err := recover(); err != nil {
+				logger.ErrorCtx(ctx, "ding exec panic", "err", err, "stack", string(debug.Stack()))
+			}
+		}()
+
+		d.Robot.Exec()
+	}()
+
+	return nil, nil
+}
+
+func NewDingRobot(message *chatbot.BotCallbackDataModel) *DingRobot {
+	metrics.AppRequestCount.WithLabelValues("dingding").Inc()
+	return &DingRobot{
+		Message:  message,
+		Client:   DingBotClient,
+		BotName:  BotName,
+		UserName: message.SenderNick,
+	}
+}
+
+func (d *DingRobot) checkValid() bool {
+	chatId, msgId, _ := d.Robot.GetChatIdAndMsgIdAndUserID()
+	_, err := d.GetAccessToken()
+	if err != nil {
+		logger.ErrorCtx(d.Robot.Ctx, "get access token error", "err", err)
+		return false
+	}
+
+	// group need to at bot
+	atBot, err := d.GetMessageContent()
+	if err != nil {
+		logger.ErrorCtx(d.Robot.Ctx, "get message content error", "err", err)
+		d.Robot.SendMsg(chatId, err.Error(), msgId, "", nil)
+		return false
+	}
+	if d.Message.ConversationType == "2" {
+		if !atBot {
+			logger.WarnCtx(d.Robot.Ctx, "no at bot")
+			return false
+		}
+	}
+
+	return true
+}
+
+func (d *DingRobot) getMsgContent() string {
+	return d.Command
+}
+
+func (d *DingRobot) requestLLM(content string) {
+	if !strings.Contains(content, "/") && !strings.Contains(content, "$") && d.Prompt == "" {
+		d.Prompt = content
+	}
+	d.Robot.ExecCmd(content, d.sendChatMessage, nil, nil)
+}
+
+func (d *DingRobot) sendImg() {
+	d.Robot.TalkingPreCheck(func() {
+		chatId, msgId, _ := d.Robot.GetChatIdAndMsgIdAndUserID()
+
+		prompt := strings.TrimSpace(d.Prompt)
+		if prompt == "" {
+			logger.ErrorCtx(d.Robot.Ctx, "prompt is empty")
+			d.Robot.SendMsg(chatId, i18n.GetMessage("photo_empty_content", nil), msgId, tgbotapi.ModeMarkdown, nil)
+			return
+		}
+
+		var err error
+		lastImageContent := d.ImageContent
+		if len(lastImageContent) == 0 && strings.Contains(d.Command, "edit_photo") {
+			lastImageContent, err = d.Robot.GetLastImageContent()
+			if err != nil {
+				logger.ErrorCtx(d.Robot.Ctx, "get last image record fail", "err", err)
+			}
+		}
+
+		imageContent, totalToken, err := d.Robot.CreatePhoto(prompt, lastImageContent)
+		if err != nil {
+			logger.ErrorCtx(d.Robot.Ctx, "generate image fail", "err", err)
+			d.Robot.SendMsg(chatId, err.Error(), msgId, tgbotapi.ModeMarkdown, nil)
+			return
+		}
+
+		err = d.sendMedia(imageContent, utils.DetectImageFormat(imageContent), "image")
+		if err != nil {
+			logger.ErrorCtx(d.Robot.Ctx, "send media fail", "err", err)
+			d.Robot.SendMsg(chatId, err.Error(), msgId, tgbotapi.ModeMarkdown, nil)
+			return
+		}
+
+		d.Robot.saveRecord(imageContent, lastImageContent, param.ImageRecordType, totalToken)
+	})
+}
+
+func (d *DingRobot) sendMedia(media []byte, contentType, sType string) error {
+	accessToken, err := d.GetAccessToken()
+	if err != nil {
+		logger.ErrorCtx(d.Robot.Ctx, "get access token fail", "err", err)
+		return err
+	}
+	if sType == "image" {
+		mediaId, err := d.UploadFileWithType(accessToken, "image", "image."+contentType, media)
+		if err != nil {
+			logger.ErrorCtx(d.Robot.Ctx, "upload file fail", "err", err)
+			return err
+		}
+
+		_, err = d.SimpleReplyMarkdown(d.Robot.Ctx, []byte(fmt.Sprintf("![image](%s)", mediaId)))
+		if err != nil {
+			logger.ErrorCtx(d.Robot.Ctx, "send image fail", "err", err)
+			return err
+		}
+	} else {
+		mediaId, err := d.UploadFileWithType(accessToken, "video", "video."+contentType, media)
+		if err != nil {
+			logger.ErrorCtx(d.Robot.Ctx, "upload file fail", "err", err)
+			return err
+		}
+
+		_, err = d.VideoReplyMarkdown(d.Robot.Ctx, mediaId, contentType)
+		if err != nil {
+			logger.ErrorCtx(d.Robot.Ctx, "send image fail", "err", err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (d *DingRobot) sendVideo() {
+	// 检查 prompt
+	d.Robot.TalkingPreCheck(func() {
+		chatId, msgId, _ := d.Robot.GetChatIdAndMsgIdAndUserID()
+
+		prompt := strings.TrimSpace(d.Prompt)
+		if prompt == "" {
+			logger.ErrorCtx(d.Robot.Ctx, "prompt is empty")
+			d.Robot.SendMsg(chatId, i18n.GetMessage("video_empty_content", nil), msgId, tgbotapi.ModeMarkdown, nil)
+			return
+		}
+
+		imageContent := d.ImageContent
+		videoContent, totalToken, err := d.Robot.CreateVideo(prompt, imageContent)
+		if err != nil {
+			logger.ErrorCtx(d.Robot.Ctx, "generate video fail", "err", err)
+			d.Robot.SendMsg(chatId, err.Error(), msgId, tgbotapi.ModeMarkdown, nil)
+			return
+		}
+
+		err = d.sendMedia(videoContent, utils.DetectVideoMimeType(videoContent), "video")
+		if err != nil {
+			logger.ErrorCtx(d.Robot.Ctx, "send video fail", "err", err)
+			d.Robot.SendMsg(chatId, err.Error(), msgId, tgbotapi.ModeMarkdown, nil)
+			return
+		}
+
+		d.Robot.saveRecord(videoContent, imageContent, param.VideoRecordType, totalToken)
+
+	})
+
+}
+
+func (d *DingRobot) sendChatMessage() {
+	d.Robot.TalkingPreCheck(func() {
+		if conf.RagConfInfo.Store != nil {
+			d.executeChain()
+		} else {
+			d.executeLLM()
+		}
+	})
+
+}
+
+func (d *DingRobot) executeChain() {
+	messageChan := &MsgChan{
+		NormalMessageChan: make(chan *param.MsgInfo),
+	}
+	go d.Robot.ExecChain(d.Prompt, messageChan)
+
+	// send response message
+	go d.Robot.HandleUpdate(messageChan, "amr")
+}
+
+func (d *DingRobot) executeLLM() {
+	messageChan := &MsgChan{
+		NormalMessageChan: make(chan *param.MsgInfo),
+	}
+	go d.Robot.HandleUpdate(messageChan, "amr")
+
+	go d.Robot.ExecLLM(d.Prompt, messageChan)
+
+}
+
+func (d *DingRobot) GetMessageContent() (bool, error) {
+	if d.Message == nil {
+		return false, errors.New("callback data is nil")
+	}
+
+	chatId, msgId, _ := d.Robot.GetChatIdAndMsgIdAndUserID()
+
+	accessToken, err := d.GetAccessToken()
+	if err != nil {
+		logger.ErrorCtx(d.Robot.Ctx, "get access token failed", "err", err)
+		d.Robot.SendMsg(chatId, err.Error(), msgId, "", nil)
+		return false, err
+	}
+	botAt := false
+	content := d.Message.Text.Content
+	if content == "" && d.Message.Msgtype == "richText" {
+		cMap := d.Message.Content.(map[string]interface{})
+		for _, c := range cMap["richText"].([]interface{}) {
+			if cMap, ok := c.(map[string]interface{}); ok {
+				if txt, ok := cMap["text"].(string); ok {
+					content = txt
+					break
+				}
+				if _, ok := cMap["downloadCode"].(string); ok {
+					d.ImageContent, err = d.GetImageContent(accessToken, cMap)
+					if err != nil {
+						logger.Warn("get last image record fail", "err", err)
+					}
+				}
+			}
+		}
+	} else if d.Message.Msgtype == "picture" {
+		if c, ok := d.Message.Content.(map[string]interface{}); ok {
+			d.ImageContent, err = d.GetImageContent(accessToken, c)
+			if err != nil {
+				logger.ErrorCtx(d.Robot.Ctx, "get image content fail", "err", err)
+				d.Robot.SendMsg(chatId, err.Error(), msgId, "", nil)
+				return false, err
+			}
+		}
+
+	} else if d.Message.Msgtype == "audio" {
+		if c, ok := d.Message.Content.(map[string]interface{}); ok {
+			d.AudioContent, err = d.GetImageContent(accessToken, c)
+			if err != nil {
+				logger.ErrorCtx(d.Robot.Ctx, "get image content fail", "err", err)
+				d.Robot.SendMsg(chatId, err.Error(), msgId, "", nil)
+				return false, err
+			}
+			content, err = d.Robot.GetAudioContent(d.AudioContent)
+			if err != nil {
+				logger.Warn("generate text from audio failed", "err", err)
+				d.Robot.SendMsg(chatId, err.Error(), msgId, "", nil)
+				return false, err
+			}
+		}
+	}
+
+	d.OriginPrompt = content
+	d.Command, d.Prompt = ParseCommand(content)
+	for _, atID := range d.Message.AtUsers {
+		if atID.DingtalkId == d.Message.ChatbotUserId {
+			botAt = true
+			break
+		}
+	}
+
+	return botAt, nil
+}
+
+func (d *DingRobot) getPrompt() string {
+	return d.Prompt
+}
+
+func (d *DingRobot) SimpleReplyMarkdown(ctx context.Context, content []byte) (*DingResp, error) {
+	requestBody := map[string]interface{}{
+		"msgtype": "markdown",
+		"markdown": map[string]interface{}{
+			"title": "muse-bot",
+			"text":  string(content),
+		},
+	}
+	return d.ReplyMessage(ctx, requestBody)
+}
+
+func (d *DingRobot) VideoReplyMarkdown(ctx context.Context, mediaId, format string) (*DingResp, error) {
+	requestBody := map[string]interface{}{
+		"msgtype": "video",
+		"video": map[string]interface{}{
+			"duration":     strconv.Itoa(conf.VideoConfInfo.Duration),
+			"videoMediaId": mediaId,
+			"videoType":    format,
+			"picMediaId":   "muse-bot",
+		},
+	}
+	return d.ReplyMessage(ctx, requestBody)
+}
+
+func (d *DingRobot) VoiceReplyMarkdown(ctx context.Context, mediaId string, duration int) (*DingResp, error) {
+	requestBody := map[string]interface{}{
+		"msgtype": "audio",
+		"audio": map[string]interface{}{
+			"duration": duration,
+			"mediaId":  mediaId,
+		},
+	}
+	return d.ReplyMessage(ctx, requestBody)
+}
+
+func (d *DingRobot) ReplyMessage(ctx context.Context, requestBody map[string]interface{}) (*DingResp, error) {
+	requestJsonBody, _ := json.Marshal(requestBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.Message.SessionWebhook, bytes.NewReader(requestJsonBody))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "*/*")
+
+	httpClient := utils.GetRobotProxyClient()
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	sendRsp := new(DingResp)
+	err = json.Unmarshal(data, sendRsp)
+	if err != nil {
+		return nil, err
+	}
+
+	if sendRsp.ErrCode != 0 {
+		return nil, errors.New(sendRsp.ErrMsg)
+	}
+
+	return sendRsp, err
+}
+
+func (d *DingRobot) CreateDingRobotClient() (result *dingtalkrobot.Client, err error) {
+	config := &openapi.Config{}
+	config.Protocol = tea.String("https")
+	config.RegionId = tea.String("central")
+	result = &dingtalkrobot.Client{}
+	result, err = dingtalkrobot.NewClient(config)
+	return result, err
+}
+
+func (d *DingRobot) CreateDingAuthClient() (_result *dingtalkoauth2.Client, _err error) {
+	config := &openapi.Config{}
+	config.Protocol = tea.String("https")
+	config.RegionId = tea.String("central")
+	_result = &dingtalkoauth2.Client{}
+	_result, _err = dingtalkoauth2.NewClient(config)
+	return _result, _err
+}
+
+func (d *DingRobot) CreateDingInteractClient() (_result *dingtalkaiinteraction.Client, _err error) {
+	config := &openapi.Config{}
+	config.Protocol = tea.String("https")
+	config.RegionId = tea.String("central")
+	_result = &dingtalkaiinteraction.Client{}
+	_result, _err = dingtalkaiinteraction.NewClient(config)
+	return _result, _err
+}
+
+func (d *DingRobot) GetAccessToken() (string, error) {
+	if accessTokenInfo.ExpiredTime != 0 && accessTokenInfo.ExpiredTime < time.Now().Unix() {
+		return accessTokenInfo.AccessToken, nil
+	}
+
+	getTokenRequest := &dingtalkoauth2.GetTokenRequest{
+		ClientId:     tea.String(conf.BaseConfInfo.DingClientId),
+		ClientSecret: tea.String(conf.BaseConfInfo.DingClientSecret),
+		GrantType:    tea.String("client_credentials"),
+	}
+
+	authClient, err := d.CreateDingAuthClient()
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := authClient.GetToken(tea.String(d.Message.ChatbotCorpId), getTokenRequest)
+	if err != nil {
+		return "", err
+	}
+
+	accessTokenInfo.AccessToken = tea.StringValue(resp.Body.AccessToken)
+	accessTokenInfo.ExpiredTime = time.Now().Unix() + int64(tea.Int32Value(resp.Body.ExpiresIn)) - 300
+	return accessTokenInfo.AccessToken, nil
+}
+
+type uploadResp struct {
+	ErrCode  int    `json:"errcode"`
+	ErrMsg   string `json:"errmsg"`
+	MediaId  string `json:"media_id"`
+	FileType string `json:"type"`
+}
+
+func (d *DingRobot) UploadFileWithType(accessToken, fileType, filePath string, fileContent []byte) (string, error) {
+	url := fmt.Sprintf("https://oapi.dingtalk.com/media/upload?access_token=%s", accessToken)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	// media 字段，上传文件内容
+	part, err := writer.CreateFormFile("media", filePath)
+	if err != nil {
+		return "", err
+	}
+
+	_, err = part.Write(fileContent)
+	if err != nil {
+		return "", err
+	}
+
+	err = writer.WriteField("type", fileType)
+	if err != nil {
+		return "", err
+	}
+
+	err = writer.Close()
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequest("POST", url, body)
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	byteBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	var res uploadResp
+	if err := json.Unmarshal(byteBody, &res); err != nil {
+		return "", err
+	}
+
+	if res.ErrCode != 0 {
+		return "", fmt.Errorf("dingtalk upload error: %s", res.ErrMsg)
+	}
+
+	return res.MediaId, nil
+}
+
+func (d *DingRobot) GetImageContent(accessToken string, c map[string]interface{}) ([]byte, error) {
+	dingClient, err := d.CreateDingRobotClient()
+	if err != nil {
+		logger.ErrorCtx(d.Robot.Ctx, "create ding client failed", "err", err)
+		return nil, err
+	}
+
+	if dc, ok := c["downloadCode"].(string); ok {
+		robotMessageFileDownloadRequest := &dingtalkrobot.RobotMessageFileDownloadRequest{
+			DownloadCode: tea.String(dc),
+			RobotCode:    tea.String(conf.BaseConfInfo.DingClientId),
+		}
+
+		resp, err := dingClient.RobotMessageFileDownloadWithOptions(robotMessageFileDownloadRequest, &dingtalkrobot.RobotMessageFileDownloadHeaders{
+			XAcsDingtalkAccessToken: tea.String(accessToken),
+		}, &teaUtil.RuntimeOptions{})
+		if err != nil {
+			logger.ErrorCtx(d.Robot.Ctx, "download file failed", "err", err)
+			return nil, err
+		}
+
+		data, err := utils.DownloadFile(tea.StringValue(resp.Body.DownloadUrl))
+		if err != nil {
+			logger.ErrorCtx(d.Robot.Ctx, "download file failed", "err", err)
+			return nil, err
+		}
+
+		return data, nil
+	}
+
+	return nil, errors.New("download code not exist")
+}
+
+func (d *DingRobot) getPerMsgLen() int {
+	return 4500
+}
+
+func (d *DingRobot) sendVoiceContent(voiceContent []byte, duration int) error {
+	format := utils.DetectAudioFormat(voiceContent)
+
+	accessToken, err := d.GetAccessToken()
+	if err != nil {
+		logger.ErrorCtx(d.Robot.Ctx, "get access token fail", "err", err)
+		return err
+	}
+
+	mediaId, err := d.UploadFileWithType(accessToken, "voice", "voice."+format, voiceContent)
+	if err != nil {
+		logger.ErrorCtx(d.Robot.Ctx, "upload file fail", "err", err)
+		return err
+	}
+
+	_, err = d.VoiceReplyMarkdown(d.Robot.Ctx, mediaId, duration)
+	if err != nil {
+		logger.ErrorCtx(d.Robot.Ctx, "send voice fail", "err", err)
+		return err
+	}
+
+	return nil
+}
+
+func (d *DingRobot) setCommand(command string) {
+	d.Command = command
+}
+
+func (d *DingRobot) getCommand() string {
+	return d.Command
+}
+
+func (d *DingRobot) getUserName() string {
+	return d.UserName
+}
+
+func (d *DingRobot) setPrompt(prompt string) {
+	d.Prompt = prompt
+}
+
+func (d *DingRobot) getAudio() []byte {
+	return d.AudioContent
+}
+
+func (d *DingRobot) getImage() []byte {
+	return d.ImageContent
+}
+
+func (d *DingRobot) setImage(image []byte) {
+	d.ImageContent = image
+}
