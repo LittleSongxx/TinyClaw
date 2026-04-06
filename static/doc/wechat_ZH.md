@@ -1,74 +1,68 @@
-# ✨ WeChat Bot
+# TinyClaw 微信公众号接入说明
 
-本项目是一个基于 **LLM** 的跨平台聊天机器人，支持 **微信（WeChat）**。
-它内置了多种命令，包括图片与视频生成、余额查询、对话清理等功能。
+TinyClaw 支持通过微信公众号适配器接入微信公众号。
 
----
+这个适配器通过 TinyClaw 的 HTTP 服务接收微信回调。
 
-## 🚀 在微信模式下启动
+## 需要的配置
 
-你可以通过以下命令启动 **微信模式**：
+在 `deploy/docker/.env` 中配置：
 
-```bash
-./TinyClaw \
-  -wechat_app_secret=xxx \
-  -wechat_app_id=xxx \
-  -wechat_active=true \
-  -wechat_token=xx \
-  -gemini_token=xxxxxx \
-  -type=gemini \
-  -media_type=gemini
+```env
+WECHAT_APP_ID=your_wechat_app_id
+WECHAT_APP_SECRET=your_wechat_app_secret
+WECHAT_TOKEN=your_wechat_token
+WECHAT_ENCODING_AES_KEY=your_wechat_encoding_aes_key
+WECHAT_ACTIVE=false
+TYPE=aliyun
+DEFAULT_MODEL=qwen-max
+ALIYUN_TOKEN=your_qwen_api_key
 ```
 
-### 参数说明：
+## 启动方式
 
-* `wechat_app_secret`：微信公众号的 **AppSecret**（必填）
+```bash
+./scripts/start.sh
+```
 
-* `wechat_app_id`：微信公众号的 **AppID**（必填）
+## 回调路径
 
-* `wechat_token`：微信公众号的 **Token**（必填）
+TinyClaw 中微信公众号的回调路径是：
 
-* `wechat_active`：是否支持 **主动发送消息**（`true/false`）
+```text
+/wechat
+```
 
-    * `true`：支持主动推送消息（受微信每日额度限制）
-    * `false`：仅支持被动回复模式（微信要求在 15 秒内响应，否则消息将被截断）
+所以微信平台里的回调地址应指向：
 
-* `gemini_token`：你的 **Gemini API Token**（必填）
+```text
+https://your-domain.example/wechat
+```
 
-* `type` / `media_type`：模型类型，这里设置为 `gemini`
+## `WECHAT_ACTIVE` 说明
 
-⚠️ 建议：使用 **测试号（sandbox account）**，该模式下支持无限次主动发送消息。
+- `true`：在你的微信配置允许时使用主动消息模式
+- `false`：使用被动回复模式
 
-更多用法详见 [文档](https://github.com/LittleSongxx/TinyClaw)
+## 如何使用
 
----
+- 通过公众号与机器人对话
+- 在支持的消息场景中使用命令
 
-## 💬 使用方法
+常用命令：
 
-### 创建微信公众号应用
+- `/help`
+- `/clear`
+- `/mode`
+- `/state`
+- `/photo`
+- `/video`
 
-1. 登录 [微信公众平台](https://mp.weixin.qq.com/)，配置 **域名、Token、EncodingAESKey** <img width="400" alt="image" src="https://github.com/user-attachments/assets/ee252dfd-3a93-41d6-b7af-dcaba530f4fd" />
+## 常见检查项
 
----
+如果微信公众号没有正常回复，优先检查：
 
-### 与机器人对话
-
-连接成功后，你可以通过 **微信公众号** 直接与机器人对话。
-
-支持的指令：
-
-* **普通对话**：输入文本即可获得 AI 回复。
-
-* `/photo`：生成图片 <img width="400" alt="image" src="https://github.com/user-attachments/assets/1d3ee270-98f1-437d-900f-8dba6b8c9bf0" />
-
-* `/video`：生成视频 <img width="400" alt="image" src="https://github.com/user-attachments/assets/8332c9f0-08aa-4f72-a037-6c94c4a97f60" />
-
-* `/state`：查看当前会话token消耗状态 <img width="400" alt="image" src="https://github.com/user-attachments/assets/e7e2260e-d279-4660-962a-99dbc0e7d1f9" />
-
-* `/clear`：清理当前会话上下文 <img width="400" alt="image" src="https://github.com/user-attachments/assets/6c53c15c-7f2a-41ea-8e53-103c1e8c1e24" />
-
-* `/help`：查看命令帮助信息 <img width="400" alt="image" src="https://github.com/user-attachments/assets/d8cfe98c-b424-4e65-8a29-e95320d51e49" />
-
-* `/mode`：显示模型信息 <img width="400" alt="image" src="https://github.com/user-attachments/assets/85477f22-2592-41d0-971b-a41e1d80e54a" />
-
-
+- 回调地址
+- App ID / App Secret / Token / EncodingAESKey
+- 微信后台配置是否和 TinyClaw 回调路径一致
+- 容器健康状态和运行日志

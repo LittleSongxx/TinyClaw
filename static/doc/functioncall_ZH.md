@@ -1,104 +1,101 @@
-## 配置 `MCP_CONF_PATH` 环境变量以使用 MCP 服务器 (Go 二进制文件)
+# TinyClaw MCP / Function Call 说明
 
-本文档将指导您如何在 `TinyClaw` 项目中使用 Go 二进制文件时配置 `MCP_CONF_PATH` 环境变量，以便使用自定义的 MCP 服务器配置。
+TinyClaw 可以通过 MCP 配置把外部工具接入到机器人能力中，并在运行时以 function calling 的方式使用这些工具。
 
-### 1. 创建 MCP 配置文件
+这份文档只保留当前 TinyClaw 项目里仍然有用的 MCP 配置说明。
 
-首先，您需要创建一个 JSON 文件来定义您的 MCP 服务器。以下是一个示例配置，其中包含了 GitHub、Playwright、高德地图 (amap-mcp-server) 和高德地图 (amap-maps) 的 MCP 服务器设置。您可以根据您的需求修改此文件。
+## 核心思路
+
+你需要准备一份 MCP 配置 JSON，然后让 TinyClaw 在启动时加载它。
+
+默认情况下，项目会读取：
+
+```text
+conf/mcp/mcp.json
+```
+
+如果你想使用自定义路径，可以设置：
+
+```text
+MCP_CONF_PATH
+```
+
+## 一个最小示例
 
 ```json
 {
-    "mcpServers": {
-       "github": {
-          "command": "docker",
-          "description": "执行 Git 操作并与 GitHub 集成，用于管理仓库、拉取请求、问题和工作流。",
-          "args": [
-             "run",
-             "-i",
-             "--rm",
-             "-e",
-             "GITHUB_PERSONAL_ACCESS_TOKEN",
-             "ghcr.io/github/github-mcp-server"
-          ],
-          "env": {
-             "GITHUB_PERSONAL_ACCESS_TOKEN": "<YOUR_TOKEN>"
-          }
-       },
-       "playwright": {
-          "description": "模拟浏览器行为，用于网页导航、数据抓取和网页自动化交互等任务。",
-          "url": "http://localhost:8931/sse"
-       },
-       "amap-mcp-server": {
-          "description": "提供地理服务，如位置查找、路线规划和地图导航。",
-          "url": "http://localhost:8000/mcp"
-       },
-       "amap-maps": {
-          "command": "npx",
-          "description": "提供地理服务，如位置查找、路线规划和地图导航。",
-          "args": [
-             "-y",
-             "@amap/amap-maps-mcp-server"
-          ],
-          "env": {
-             "AMAP_MAPS_API_KEY": "<YOUR_TOKEN>"
-          }
-       }
+  "mcpServers": {
+    "playwright": {
+      "url": "http://localhost:8931/mcp",
+      "description": "Browser automation and page interaction."
     }
+  }
 }
 ```
 
-**请注意：**
+你也可以加入其他 MCP 服务，例如 GitHub、地图、检索等。
 
-* 将 **<YOUR\_TOKEN>** 替换为您的实际 GitHub 个人访问令牌和高德地图 API 密钥。
-* `amap-mcp-server` 和 `playwright` MCP 服务器的 `url` 字段指向本地运行的服务。您需要确保这些服务正在运行并可访问。
-* 您可以根据需要添加或删除 MCP 服务器配置。
+## 在当前项目里怎么启用
 
-将此文件保存到您选择的目录，例如，您可以将其命名为 **mcp\_config.json** 并放置在项目根目录下。
+### 方式 1：直接使用默认配置文件
 
-### 2. 设置 `MCP_CONF_PATH` 环境变量
+把配置写到：
 
-对于 Go 二进制文件，设置 `MCP_CONF_PATH` 环境变量的方法与 Python 脚本类似，主要是在运行二进制文件之前，确保环境变量已被正确设置。
+```text
+conf/mcp/mcp.json
+```
 
-#### 方法一：直接在命令行中设置 (临时)
+然后在 `deploy/docker/.env` 中启用：
 
-如果您只是想临时运行二进制文件并测试配置，可以在运行之前在命令行中设置环境变量：
+```env
+USE_TOOLS=true
+```
 
-**Linux/macOS:**
+最后启动：
+
+```bash
+./scripts/start.sh
+```
+
+### 方式 2：使用自定义配置文件路径
+
+如果你不想覆盖默认文件，可以在环境变量里指定：
 
 ```bash
 export MCP_CONF_PATH=/path/to/your/mcp_config.json
-./TinyClaw # 假设这是您的 Go 二进制文件
 ```
 
-#### 方法二：在 Docker Compose 或 Dockerfile 中设置 (如果您使用 Docker)
+然后再启动 TinyClaw。
 
-如果您通过 Docker 部署 `TinyClaw`，您可以在文件 `Dockerfile` 中设置环境变量。
+## Docker 场景
 
+如果你通过当前仓库的 Docker Compose 运行，推荐做法是：
 
-**在 `Dockerfile` 中设置：**
+- 把 MCP 配置文件放进仓库或映射卷可访问的位置
+- 在 `deploy/docker/.env` 中设置 `USE_TOOLS=true`
+- 如有需要，再补充 `MCP_CONF_PATH`
 
-```dockerfile
-# ... 其他 Dockerfile 指令 ...
+## 常见问题
 
-COPY mcp_config.json /app/mcp_config.json
+### 日志里出现 MCP 连接失败
 
-ENV MCP_CONF_PATH /app/mcp_config.json
+如果你看到类似：
 
-# ... 其他 Dockerfile 指令 ...
+```text
+CheckSSEOrHTTP fail
 ```
 
-### 3. 运行 `TinyClaw` Go 二进制文件
+通常表示：
 
-在设置好 `MCP_CONF_PATH` 环境变量后，您可以正常运行 `TinyClaw` 的 Go 二进制文件。项目将加载您指定的 MCP 配置文件，并能够使用其中定义的 MCP 服务器。
+- MCP 服务本身没启动
+- `url` 地址不对
+- TinyClaw 容器访问不到该地址
 
-例如：
+### 配置了 MCP 但机器人没调用工具
 
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--deepseek_token=sk-xxx \
--use_tools=true
-```
+优先检查：
 
-现在，您的 `TinyClaw` 应该能够与您配置的 MCP 服务器进行交互。
----
+- `USE_TOOLS=true`
+- 配置文件 JSON 是否合法
+- MCP 服务是否真的可访问
+- 当前提问是否足以触发工具调用

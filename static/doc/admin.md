@@ -1,132 +1,139 @@
-# Telegram DeepSeek Bot Management Platform
+# TinyClaw Admin
 
-This platform is designed to manage your Telegram DeepSeek Bot. It integrates various Large Language Models (LLMs),
-provides context-aware responses, and supports multiple models for diverse interactions.
+`TinyClaw Admin` is the built-in management panel for TinyClaw. It is used to inspect runtime status, manage bot configuration, review chat records, and operate RAG, MCP, users, and cron jobs.
 
------
+This document now describes the current TinyClaw admin usage instead of the old single-platform bot wording.
 
-## Running the Platform and Parameters
+## Recommended Usage
 
-To start the management platform, execute the following command:
+If you are following the current repository layout, the recommended way is to start the full stack with Docker Compose:
 
 ```bash
-./admin -db_type=sqlite3 -db_conf=./data/telegram_admin_bot.db -session_key=telegram_bot_session_key
+./scripts/start.sh
 ```
 
-### Command Parameters
+The admin service starts together with the main TinyClaw service.
 
-| Variable Name    | Description                                                                                                                                | Default Value                                                      |
-|:-----------------|:-------------------------------------------------------------------------------------------------------------------------------------------|:-------------------------------------------------------------------|
-| **DB\_TYPE**     | Database type: `sqlite3` / `mysql`                                                                                                         | `sqlite3` / `mysql`                                                |
-| **DB\_CONF**     | Database configuration: `./data/telegram_admin_bot.db` or `root:admin@tcp(127.0.0.1:3306)/dbname?charset=utf8mb4&parseTime=True&loc=Local` | `./data/telegram_admin_bot.db`                                     |
-| **SESSION\_KEY** | Specifies the key used for session management.                                                                                             | `telegram_bot_session_key` (A string used to encrypt session data) |
-| **ADMIN\_PORT**  | port for admin platform                                                                                                                    | `18080`                                                            |
+The internal admin port is `18080`. The actual host port depends on runtime port resolution, so check it with:
 
------
-
-## Getting Started
-
-### Login
-
-Access the management platform's login page.
-![image](https://github.com/user-attachments/assets/f6bf8ae6-4c0e-44d9-9115-7e744fc20dc3)
-
-### Default Account
-
-Upon first launch, you can log in using the following default credentials:
-
-* **Username:** `admin`
-* **Password:** `admin`
-
------
-
-## Platform Modules Overview
-
-### Home Page
-
-![image](https://github.com/user-attachments/assets/b12925ca-8d02-4537-84bd-6b0e1ca1686f)
-
-An overview of the platform's home page.
-
-### Admin Page
-
-![image](https://github.com/user-attachments/assets/0f5ccb12-1733-44d4-8922-c0dbd9966372)
-
-A list of administrators for the management platform.
-
-#### Add Admin
-
-![image](https://github.com/user-attachments/assets/89c46bc4-4ff5-455d-8dcd-6bfdc275659a)
-
-On this page, you can add new administrator accounts and grant them platform management permissions.
-
-### Bot Management
-
-![image](https://github.com/user-attachments/assets/518f9341-9e30-41b5-a71f-fff3e398ace0)
-
-Manage your configured Telegram bots.
-
-#### Add Bot
-
-Configure and add new Telegram bots on this page. For enhanced security, it's highly recommended to use **HTTP mutual
-authentication**.
-Start TinyClaw in this way:
-
-```
-./TinyClaw \
--telegram_bot_token=xxx \
--deepseek_token=sk-xxx \
--crt_file=/path/to/TinyClaw/admin/shell/certs/server.crt \
--ca_file=/path/to/TinyClaw/admin/shell/certs/ca.crt \
--key_file=/path/to/TinyClaw/admin/shell/certs/server.key
+```bash
+./scripts/status.sh
 ```
 
-add configurations in admin page:
-![image](https://github.com/user-attachments/assets/2a518841-abf6-4a31-b1b3-b26b258a5fab)
+## Default Login
 
-can use this [file](https://github.com/LittleSongxx/TinyClaw/blob/main/admin/shell/generate_cert.sh) to
-generate ca, key and crt.
+On first initialization, the default credentials are:
 
-#### Bot Start Parameter
+- Username: `admin`
+- Password: `admin`
 
-![image](https://github.com/user-attachments/assets/94c65d03-e097-479e-bf2a-f3d5aad431cc)
+Change the password immediately after the first login.
 
-Show all Parameters when starting the Telegram DeepSeek Bot.
+## Main Pages
 
-#### Bot Config
+The admin panel is most useful for these areas:
 
-![image](https://github.com/user-attachments/assets/0e6d3c32-5311-4769-ac42-e9591d4651ad)
+- `Dashboard`
+  runtime overview and basic metrics
+- `Bots`
+  bot configuration management
+- `BotUsers`
+  user records, modes, and token limits
+- `BotChats`
+  chat history inspection
+- `Chat`
+  direct admin-side bot debugging
+- `Log`
+  runtime logs
+- `RAG`
+  knowledge file management
+- `MCP`
+  MCP service configuration
+- `Cron`
+  scheduled task management
 
-Modify the configuration of your bot.
+## How It Runs
 
-### MCP Shop
-![image](https://github.com/user-attachments/assets/9ade4136-b261-462c-b59b-8755d71fb7a5)
-multi mcp clients for telegram deepseek bot
+### Option 1: Docker Compose
 
-### Add MCP 
-![image](https://github.com/user-attachments/assets/9c6679d4-1417-49fa-ad55-3279e2b55995)
-add mcp client for telegram deepseek bot
+This is the default project workflow.
 
+```bash
+./scripts/start.sh
+./scripts/status.sh
+./scripts/stop.sh
+```
 
-### Bot Users
+### Option 2: Run Admin Separately
 
-![image](https://github.com/user-attachments/assets/5534971a-e1e2-42d1-9552-0ce37b18444f)
+If you want to debug the admin service by itself:
 
-View and manage all users who interact with your bots.
+```bash
+go build -o /tmp/TinyClawAdmin ./admin
+```
 
-### Add Token to User
+Then provide the required environment variables manually:
 
-![image](https://github.com/user-attachments/assets/b9ffc006-764c-46b7-a5ce-703b052c5368)
+- `DB_TYPE`
+- `DB_CONF`
+- `SESSION_KEY`
+- `ADMIN_PORT`
 
-Allocate and manage API tokens for specific users to control their access and usage limits for the bot.
+Example:
 
-### Chat History Page
+```bash
+DB_TYPE=sqlite3 \
+DB_CONF=./data/tiny_claw_admin.db \
+SESSION_KEY=replace-with-your-session-key \
+ADMIN_PORT=18080 \
+/tmp/TinyClawAdmin
+```
 
-![image](https://github.com/user-attachments/assets/7b0a834f-0e62-4bec-9d57-1be22da0828d)
+## Key Variables
 
-This page displays the complete chat history between the bot and users, making it easy to track and analyze
-conversations.
+| Variable | Purpose | Example |
+|---|---|---|
+| `DB_TYPE` | admin database type | `sqlite3` |
+| `DB_CONF` | admin database file or DSN | `./data/tiny_claw_admin.db` |
+| `SESSION_KEY` | session signing key | random long string |
+| `ADMIN_PORT` | listen port | `18080` |
 
-### Chat Page
-![image](https://github.com/user-attachments/assets/b8c9c3e0-467b-44b2-9186-f0c9344b5633)
-chat with your telegram deepseek bot 
+## Relation to the Main Service
+
+`TinyClaw Admin` is not a separate product. It works alongside the main TinyClaw runtime and shares the same deployment model.
+
+The most relevant files are:
+
+- main database: `data/tiny_claw.db`
+- admin database: `data/tiny_claw_admin.db`
+- main log: `log/tiny_claw.log`
+- runtime config: `deploy/docker/.env`
+
+## Common Issues
+
+### Admin page does not open
+
+Check:
+
+- container health
+- actual mapped host port
+- whether `SESSION_KEY` changed
+- whether `tiny_claw_admin.db` still exists
+
+### Session suddenly became invalid
+
+Usually caused by:
+
+- environment rebuild
+- `SESSION_KEY` change
+- stale browser cookies
+
+Re-login is usually enough.
+
+### Admin opens but no bot data appears
+
+Check:
+
+- TinyClaw main service is running
+- main service is writing to `data/tiny_claw.db`
+- runtime config points to the expected data directory

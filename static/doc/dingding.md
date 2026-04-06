@@ -1,65 +1,52 @@
-## 🚀 Starting in DingTalk Mode
+# TinyClaw DingTalk Guide
 
-You can launch the bot in DingTalk mode with the following command:
+TinyClaw supports DingTalk through the DingTalk bot adapter.
 
-## DingTalk Configuration
-go to platform: https://open-dev.dingtalk.com/      
+The current project flow is to configure credentials in `deploy/docker/.env` and start the standard TinyClaw runtime.
 
-1. **Enable Stream Mode**
-   ![image](https://github.com/user-attachments/assets/9af2185b-f129-49b7-91e2-30a3608e7c23)
+## Required Variables
 
-2. **Grant Permissions**
-   ![image](https://github.com/user-attachments/assets/47014a94-a696-442f-b7fb-559c70dc4223)
-
-
-```bash
-./TinyClaw-darwin-amd64 \
-  -ding_client_id=xx \
-  -ding_client_secret=xx \
-  -deepseek_token=sk-xxx \
-  -gemini_token=xxx \
-  -openai_token=xxx \
-  -vol_token=xxx
+```env
+DING_CLIENT_ID=your_dingtalk_client_id
+DING_CLIENT_SECRET=your_dingtalk_client_secret
+TYPE=aliyun
+DEFAULT_MODEL=qwen-max
+ALIYUN_TOKEN=your_qwen_api_key
 ```
 
----
+## Start TinyClaw
 
-## 💬 How to Use
+```bash
+./scripts/start.sh
+```
 
-### Create a bot
-go to websit : https://open-dev.dingtalk.com/fe/ai    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/7928d526-739d-4a3c-8077-5d4734e786ab" />
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/4423a309-71a2-47ae-b816-8924d5092314" />
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/e6f98e5b-c682-474f-b35e-d5df0e2491e0" />
+## DingTalk Side
 
-### 1. Private Chat with the Bot
+Make sure your DingTalk app is correctly configured with:
 
-Send commands directly to the bot in a DingTalk private chat.    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/f73094cb-7ae1-4ea5-a8be-75bac24b4a4c" />
+- bot capability enabled
+- required message permissions
+- the expected connection mode on the DingTalk side
 
+## How To Use
 
-Supported commands:    
+- private chat the bot
+- use it in supported group scenarios
 
-* `/photo` — Generate an image    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/b3634f64-43ef-4884-9212-b8fadba5a474" />
+Common commands:
 
-* `/video` — Generate a video    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/ba39278d-83e8-4db0-9a72-b4f0d8c0785b" />
+- `/help`
+- `/clear`
+- `/mode`
+- `/state`
+- `/photo`
+- `/video`
 
-* `/state` — View the current conversation state (including model info and system prompts)
- <img width="400" alt="image" src="https://github.com/user-attachments/assets/adfc9015-6d2b-4663-80fa-34491a6f9a8a" /> 
-   
-* `/clear` — Clear the current conversation context
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/47b74d3e-1425-402e-a117-882a8003bbe9" />
+## Common Checks
 
-     
-* `/help` — Display help information
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/2971ff23-9b68-4dbc-ad06-ad92b3c12bc8" />
-   
-* `/mode` — Choose LLM mode    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/c8020a59-2619-4160-beac-5fd628b62e4c" />
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/5327afba-9160-44e8-a0e5-f05bae6cbfd6" />
+If DingTalk does not respond, check:
 
-
-
-
+- `DING_CLIENT_ID`
+- `DING_CLIENT_SECRET`
+- DingTalk-side app permissions
+- runtime logs and container health

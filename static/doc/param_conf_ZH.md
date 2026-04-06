@@ -1,197 +1,152 @@
-## `TinyClaw` 参数使用指南
+# TinyClaw 参数说明
 
-本文档详细介绍了 `TinyClaw` 运行时的各种配置参数，帮助用户根据需求灵活部署和使用。
+这份文档只保留 TinyClaw 当前仍然高频、稳定、值得维护的运行参数说明。
 
-### 配置参数 (`conf param`)
+TinyClaw 同时支持：
 
-`TinyClaw` 通过命令行参数进行配置。以下是不同场景下的参数使用示例：
+- 环境变量
+- 命令行参数
 
-#### 1\. 基础配置 (`basic`)
+通常推荐优先使用环境变量，尤其是在当前仓库的 Docker Compose 结构里。
 
-这是运行机器人所需的最基本参数，用于连接 Telegram 和 DeepSeek API。
+## 当前推荐方式
 
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--deepseek_token=sk-xxx
-```
+编辑：
 
-* `-telegram_bot_token`: 您的 Telegram Bot API Token。
-* `-deepseek_token`: 您的 DeepSeek API Token。
+`deploy/docker/.env`
 
-#### 2\. MySQL 数据库支持 (`mysql`)
-
-如果需要持久化聊天记录或用户数据，可以使用 MySQL 数据库。
+然后启动：
 
 ```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--deepseek_token=sk-xxx \
--db_type=mysql \
--db_conf='root:admin@tcp(127.0.0.1:3306)/dbname?charset=utf8mb4&parseTime=True&loc=Local'
+./scripts/start.sh
 ```
 
-* `-db_type`: 数据库类型，设置为 `mysql`。
-* `-db_conf`: MySQL 连接字符串。请根据您的数据库配置替换 `root:admin@tcp(127.0.0.1:3306)/dbname?charset=utf8mb4&parseTime=True&loc=Local`。
+## 参数来源规则
 
-#### 3\. 代理配置 (`proxy`)
+一般来说：
 
-当您的网络环境需要通过代理访问 Telegram 或 DeepSeek API 时，可以使用此配置。
+- 环境变量名：`UPPER_SNAKE_CASE`
+- 命令行参数名：`lower_snake_case`
 
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--deepseek_token=sk-xxx \
--telegram_proxy=http://127.0.0.1:7890 \
--deepseek_proxy=http://127.0.0.1:7890
+例如：
+
+- 环境变量：`LARK_APP_ID`
+- 命令行参数：`-lark_app_id`
+
+## 最常用参数分组
+
+### 1. 平台接入
+
+| 变量 | 说明 |
+|---|---|
+| `BOT_NAME` | 机器人名称 |
+| `LARK_APP_ID` | 飞书 App ID |
+| `LARK_APP_SECRET` | 飞书 App Secret |
+| `QQ_APP_ID` | QQ 开放平台 App ID |
+| `QQ_APP_SECRET` | QQ 开放平台 App Secret |
+| `TELEGRAM_BOT_TOKEN` | Telegram Bot Token |
+
+说明：
+
+- 当前推荐平台是飞书
+- 不使用的平台凭据留空即可
+
+### 2. 模型与媒体能力
+
+| 变量 | 说明 |
+|---|---|
+| `TYPE` | 文本模型提供方 |
+| `DEFAULT_MODEL` | 默认文本模型 |
+| `MEDIA_TYPE` | 图片/视频能力提供方 |
+| `OPENAI_TOKEN` | OpenAI Token |
+| `GEMINI_TOKEN` | Gemini Token |
+| `ALIYUN_TOKEN` | 阿里云百炼 Token |
+| `VOL_TOKEN` | 火山引擎通用 Token |
+| `AI_302_TOKEN` | 302.AI Token |
+
+当前推荐值：
+
+```env
+TYPE=aliyun
+DEFAULT_MODEL=qwen-max
+MEDIA_TYPE=aliyun
 ```
 
-* `-telegram_proxy`: Telegram API 请求使用的代理地址。
-* `-deepseek_proxy`: DeepSeek API 请求使用的代理地址。
+### 3. 存储与运行
 
-#### 4\. OpenAI 模型支持 (`openai`)
+| 变量 | 说明 |
+|---|---|
+| `DB_TYPE` | 数据库类型，`sqlite3` 或 `mysql` |
+| `DB_CONF` | 数据库文件路径或连接串 |
+| `LANG` | 语言，常见为 `zh` / `en` |
+| `HTTP_HOST` | 主服务监听地址 |
+| `TOKEN_PER_USER` | 单用户额度限制 |
+| `MAX_USER_CHAT` | 单用户最大并发会话数 |
+| `MAX_QA_PAIR` | 上下文保留问答对数量 |
+| `CHARACTER` | 系统人格设定 |
 
-除了 DeepSeek，机器人也支持使用 OpenAI 模型。
+当前仓库默认推荐：
 
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--type=openai \
--openai_token=sk-xxxx
+```env
+DB_TYPE=sqlite3
+LANG=zh
+HTTP_HOST=:36060
 ```
 
-* `-type`: 模型类型，设置为 `openai`。
-* `-openai_token`: 您的 OpenAI API Token。
+### 4. Admin 后台
 
-#### 5\. Gemini 模型支持 (`gemini`)
+| 变量 | 说明 |
+|---|---|
+| `SESSION_KEY` | 后台登录态密钥 |
+| `ADMIN_PORT` | 后台监听端口 |
 
-机器人还支持使用 Google Gemini 模型。
+### 5. 代理与网络
 
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--type=gemini \
--gemini_token=xxxxx
+| 变量 | 说明 |
+|---|---|
+| `LLM_PROXY` | 模型请求代理 |
+| `ROBOT_PROXY` | 平台请求代理 |
+| `CRT_FILE` | HTTPS 证书 |
+| `KEY_FILE` | HTTPS 私钥 |
+| `CA_FILE` | CA 证书 |
+
+## 常见配置示例
+
+### 飞书 + Qwen
+
+```env
+BOT_NAME=TinyClawLark
+LANG=zh
+TYPE=aliyun
+MEDIA_TYPE=aliyun
+DEFAULT_MODEL=qwen-max
+DB_TYPE=sqlite3
+
+LARK_APP_ID=your_lark_app_id
+LARK_APP_SECRET=your_lark_app_secret
+ALIYUN_TOKEN=your_qwen_api_key
 ```
 
-* `-type`: 模型类型，设置为 `gemini`。
-* `-gemini_token`: 您的 Gemini API Token。
+### 使用 MySQL
 
-#### 6\. OpenRouter 模型支持 (`openrouter`)
-
-集成 OpenRouter 平台，可以使用其提供的多种模型。
-
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--type=openrouter \
--openrouter_token=sk-or-v1-xxxx
+```env
+DB_TYPE=mysql
+DB_CONF=root:password@tcp(127.0.0.1:3306)/tinyclaw?charset=utf8mb4&parseTime=True&loc=Local
 ```
 
-* `-type`: 模型类型，设置为 `openrouter`。
-* `-openrouter_token`: 您的 OpenRouter API Token。
+### 启用 MCP / Tools
 
-#### 7\. 图片识别 (`identify photo`)
-
-集成火山引擎（VolcEngine）的图片识别功能，需要提供火山引擎的 AK/SK。
-
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--deepseek_token=sk-xxx \
--volc_ak=xxx \
--volc_sk=xxx
+```env
+USE_TOOLS=true
 ```
 
-* `-volc_ak`: 火山引擎 Access Key。
-* `-volc_sk`: 火山引擎 Secret Key。
+## 与专题文档的关系
 
-更多详情请参考：[火山引擎图片识别文档](https://www.volcengine.com/docs/6790/116987)
+如果你需要深入看某一块配置，继续阅读：
 
-#### 8\. 语音识别 (`identify voice`)
-
-集成火山引擎（VolcEngine）的语音识别功能。
-
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--deepseek_token=sk-xxx \
--audio_app_id=xxx \
--audio_cluster=volcengine_input_common \
--audio_token=xxxx
-```
-
-* `-audio_app_id`: 火山引擎语音识别的 App ID。
-* `-audio_cluster`: 语音识别集群名称，通常为 `volcengine_input_common`。
-* `-audio_token`: 语音识别的 Token。
-
-更多详情请参考：[火山引擎语音识别文档](https://www.volcengine.com/docs/6561/80816)
-
-#### 9\. 高德地图 MCP (`amap mcp`)
-
-如果您的机器人需要使用高德地图的相关工具，例如地理位置查询等。
-
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--deepseek_token=sk-xxx \
--use_tools=true
-```
-
-* `-use_tools`: 启用工具使用功能，设置为 `true`，默认为`false`。
-
-#### 10\. RAG (Retrieval Augmented Generation) - ChromaDB (`rag milvus`)
-
-结合 ChromaDB 进行 RAG，需要使用 OpenAI 的 Embedding 服务。
-
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--deepseek_token=sk-xxx \
--openai_token=sk-xxxx \
--embedding_type=openai \
--vector_db_type=milvus
-```
-
-* `-openai_token`: 您的 OpenAI API Token (用于 embedding)。
-* `-embedding_type`: Embedding 类型，设置为 `openai`。
-* `-vector_db_type`: 向量数据库类型，设置为 `milvus`。
-
-#### 11\. RAG (Retrieval Augmented Generation) - Milvus (`rag milvus`)
-
-结合 Milvus 进行 RAG，需要使用 Gemini 的 Embedding 服务。
-
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--deepseek_token=sk-xxx \
--gemini_token=xxx \
--embedding_type=gemini \
--vector_db_type=milvus
-```
-
-* `-gemini_token`: 您的 Gemini API Token (用于 embedding)。
-* `-embedding_type`: Embedding 类型，设置为 `gemini`。
-* `-vector_db_type`: 向量数据库类型，设置为 `milvus`。
-
-#### 12\. RAG (Retrieval Augmented Generation) - Weaviate (`rag weaviate`)
-
-结合 Weaviate 进行 RAG，需要使用 Ernie 的 Embedding 服务。
-
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--deepseek_token=sk-xxx \
--ernie_ak=xxx \
--ernie_sk=xxx \
--embedding_type=ernie \
--vector_db_type=weaviate \
--weaviate_url=127.0.0.1:8080
-```
-
-* `-ernie_ak`: 您的 Ernie Access Key (用于 embedding)。
-* `-ernie_sk`: 您的 Ernie Secret Key (用于 embedding)。
-* `-embedding_type`: Embedding 类型，设置为 `ernie`。
-* `-vector_db_type`: 向量数据库类型，设置为 `weaviate`。
-* `-weaviate_url`: Weaviate 数据库的 URL。
-
+- 飞书接入：`static/doc/lark_ZH.md`
+- RAG：`static/doc/rag_ZH.md`
+- 音频：`static/doc/audioconf_ZH.md`
+- 图片：`static/doc/photoconf_ZH.md`
+- 视频：`static/doc/videoconf_ZH.md`
+- Web API：`static/doc/web_api_ZH.md`

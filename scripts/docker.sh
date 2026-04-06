@@ -1,7 +1,14 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+cd "${REPO_ROOT}"
 
 if [ -z "$1" ]; then
-  echo "❌ version is necessary: ./push.sh v1.0.0"
+  echo "❌ version is necessary: ./scripts/docker.sh v1.0.0"
   exit 1
 fi
 
@@ -30,10 +37,10 @@ if [ -n "${ALIYUN_REGISTRY}" ]; then
   )
 fi
 
-docker buildx build "${BUILD_ARGS[@]}" --push .
+docker buildx build -f deploy/docker/Dockerfile "${BUILD_ARGS[@]}" --push .
 
 
 # Example:
-# ALIYUN_REGISTRY=registry.cn-hangzhou.aliyuncs.com ./docker.sh v1.0.0
+# ALIYUN_REGISTRY=registry.cn-hangzhou.aliyuncs.com ./scripts/docker.sh v1.0.0
 
 echo "✅ success"

@@ -19,8 +19,8 @@ RUN go mod download
 COPY . .
 
 # Build the Go application
-RUN go build -ldflags="-s -w" -o TinyClaw main.go
-RUN go build -ldflags="-s -w" -o TinyClawAdmin admin/main.go
+RUN go build -ldflags="-s -w" -o TinyClaw ./cmd/tinyclaw
+RUN go build -ldflags="-s -w" -o TinyClawAdmin ./admin
 
 
 # ----------------------
@@ -60,7 +60,7 @@ RUN apt-get update && \
 
 ENV PATH="/usr/share/nodejs/corepack/shims:$PATH"
 
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY deploy/docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Create required directories
 RUN mkdir -p ./conf/i18n ./conf/mcp ./conf/img ./conf/adminui ./data ./log

@@ -1,70 +1,53 @@
-# ✨ Slack Bot
+# TinyClaw Slack Guide
 
-This project is a cross-platform chatbot powered by the **LLM**, supporting **Slack**. It comes with a variety of built-in commands, including image and video generation, conversation clearing, and more.
+TinyClaw supports Slack through the Slack bot adapter.
 
-## 🚀 Starting in Slack Mode
+For the current project layout, configure Slack through `deploy/docker/.env` and start the standard TinyClaw stack.
 
-You can launch the bot in Slack mode using the following command:
+## Required Variables
 
-```bash
-./TinyClaw-darwin-amd64 \
-  -slack_bot_token=xoxb-xxx \
-  -slack_app_token=xapp-xxx \
-  -deepseek_token=sk-xxx \
-  -gemini_token=xxx \
-  -openai_token=xxx \
-  -vol_token=xxx
+```env
+SLACK_BOT_TOKEN=xoxb-your-bot-token
+SLACK_APP_TOKEN=xapp-your-app-token
+TYPE=aliyun
+DEFAULT_MODEL=qwen-max
+ALIYUN_TOKEN=your_qwen_api_key
 ```
 
-### Parameter Descriptions:
+## Start TinyClaw
 
-* `slack_bot_token`: Your Slack Bot User OAuth Token (required, format: `xoxb-xxx`)
-* `slack_app_token`: Your Slack App-Level Token (required, format: `xapp-xxx`)
-* `deepseek_token`: Your DeepSeek API Token (required)
+```bash
+./scripts/start.sh
+```
 
-Other usage see this [doc](https://github.com/LittleSongxx/TinyClaw)
+## Slack App Side
 
----
+On the Slack side, make sure:
 
-## 💬 How to Use
+- the app is installed into the target workspace
+- the bot token and app token are both issued
+- the app has the required scopes to read and send messages
 
-### Create a bot
-go to web: https://api.slack.com/apps/    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/15b97d1f-7a50-4c9e-953b-7899a1ecd935" />
+## How To Use
 
-Oauth:    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/e15ef32e-e4c4-4560-b076-a44e27a8c65e" />
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/cfc51f3b-2e57-4575-ae2d-b6d9568921e7" />
+- direct message the bot
+- mention the bot in a channel
 
-Set command:  
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/3bd4ba71-c383-42f2-8b6b-47ca4d1c1f32" />
+Common commands:
 
-Event subscription:    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/8f67c815-d755-4688-983d-647bc64122f1" />
+- `/help`
+- `/clear`
+- `/retry`
+- `/mode`
+- `/state`
+- `/photo`
+- `/video`
 
+## Common Checks
 
-### Private Chat with the Bot
+If Slack does not respond, check:
 
-You can directly chat with the bot in Slack via **Direct Message**.    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/08ee0e28-e08c-47f6-825e-45afe2621bba" />
-
-Supported commands:    
-
-* `/photo`: Generate an image.
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/078d1899-57eb-4a00-a240-d44cb7dd1a51" />
-
-* `/video`: Generate a video.
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/6db607d1-3a73-4a50-a0b9-81899e19f4f6" />
-
-* `/state`: View the current chat state (including model info and system prompts)    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/9c336a10-9250-41a3-9406-4e385fe8d9db" />
-
-* `/clear`: Clear the current conversation context
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/11defe94-5642-490a-bc20-d22e5e430f81" />
-  
-* `/help`: Show command help info    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/1e7da122-7199-4792-94a2-0835d647b9b5" />
-
-* `/mode` Show model info
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/225cc31b-8461-4a9a-a036-abd55b151924" />
-
+- `SLACK_BOT_TOKEN`
+- `SLACK_APP_TOKEN`
+- workspace installation and scopes
+- runtime logs and container health

@@ -1,102 +1,101 @@
-## Configuring the `MCP_CONF_PATH` Environment Variable for MCP Servers (Go Binary)
+# TinyClaw MCP / Function Calling Guide
 
-This document guides you on configuring the **`MCP_CONF_PATH`** environment variable when using the Go binary of the **`TinyClaw`** project. This allows you to use a custom MCP server configuration.
+TinyClaw can connect external tools through MCP configuration and expose them to the runtime as callable tools.
 
-### 1. Create the MCP Configuration File
+This document keeps only the MCP setup that is still relevant in the current TinyClaw repository.
 
-First, you'll need to create a JSON file that defines your MCP servers. Here's an example configuration, including settings for GitHub, Playwright, Amap (amap-mcp-server), and Amap Maps (amap-maps) MCP servers. You can modify this file to suit your specific needs.
+## Core Idea
+
+Prepare an MCP JSON config and let TinyClaw load it during startup.
+
+By default, the project reads:
+
+```text
+conf/mcp/mcp.json
+```
+
+If you want a custom file path, set:
+
+```text
+MCP_CONF_PATH
+```
+
+## Minimal Example
 
 ```json
 {
-    "mcpServers": {
-       "github": {
-          "command": "docker",
-          "description": "Performs Git operations and integrates with GitHub to manage repositories, pull requests, issues, and workflows.",
-          "args": [
-             "run",
-             "-i",
-             "--rm",
-             "-e",
-             "GITHUB_PERSONAL_ACCESS_TOKEN",
-             "ghcr.io/github/github-mcp-server"
-          ],
-          "env": {
-             "GITHUB_PERSONAL_ACCESS_TOKEN": "<YOUR_TOKEN>"
-          }
-       },
-       "playwright": {
-          "description": "Simulates browser behavior for tasks like web navigation, data scraping, and automated interactions with web pages.",
-          "url": "http://localhost:8931/sse"
-       },
-       "amap-mcp-server": {
-          "description": "Provides geographic services such as location lookup, route planning, and map navigation.",
-          "url": "http://localhost:8000/mcp"
-       },
-       "amap-maps": {
-          "command": "npx",
-          "description": "Provides geographic services such as location lookup, route planning, and map navigation.",
-          "args": [
-             "-y",
-             "@amap/amap-maps-mcp-server"
-          ],
-          "env": {
-             "AMAP_MAPS_API_KEY": "<YOUR_TOKEN>"
-          }
-       }
+  "mcpServers": {
+    "playwright": {
+      "url": "http://localhost:8931/mcp",
+      "description": "Browser automation and page interaction."
     }
+  }
 }
 ```
 
-**Please note:**
+You can add more MCP services such as GitHub, map, search, or other custom integrations.
 
-* Replace **<YOUR\_TOKEN>** with your actual GitHub personal access token and Amap API key.
-* The **`url`** fields for **`amap-mcp-server`** and **`playwright`** MCP servers point to services running locally. Ensure these services are running and accessible.
-* You can add or remove MCP server configurations as needed.
+## How To Enable It
 
-Save this file to a directory of your choice. For instance, you might name it **`mcp_config.json`** and place it in the project's root directory.
+### Option 1: Use the Default Config File
 
-### 2. Set the `MCP_CONF_PATH` Environment Variable
+Write your MCP config to:
 
-For Go binaries, setting the **`MCP_CONF_PATH`** environment variable is straightforward. The main goal is to ensure the environment variable is correctly set *before* running the binary.
+```text
+conf/mcp/mcp.json
+```
 
-#### Method 1: Set in the Command Line (Temporary)
+Then enable tools in `deploy/docker/.env`:
 
-If you just need to run the binary temporarily for testing, you can set the environment variable directly in your command line before execution:
+```env
+USE_TOOLS=true
+```
 
-**Linux/macOS:**
+Finally start TinyClaw:
+
+```bash
+./scripts/start.sh
+```
+
+### Option 2: Use a Custom Config Path
+
+If you do not want to overwrite the default file:
 
 ```bash
 export MCP_CONF_PATH=/path/to/your/mcp_config.json
-./TinyClaw # Assuming this is your Go binary
 ```
 
-#### Method 2: Set in Docker Compose or Dockerfile (If Using Docker)
+Then start TinyClaw normally.
 
-If you're deploying **`TinyClaw`** using Docker, you can set the environment variable in `Dockerfile`.
+## Docker Usage
 
+With the current Docker Compose layout, the recommended approach is:
 
-**Setting in `Dockerfile`:**
+- place the MCP config where the runtime can access it
+- set `USE_TOOLS=true` in `deploy/docker/.env`
+- optionally set `MCP_CONF_PATH` if you use a non-default file
 
-```dockerfile
-# ... other Dockerfile instructions ...
+## Common Issues
 
-COPY mcp_config.json /app/mcp_config.json
+### Logs show MCP connection failures
 
-ENV MCP_CONF_PATH /app/mcp_config.json
+If you see something like:
 
-# ... other Dockerfile instructions ...
+```text
+CheckSSEOrHTTP fail
 ```
 
-### 3. Run the `TinyClaw` Go Binary
+It usually means:
 
-After setting the **`MCP_CONF_PATH`** environment variable, you can run the **`TinyClaw`** Go binary as usual. The project will load your specified MCP configuration file and will be able to use the MCP servers defined within it.
+- the MCP service itself is not running
+- the configured `url` is wrong
+- the TinyClaw container cannot reach that address
 
-For example:
+### MCP is configured but the bot does not call tools
 
-```bash
-./TinyClaw
-```
+Check:
 
-Your **`TinyClaw`** should now be able to interact with your configured MCP servers.
-
----
+- `USE_TOOLS=true`
+- valid JSON config
+- actual MCP service reachability
+- whether the prompt is suitable for tool invocation

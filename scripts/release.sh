@@ -1,10 +1,18 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-set -e
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+BUILD_ROOT="${REPO_ROOT}/build"
+OUTPUT_DIR="${BUILD_ROOT}/output"
+RELEASE_DIR="${BUILD_ROOT}/release"
+
+cd "${REPO_ROOT}"
 
 # Clean up old files
-rm -rf ./output ./release
-mkdir -p ./output ./release
+rm -rf "${OUTPUT_DIR}" "${RELEASE_DIR}"
+mkdir -p "${OUTPUT_DIR}" "${RELEASE_DIR}"
 
 # Build the admin binary (locally for the specified platform)
 build_admin_local() {
@@ -18,7 +26,7 @@ build_admin_local() {
     echo "Building admin [$os/$arch] using go build..."
     echo "=============================="
 
-    GOOS=$os GOARCH=$arch CGO_ENABLED=1 go build -o "./output/${output_name}" ./admin
+    GOOS=$os GOARCH=$arch CGO_ENABLED=1 go build -o "${OUTPUT_DIR}/${output_name}" ./admin
 }
 
 # Build main binary + package everything
@@ -35,25 +43,25 @@ compile_and_package_local() {
     local bot_output="TinyClaw"
 
     # Build main bot binary
-    GOOS=$os GOARCH=$arch CGO_ENABLED=1 go build -o "./output/${bot_output}" ./
+    GOOS=$os GOARCH=$arch CGO_ENABLED=1 go build -o "${OUTPUT_DIR}/${bot_output}" ./cmd/tinyclaw
 
     # Build admin binary
     build_admin_local $os $arch
 
     # Copy config files
-    mkdir -p ./output/conf/
-    cp -r ./conf/i18n ./output/conf/
-    cp -r ./conf/mcp ./output/conf/
-    cp -r ./conf/img ./output/conf/
-    mkdir -p ./output/data/
+    mkdir -p "${OUTPUT_DIR}/conf/"
+    cp -r ./conf/i18n "${OUTPUT_DIR}/conf/"
+    cp -r ./conf/mcp "${OUTPUT_DIR}/conf/"
+    cp -r ./conf/img "${OUTPUT_DIR}/conf/"
+    mkdir -p "${OUTPUT_DIR}/data/"
 
     # Copy admin UI files
-    mkdir -p ./output/adminui/
-    cp -r ./admin/adminui/* ./output/adminui/
+    mkdir -p "${OUTPUT_DIR}/adminui/"
+    cp -r ./admin/adminui/* "${OUTPUT_DIR}/adminui/"
 
     # Package everything into a tarball
     local release_name="TinyClaw-${os}-${arch}.tar.gz"
-    tar zcf "./release/${release_name}" -C ./output .
+    tar zcf "${RELEASE_DIR}/${release_name}" -C "${OUTPUT_DIR}" .
 
     echo "✅ Packaged ${release_name}"
 }
@@ -65,5 +73,5 @@ compile_and_package_local darwin amd64
 compile_and_package_local darwin arm64
 
 # Final cleanup
-rm -rf ./output
-echo "✅ Compilation and packaging complete. Output is in ./release"
+rm -rf "${OUTPUT_DIR}"
+echo "✅ Compilation and packaging complete. Output is in ${RELEASE_DIR}"

@@ -1,0 +1,39 @@
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: tinyclaw-local:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      HTTP_HOST: ":36060"
+      ADMIN_PORT: "18080"
+      TZ: ${TZ}
+    ports:
+      - "${HOST_HTTP_PORT:-36060}:36060"
+      - "${HOST_ADMIN_PORT:-18080}:18080"
+    volumes:
+      - ../../data:/app/data
+      - ../../log:/app/log
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:36060/pong >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles:
+      - cloudflared
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --url
+      - http://app:36060

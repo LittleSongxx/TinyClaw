@@ -1,196 +1,152 @@
-## `TinyClaw` Parameter Usage Guide
+# TinyClaw Runtime Parameters
 
-This document provides a detailed overview of the various configuration parameters for running `TinyClaw`, helping users deploy and utilize it flexibly according to their needs.
+This document keeps only the runtime parameters that are still high-signal and actively useful in the current TinyClaw project.
 
-### Configuration Parameters (`conf param`)
+TinyClaw supports both:
 
-`TinyClaw` is configured via command-line parameters. Below are examples of parameter usage for different scenarios:
+- environment variables
+- command-line flags
 
-#### 1\. Basic Configuration (`basic`)
+For the current repository layout, environment variables are the recommended choice, especially with Docker Compose.
 
-These are the most essential parameters required to run the bot, connecting it to Telegram and the DeepSeek API.
+## Recommended Workflow
 
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--deepseek_token=sk-xxx
-```
+Edit:
 
-* `-telegram_bot_token`: Your Telegram Bot API Token.
-* `-deepseek_token`: Your DeepSeek API Token.
+`deploy/docker/.env`
 
-#### 2\. MySQL Database Support (`mysql`)
-
-If you need to persist chat history or user data, you can use a MySQL database.
+Then start the stack:
 
 ```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--deepseek_token=sk-xxx \
--db_type=mysql \
--db_conf='root:admin@tcp(127.0.0.1:3306)/dbname?charset=utf8mb4&parseTime=True&loc=Local'
+./scripts/start.sh
 ```
 
-* `-db_type`: Database type, set to `mysql`.
-* `-db_conf`: MySQL connection string. Please replace `root:admin@tcp(127.0.0.1:3306)/dbname?charset=utf8mb4&parseTime=True&loc=Local` with your database configuration.
+## Naming Rules
 
-#### 3\. Proxy Configuration (`proxy`)
+In general:
 
-Use this configuration if your network environment requires accessing Telegram or DeepSeek API through a proxy.
+- environment variables use `UPPER_SNAKE_CASE`
+- command-line flags use `lower_snake_case`
 
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--deepseek_token=sk-xxx \
--telegram_proxy=http://127.0.0.1:7890 \
--deepseek_proxy=http://127.0.0.1:7890
+Example:
+
+- env var: `LARK_APP_ID`
+- flag: `-lark_app_id`
+
+## High-Value Parameter Groups
+
+### 1. Platform Access
+
+| Variable | Purpose |
+|---|---|
+| `BOT_NAME` | bot display/runtime name |
+| `LARK_APP_ID` | Feishu / Lark App ID |
+| `LARK_APP_SECRET` | Feishu / Lark App Secret |
+| `QQ_APP_ID` | QQ Open Platform App ID |
+| `QQ_APP_SECRET` | QQ Open Platform App Secret |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token |
+
+Notes:
+
+- Feishu is the currently recommended platform
+- leave unused platform credentials empty
+
+### 2. Model and Media Providers
+
+| Variable | Purpose |
+|---|---|
+| `TYPE` | text model provider |
+| `DEFAULT_MODEL` | default text model |
+| `MEDIA_TYPE` | media generation provider |
+| `OPENAI_TOKEN` | OpenAI token |
+| `GEMINI_TOKEN` | Gemini token |
+| `ALIYUN_TOKEN` | Aliyun Bailian token |
+| `VOL_TOKEN` | Volcano Engine token |
+| `AI_302_TOKEN` | 302.AI token |
+
+Current recommended values:
+
+```env
+TYPE=aliyun
+DEFAULT_MODEL=qwen-max
+MEDIA_TYPE=aliyun
 ```
 
-* `-telegram_proxy`: The proxy address used for Telegram API requests.
-* `-deepseek_proxy`: The proxy address used for DeepSeek API requests.
+### 3. Storage and Runtime
 
-#### 4\. OpenAI Model Support (`openai`)
+| Variable | Purpose |
+|---|---|
+| `DB_TYPE` | `sqlite3` or `mysql` |
+| `DB_CONF` | database file path or DSN |
+| `LANG` | runtime language, commonly `zh` or `en` |
+| `HTTP_HOST` | main service listen address |
+| `TOKEN_PER_USER` | per-user quota limit |
+| `MAX_USER_CHAT` | max concurrent chats per user |
+| `MAX_QA_PAIR` | retained QA pairs in context |
+| `CHARACTER` | system persona / behavior prompt |
 
-In addition to DeepSeek, the bot also supports using OpenAI models.
+Recommended defaults in this repo:
 
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--type=openai \
--openai_token=sk-xxxx
+```env
+DB_TYPE=sqlite3
+LANG=zh
+HTTP_HOST=:36060
 ```
 
-* `-type`: Model type, set to `openai`.
-* `-openai_token`: Your OpenAI API Token.
+### 4. Admin Panel
 
-#### 5\. Gemini Model Support (`gemini`)
+| Variable | Purpose |
+|---|---|
+| `SESSION_KEY` | admin session signing key |
+| `ADMIN_PORT` | admin listen port |
 
-The bot also supports using Google Gemini models.
+### 5. Proxies and HTTPS
 
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--type=gemini \
--gemini_token=xxxxx
+| Variable | Purpose |
+|---|---|
+| `LLM_PROXY` | proxy for model requests |
+| `ROBOT_PROXY` | proxy for platform requests |
+| `CRT_FILE` | HTTPS certificate file |
+| `KEY_FILE` | HTTPS private key |
+| `CA_FILE` | CA certificate |
+
+## Common Examples
+
+### Feishu + Qwen
+
+```env
+BOT_NAME=TinyClawLark
+LANG=zh
+TYPE=aliyun
+MEDIA_TYPE=aliyun
+DEFAULT_MODEL=qwen-max
+DB_TYPE=sqlite3
+
+LARK_APP_ID=your_lark_app_id
+LARK_APP_SECRET=your_lark_app_secret
+ALIYUN_TOKEN=your_qwen_api_key
 ```
 
-* `-type`: Model type, set to `gemini`.
-* `-gemini_token`: Your Gemini API Token.
+### MySQL
 
-#### 6\. OpenRouter Model Support (`openrouter`)
-
-Integrate with the OpenRouter platform to use various models it provides.
-
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--type=openrouter \
--openrouter_token=sk-or-v1-xxxx
+```env
+DB_TYPE=mysql
+DB_CONF=root:password@tcp(127.0.0.1:3306)/tinyclaw?charset=utf8mb4&parseTime=True&loc=Local
 ```
 
-* `-type`: Model type, set to `openrouter`.
-* `-openrouter_token`: Your OpenRouter API Token.
+### Enable MCP / tools
 
-#### 7\. Photo Identification (`identify photo`)
-
-To integrate with VolcEngine's photo identification feature, you'll need to provide your VolcEngine AK/SK.
-
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--deepseek_token=sk-xxx \
--volc_ak=xxx \
--volc_sk=xxx
+```env
+USE_TOOLS=true
 ```
 
-* `-volc_ak`: VolcEngine Access Key.
-* `-volc_sk`: VolcEngine Secret Key.
+## Related Docs
 
-For more details, please refer to: [VolcEngine Image Recognition Documentation](https://www.volcengine.com/docs/6790/116987)
+For deeper feature-specific settings, continue with:
 
-#### 8\. Voice Identification (`identify voice`)
-
-To integrate with VolcEngine's voice recognition feature.
-
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--deepseek_token=sk-xxx \
--audio_app_id=xxx \
--audio_cluster=volcengine_input_common \
--audio_token=xxxx
-```
-
-* `-audio_app_id`: VolcEngine Voice Recognition App ID.
-* `-audio_cluster`: Voice recognition cluster name, typically `volcengine_input_common`.
-* `-audio_token`: Voice recognition Token.
-
-For more details, please refer to: [VolcEngine Voice Recognition Documentation](https://www.volcengine.com/docs/6561/80816)
-
-#### 9\. MCP (`mcp`)
-
-If your bot needs to use Amap (Gaode Map) related tools, such as geolocation queries.
-
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--deepseek_token=sk-xxx \
--use_tools=true
-```
-* `-use_tools`: Enables tool usage functionality, set to `true` default is `false`.
-
-#### 10\. RAG (Retrieval Augmented Generation) - ChromaDB (`rag milvus`)
-
-To perform RAG with ChromaDB, you'll need to use OpenAI's Embedding service.
-
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--deepseek_token=sk-xxx \
--openai_token=sk-xxxx \
--embedding_type=openai \
--vector_db_type=milvus
-```
-
-* `-openai_token`: Your OpenAI API Token (for embedding).
-* `-embedding_type`: Embedding type, set to `openai`.
-* `-vector_db_type`: Vector database type, set to `chroma`.
-
-#### 11\. RAG (Retrieval Augmented Generation) - Milvus (`rag milvus`)
-
-To perform RAG with Milvus, you'll need to use Gemini's Embedding service.
-
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--deepseek_token=sk-xxx \
--gemini_token=xxx \
--embedding_type=gemini \
--vector_db_type=milvus
-```
-
-* `-gemini_token`: Your Gemini API Token (for embedding).
-* `-embedding_type`: Embedding type, set to `gemini`.
-* `-vector_db_type`: Vector database type, set to `milvus`.
-
-#### 12\. RAG (Retrieval Augmented Generation) - Weaviate (`rag weaviate`)
-
-To perform RAG with Weaviate, you'll need to use Ernie's Embedding service.
-
-```bash
-./TinyClaw \
--telegram_bot_token=xxxx \
--deepseek_token=sk-xxx \
--ernie_ak=xxx \
--ernie_sk=xxx \
--embedding_type=ernie \
--vector_db_type=weaviate \
--weaviate_url=127.0.0.1:8080
-```
-
-* `-ernie_ak`: Your Ernie Access Key (for embedding).
-* `-ernie_sk`: Your Ernie Secret Key (for embedding).
-* `-embedding_type`: Embedding type, set to `ernie`.
-* `-vector_db_type`: Vector database type, set to `weaviate`.
-* `-weaviate_url`: The URL of your Weaviate database.
-
+- Feishu / Lark: `static/doc/lark.md`
+- RAG: `static/doc/rag.md`
+- Audio: `static/doc/audioconf.md`
+- Photo: `static/doc/photoconf.md`
+- Video: `static/doc/videoconf.md`
+- Web API: `static/doc/web_api.md`

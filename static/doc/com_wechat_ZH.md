@@ -1,67 +1,63 @@
-# ✨ 企业微信机器人
+# TinyClaw 企业微信接入说明
 
-本项目是一个跨平台聊天机器人，支持**企业微信**的私聊和群聊。
-该机器人提供智能对话功能，支持自动回复、信息推送及协作场景。
+TinyClaw 支持通过企业微信适配器接入企业微信。
 
----
+这个适配器通过 TinyClaw 的 HTTP 服务接收企业微信回调。
 
-## 🚀 启动企业微信机器人
+## 需要的配置
 
-你可以使用以下命令和参数启动机器人：
+在 `deploy/docker/.env` 中配置：
 
-```bash
-./TinyClaw-darwin-amd64 \
-  -deepseek_token=sk-xxx \
-  -gemini_token=xxx \
-  -openai_token=xxx \
-  -vol_token=xxx \
-  -com_wechat_token=xxx \
-  -com_wechat_encoding_aes_key=xxx \
-  -com_wechat_corp_id=xxx \
-  -com_wechat_secret=xxx \
-  -com_wechat_agent_id=xxx
+```env
+COM_WECHAT_TOKEN=your_wecom_token
+COM_WECHAT_ENCODING_AES_KEY=your_wecom_encoding_aes_key
+COM_WECHAT_CORP_ID=your_wecom_corp_id
+COM_WECHAT_SECRET=your_wecom_secret
+COM_WECHAT_AGENT_ID=your_wecom_agent_id
+TYPE=aliyun
+DEFAULT_MODEL=qwen-max
+ALIYUN_TOKEN=your_qwen_api_key
 ```
 
----
+## 启动方式
 
-## 💬 使用说明
+```bash
+./scripts/start.sh
+```
 
-### 创建企业微信机器人
+## 回调路径
 
-1. 登录企业微信管理后台：[https://work.weixin.qq.com/wework\_admin/](https://work.weixin.qq.com/wework_admin/)
+TinyClaw 中企业微信的回调路径是：
 
-2. 创建新的应用，获取 `AgentId`、`Secret`，并配置 `Token` 和 `EncodingAESKey`
+```text
+/com/wechat
+```
 
-     <img width="400" alt="image" src="https://github.com/user-attachments/assets/9ba4ea00-b4f5-441c-b6ac-1d4dd6fbccde" />
+所以企业微信平台里的回调地址应指向：
 
-3. 设置回调URL，用于接收企业微信的事件和消息
+```text
+https://your-domain.example/com/wechat
+```
 
-     <img width="400" alt="image" src="https://github.com/user-attachments/assets/cd2ef979-de8c-46e4-952e-f0f30304e0aa" />
+## 如何使用
 
-4. 配置企业可信IP
+- 私聊应用
+- 在支持的企业会话场景中使用
 
-     <img width="400" alt="image" src="https://github.com/user-attachments/assets/9a1560d7-3cde-43cd-bc10-e95cb471e975" />
+常用命令：
 
----
+- `/help`
+- `/clear`
+- `/mode`
+- `/state`
+- `/photo`
+- `/video`
 
-### 1. 与机器人私聊
+## 常见检查项
 
-在企业微信私聊窗口直接发送消息给机器人，机器人会根据消息内容自动回复。 <img width="400" alt="image" src="https://github.com/user-attachments/assets/e8dcce5e-bc93-4448-8a0a-0a6ed47d3348" />
+如果企业微信没有正常回复，优先检查：
 
----
-
-## 支持的命令示例
-
-* `/photo` — 生成图片 <img width="400" alt="image" src="https://github.com/user-attachments/assets/64146ff8-f296-49ee-9393-4908c818d5b8" />
-
-* `/video` — 生成视频 <img width="400" alt="image" src="https://github.com/user-attachments/assets/f5d7185b-060e-4894-917d-91d6766e46b1" />
-
-* `/state` — 查看当前对话状态（包括模型信息和系统提示） <img width="400" alt="image" src="https://github.com/user-attachments/assets/adfc9015-6d2b-4663-80fa-34491a6f9a8a" />
-
-* `/clear` — 清理当前对话上下文 <img width="400" alt="image" src="https://github.com/user-attachments/assets/70b79d5e-c429-40c5-bf90-6a56fbcd99d8" />
-
-* `/help` — 显示帮助信息 <img width="400" alt="image" src="https://github.com/user-attachments/assets/07e787f1-67ba-441a-ba03-1e80fb3d2929" />
-
-* `/mode` — 选择 LLM 模式 <img width="400" alt="image" src="https://github.com/user-attachments/assets/4e4dfa98-16b7-46a2-a1a9-b91ac9272b4b" />
-
-
+- 回调地址
+- Token / AES Key / Corp ID / Agent 凭据
+- 应用是否对目标成员可见
+- 容器健康状态和运行日志

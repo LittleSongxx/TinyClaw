@@ -1,61 +1,52 @@
-# ✨ Discord DeepSeek Bot
+# TinyClaw Discord Guide
 
-This project is a cross-platform chatbot powered by the **LLM**, supporting **Discord**. It comes with a variety of built-in commands, including image and video generation, conversation clearing, and more.
+TinyClaw supports Discord through the Discord bot adapter.
 
-## 🚀 Starting in Discord Mode
+This document keeps only the setup information that still fits the current TinyClaw repository layout.
 
-You can launch the bot in Discord mode using the following command:
+## Required Variables
 
-```bash
-./TinyClaw-darwin-amd64 \
-  -discord_bot_token=xxx \
-  -deepseek_token=sk-xxx \
-  -gemini_token=xxx \
-  -openai_token=xxx \
-  -vol_token=xxx
+Configure these in `deploy/docker/.env`:
+
+```env
+DISCORD_BOT_TOKEN=your_discord_bot_token
+TYPE=aliyun
+DEFAULT_MODEL=qwen-max
+ALIYUN_TOKEN=your_qwen_api_key
 ```
 
-### Parameter Descriptions:
+## Start TinyClaw
 
-* `discord_bot_token`: Your Discord Bot Token (required)
-* `deepseek_token`: Your DeepSeek API Token (required)
+```bash
+./scripts/start.sh
+```
 
-other usage see this [doc](https://github.com/LittleSongxx/TinyClaw))
+Then verify runtime status:
 
-## 💬 How to Use
+```bash
+./scripts/status.sh
+```
 
-### Private Chat with the Bot
+## How To Use
 
-You can directly chat with the bot via private message.    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/6d8ded05-8454-4946-9025-bdd4bb7f8dbb" />
+- direct message the bot for private chat
+- mention the bot in a guild channel for group interaction
 
+Common commands:
 
-Supported commands:
+- `/help`
+- `/clear`
+- `/retry`
+- `/mode`
+- `/state`
+- `/photo`
+- `/video`
 
-* `/photo`: Generate an image. 
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/325a7fab-6cc5-4088-870c-bab3b3c184d8" />
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/a117963c-1c21-4f8b-a8f3-ab7ec217040d" />
+## Common Checks
 
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/ba0eb926-7924-4c58-bc61-7cff522bd71c" />
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/bef94980-4498-4eba-b4b5-bd5531816009" />
+If Discord messages are not answered, check:
 
-* `/video`: Generate a video.
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/24bdde29-685c-4af7-8834-873dbc14b84f" />
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/b9e85a58-58fe-4e45-ab44-52b73bcaea59" />
-  
-* `/state`: View the current chat state (including model info and system prompts)
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/bf57f0fa-add1-4cb2-8e82-7bd484a880b8" />
-   
-* `/clear`: Clear the current conversation context
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/ebba556f-267a-4052-a3a3-3eab019eb4f4" />
-  
-* `/talk` Direct talk with vol llm see (doc)[https://www.volcengine.com/docs/6561/1594356]
-
-### Group Chat Mode
-
-In a group chat, you can talk to the bot by mentioning it using `@YourBotName`, or directly using the command. For example:    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/c93196d9-8506-474b-8b09-1930b8bb42f1" />
-
-
-All the above commands are also available in group chats without needing to switch to private chat.
-
+- `DISCORD_BOT_TOKEN`
+- whether the bot is invited to the target server
+- whether the bot has permission to read and send messages
+- container health and runtime logs

@@ -6,6 +6,8 @@ img/*
 .env
 .env.runtime
 public_url.txt
+deploy/docker/public_url.txt
+log/
 
 # Binaries
 *.tar.gz
@@ -23,6 +25,4 @@ conf/systemd/tinyclaw-*.service
 
 bin/
 build/
-output/
 data/
-release/

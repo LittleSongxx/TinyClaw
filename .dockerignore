@@ -3,3 +3,13 @@
 .idea
 *.md
 *.log
+.env
+.env.runtime
+public_url.txt
+data
+log
+build
+release
+output
+admin/packages/adminui/node_modules
+admin/packages/adminui/dist

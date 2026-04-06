@@ -1,109 +1,141 @@
-# Telegram DeepSeek Bot 管理平台
+# TinyClaw Admin 管理平台
 
-此平台旨在管理您的 **Telegram DeepSeek Bot**。它集成了多种**大型语言模型 (LLMs)**，提供**上下文感知**的回复，并支持**多模型
-**以实现多样化交互。
+`TinyClaw Admin` 是 TinyClaw 的内置管理后台，用来查看运行状态、管理机器人配置、查看聊天记录、维护用户、RAG、MCP 和定时任务。
 
------
+这份文档只保留当前 TinyClaw 项目下真正有用的管理后台说明，不再沿用早期针对某个单一平台机器人的写法。
 
-## 运行平台及参数
+## 当前推荐方式
 
-要启动管理平台，请执行以下命令：
+如果你已经按仓库当前结构部署，最推荐直接使用 Docker Compose 启动整套服务：
 
 ```bash
-./admin -db_type=sqlite3 -db_conf=./admin/data/telegram_bot.db -session_key=telegram_bot_session_key
+./scripts/start.sh
 ```
 
-### 命令参数
+管理后台会和主服务一起启动。
 
-| 变量名称            | 描述                                                                                                                      | 默认值                                       |
-|:----------------|:------------------------------------------------------------------------------------------------------------------------|:------------------------------------------|
-| **DB_TYPE**     | 数据库类型：`sqlite3` / `mysql`                                                                                               | `sqlite3` / `mysql`                       |
-| **DB_CONF**     | 数据库配置：`./data/telegram_admin_bot.db` 或 `root:admin@tcp(127.0.0.1:3306)/dbname?charset=utf8mb4&parseTime=True&loc=Local` | `./data/telegram_admin_bot.db`            |
-| **SESSION_KEY** | 指定用于会话管理的密钥。                                                                                                            | `telegram_bot_session_key` (用于加密会话数据的字符串) |
-| **ADMIN_PORT**  | 管理平台端口                                                                                                                  | `18080`                                   |
+默认管理后台内部端口是 `18080`，实际映射到宿主机的端口以：
 
------
-
-## 快速入门
-
-### 登录
-
-![image](https://github.com/user-attachments/assets/f6bf8ae6-4c0e-44d9-9115-7e744fc20dc3)
-访问管理平台的登录页面。
-
-### 默认账户
-
-首次启动时，您可以使用以下默认凭据登录：
-
-* **用户名：** `admin`
-* **密码：** `admin`
-
------
-
-## 平台模块概览
-
-### 首页
-
-![image](https://github.com/user-attachments/assets/b12925ca-8d02-4537-84bd-6b0e1ca1686f)
-平台首页概览。
-
-### 管理员页面
-
-![image](https://github.com/user-attachments/assets/0f5ccb12-1733-44d4-8922-c0dbd9966372)
-管理平台管理员列表。
-
-#### 添加管理员
-
-![image](https://github.com/user-attachments/assets/89c46bc4-4ff5-455d-8dcd-6bfdc275659a)
-在此页面，您可以添加新的管理员账户并授予其平台管理权限。
-
-### 机器人管理
-
-![image](https://github.com/user-attachments/assets/518f9341-9e30-41b5-a71f-fff3e398ace0)
-管理您已配置的 Telegram 机器人。
-
-#### 添加机器人
-
-在此页面配置和添加新的 Telegram 机器人。为增强安全性，**强烈建议使用 HTTP 双向认证**。
-
-通过以下方式启动 TinyClaw：
-
-```
-./TinyClaw \
--telegram_bot_token=xxx \
--deepseek_token=sk-xxx \
--crt_file=/path/to/TinyClaw/admin/shell/certs/server.crt \
--ca_file=/path/to/TinyClaw/admin/shell/certs/ca.crt \
--key_file=/path/to/TinyClaw/admin/shell/certs/server.key
+```bash
+./scripts/status.sh
 ```
 
-在管理页面添加配置：
-![image](https://github.com/user-attachments/assets/2a518841-abf6-4a31-b1b3-b26b258a5fab)
+输出为准。
 
-可以使用此[文件](https://github.com/LittleSongxx/TinyClaw/blob/main/admin/shell/generate_cert.sh)生成
-ca、key 和 crt 文件。
+## 后台登录
 
-#### 机器人启动参数
+首次初始化时，默认账号是：
 
-![image](https://github.com/user-attachments/assets/94c65d03-e097-479e-bf2a-f3d5aad431cc)
-显示启动 Telegram DeepSeek Bot 时所有参数。
+- 用户名：`admin`
+- 密码：`admin`
 
-#### 机器人配置
+建议首次登录后立即修改密码。
 
-![image](https://github.com/user-attachments/assets/0e6d3c32-5311-4769-ac42-e9591d4651ad)
-修改您的机器人配置。
+## 后台能做什么
 
-### 机器人用户
+你通常会在后台里使用这些模块：
 
-![image](https://github.com/user-attachments/assets/5534971a-e1e2-42d1-9552-0ce37b18444f)
-查看和管理所有与您的机器人交互的用户。
+- `Dashboard`
+  查看整体运行状态、消息量、用户量和基础统计
+- `Bots`
+  查看和修改 Bot 配置
+- `BotUsers`
+  查看用户列表、用户模式和额度
+- `BotChats`
+  查看聊天记录
+- `Chat`
+  直接在后台和当前 Bot 调试对话
+- `Log`
+  查看运行日志
+- `RAG`
+  上传和管理知识库文件
+- `MCP`
+  查看和管理 MCP 服务配置
+- `Cron`
+  查看和管理定时任务
 
-### 为用户添加 Token
+## 当前项目里的运行方式
 
-![image](https://github.com/user-attachments/assets/b9ffc006-764c-46b7-a5ce-703b052c5368)
-为特定用户分配和管理 API token，以控制他们对机器人的访问和使用限制。
+### 方式 1：通过 Docker Compose
 
-### 聊天记录页面
+这是当前仓库默认方式。
 
-![image](https://github.com/user-attachments/assets/7b0a834f-0e62-4bec-9d57-1be22da0828d)
-此页面显示机器人与用户之间的完整聊天记录，便于跟踪和分析对话。
+```bash
+./scripts/start.sh
+./scripts/status.sh
+./scripts/stop.sh
+```
+
+### 方式 2：单独运行 Admin
+
+如果你只想单独调试后台，也可以手动构建并启动：
+
+```bash
+go build -o /tmp/TinyClawAdmin ./admin
+```
+
+然后自行提供以下环境变量：
+
+- `DB_TYPE`
+- `DB_CONF`
+- `SESSION_KEY`
+- `ADMIN_PORT`
+
+示例：
+
+```bash
+DB_TYPE=sqlite3 \
+DB_CONF=./data/tiny_claw_admin.db \
+SESSION_KEY=replace-with-your-session-key \
+ADMIN_PORT=18080 \
+/tmp/TinyClawAdmin
+```
+
+## 关键配置项
+
+| 变量名 | 说明 | 示例 |
+|---|---|---|
+| `DB_TYPE` | 后台数据库类型 | `sqlite3` |
+| `DB_CONF` | 后台数据库文件或连接串 | `./data/tiny_claw_admin.db` |
+| `SESSION_KEY` | 登录态签名密钥 | 随机长字符串 |
+| `ADMIN_PORT` | 后台监听端口 | `18080` |
+
+## 和主服务的关系
+
+`TinyClaw Admin` 不是独立产品，它依赖 TinyClaw 主服务的运行数据和配置体系。
+
+你通常需要一起关注：
+
+- 主服务数据库：`data/tiny_claw.db`
+- 后台数据库：`data/tiny_claw_admin.db`
+- 主日志：`log/tiny_claw.log`
+- 部署配置：`deploy/docker/.env`
+
+## 常见问题
+
+### 后台打不开
+
+优先检查：
+
+- 容器是否健康
+- 当前映射端口是否变化
+- `SESSION_KEY` 是否被改过
+- `tiny_claw_admin.db` 是否还在
+
+### 登录态突然失效
+
+通常是：
+
+- 你重建了环境
+- 修改了 `SESSION_KEY`
+- 浏览器里还是旧 cookie
+
+这种情况重新登录即可。
+
+### 后台能打开，但看不到机器人数据
+
+优先确认：
+
+- TinyClaw 主服务是否已经启动
+- 主服务是否真的在写 `data/tiny_claw.db`
+- 当前环境变量是否指向了正确的数据目录

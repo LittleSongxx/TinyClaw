@@ -1,62 +1,112 @@
-# ✨ Lark（飞书 Bot）
+# TinyClaw 飞书接入说明
 
-本项目是一个由 **DeepSeek LLM** 驱动的跨平台聊天机器人，支持 **Telegram**、**Slack**、**Discord** 和 **Lark（飞书）**。
-它内置了多种命令，包括图片生成、视频生成、额度查询、清空对话等功能。
+TinyClaw 当前最推荐的接入方式就是飞书长连接模式。
 
-## 🚀 在飞书模式下启动
+这份文档只保留 TinyClaw 当前项目下真正需要的飞书配置步骤，不再使用旧的“多平台 + 指定旧模型”的写法。
 
-你可以使用以下命令以 **飞书模式** 启动机器人：
+## 当前推荐组合
 
-```bash
-./TinyClaw-darwin-amd64 \
-  -lark_app_id=xx \
-  -lark_app_secret=xx \
-  -deepseek_token=sk-xxx \
-  -gemini_token=xxx \
-  -openai_token=xxx \
-  -vol_token=xxx
+- 平台：飞书
+- 模型：阿里云百炼 `qwen-max`
+- 部署：Docker Compose
+- 连接方式：飞书 `ws` 长连接
+
+这意味着：
+
+- 不需要公网 webhook
+- 不需要 `cloudflared`
+- 不需要把回调地址暴露到公网
+
+## 需要准备的配置
+
+编辑：
+
+`deploy/docker/.env`
+
+至少准备这些变量：
+
+```env
+BOT_NAME=TinyClawLark
+LANG=zh
+TYPE=aliyun
+MEDIA_TYPE=aliyun
+DEFAULT_MODEL=qwen-max
+DB_TYPE=sqlite3
+
+LARK_APP_ID=your_lark_app_id
+LARK_APP_SECRET=your_lark_app_secret
+ALIYUN_TOKEN=your_qwen_api_key
 ```
 
-### 参数说明
+## 启动方式
 
-* `lark_app_id`：你的飞书 App ID（必填）
-* `lark_app_secret`：你的飞书 App Secret（必填）
-* `deepseek_token`：你的 DeepSeek API Token（必填）
+```bash
+./scripts/start.sh
+```
 
-更多用法请参考 [文档](https://github.com/LittleSongxx/TinyClaw)
+然后查看状态：
 
----
+```bash
+./scripts/status.sh
+```
 
-## 💬 使用方法
+## 飞书开放平台需要做什么
 
-### 创建机器人
+你需要在飞书开放平台完成这几件事：
 
-访问飞书开放平台：[https://open.feishu.cn/app/](https://open.feishu.cn/app/) <img width="400" alt="image" src="https://github.com/user-attachments/assets/4c96862e-3d90-48ad-a491-6d459ebebcc2" />
+1. 创建应用
+2. 添加机器人能力
+3. 打开应用可见范围
+4. 给机器人授予消息相关权限
+5. 把应用安装到你要测试的账号或组织范围
 
-配置权限： <img width="400" alt="image" src="https://github.com/user-attachments/assets/27f6747c-bd44-4ad2-ae4c-c600078d93e5" /> <img width="400" alt="image" src="https://github.com/user-attachments/assets/bded8047-1994-4018-b885-4f68dae3eb99" />
+因为 TinyClaw 当前使用的是长连接模式，所以不需要再配置传统 webhook 回调地址。
 
-选择订阅方式和事件： <img width="400" alt="image" src="https://github.com/user-attachments/assets/302d5aa8-863c-4a6c-92fc-2f9348b0e147" />
+## 如何验证接入成功
 
----
+当服务启动成功后，日志里通常会出现：
 
-### 与机器人私聊
+- `LarkBot Info`
 
-你可以在飞书中通过 **私聊** 直接与机器人对话。 <img width="400" alt="image" src="https://github.com/user-attachments/assets/462f1b06-8d75-427c-afe0-0f77cc85bb2f" />
+这表示 TinyClaw 已经成功连接飞书。
 
-支持的命令：
+然后你可以这样测试：
 
-* `/photo`：生成一张图片
+- 私聊机器人，直接发送消息
+- 群聊里先 `@机器人` 再发送消息
 
-  <img width="400" alt="image" src="https://github.com/user-attachments/assets/b32a54e9-fb17-4baf-a284-42d44156e776" />
+## 常用命令
 
-* `/video`：生成一个视频
+你在飞书里最常用的通常是：
 
-  <img width="400" alt="image" src="https://github.com/user-attachments/assets/2d903781-2ad8-4e1a-9b34-dd99dc398688" />
+- `/help`
+- `/clear`
+- `/retry`
+- `/mode`
+- `/state`
+- `/photo`
+- `/video`
+- `/mcp`
 
-* `/state`：查看当前对话状态（包括模型信息和系统提示词）
+## 常见问题
 
-  <img width="400" alt="image" src="https://github.com/user-attachments/assets/50cb16f8-f94e-459b-85a0-c25dec10afaa" />
+### 飞书里搜不到机器人
 
-* `/clear`：清空当前会话上下文
+优先检查：
 
-  <img width="400" alt="image" src="https://github.com/user-attachments/assets/deb65625-3e51-4581-a6d1-736de4ad7c5e" />
+- 应用是否已安装
+- 可见范围是否包含当前账号
+- 机器人能力是否启用
+
+### 能连上，但消息不回复
+
+优先检查：
+
+- `LARK_APP_ID` / `LARK_APP_SECRET` 是否正确
+- `ALIYUN_TOKEN` 是否可用
+- 群聊里是否正确 `@机器人`
+- 容器是否健康
+
+### 想切别的平台
+
+TinyClaw 代码层不需要改，通常只要修改 `deploy/docker/.env` 里的平台凭据并重启即可。

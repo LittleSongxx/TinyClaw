@@ -1,70 +1,60 @@
-# ✨ QQ Bot
+# TinyClaw QQ 接入说明
 
-本项目是一个基于 **LLM** 的跨平台聊天机器人，支持 **QQ**。
-它内置多种功能，包括图片与视频生成、余额查询、对话清除等。
+TinyClaw 支持 QQ 官方机器人接入。
 
-## 🚀 启动 QQ 模式
+QQ 适配器通过 TinyClaw 的 HTTP 服务接收回调事件。
 
-你可以使用以下命令启动 QQ 模式：
+## 需要的配置
 
-```bash
-./TinyClaw-darwin-amd64 \
-  -qq_app_id=xxx \
-  -qq_app_secret=xxx \
-  -deepseek_token=sk-xxx \
-  -gemini_token=xxx \
-  -openai_token=xxx \
-  -vol_token=xxx
+在 `deploy/docker/.env` 中至少配置：
+
+```env
+QQ_APP_ID=your_qq_app_id
+QQ_APP_SECRET=your_qq_app_secret
+TYPE=aliyun
+DEFAULT_MODEL=qwen-max
+ALIYUN_TOKEN=your_qwen_api_key
 ```
 
-### 参数说明：
+## 启动方式
 
-* `qq_app_id`：你的 QQ Bot APP ID（必填）
-* `qq_app_secret`：你的 QQ Bot APP Secret（必填）
+```bash
+./scripts/start.sh
+```
 
+## 回调路径
 
----
+TinyClaw 中 QQ 的回调路径是：
 
-## 💬 使用方法
+```text
+/qq
+```
 
-去网页创建机器人: https://q.qq.com/qqbot/
+所以在 QQ 开放平台里配置回调地址时，应指向：
 
-沙盒设置:    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/ab2ab481-3a41-41f7-b279-0873175ec6c0" />
+```text
+https://your-domain.example/qq
+```
 
-回调设置:    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/dd88981f-eca8-4728-a021-c5ebdc0767ca" />
+## 如何使用
 
+- 私聊机器人直接对话
+- 群聊中 `@机器人`
 
-### 私聊机器人
+常用命令：
 
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/44394437-ed93-4e89-bb15-a0bbe55ea0e6" />
+- `/help`
+- `/clear`
+- `/mode`
+- `/state`
+- `/photo`
+- `/video`
 
-你可以直接通过 QQ 私聊与机器人对话。
+## 常见检查项
 
-支持的指令：
+如果 QQ 消息没有正常收发，优先检查：
 
-* `/photo`：生成图片
-
-  <img width="400" alt="image" src="https://github.com/user-attachments/assets/0e15c7cc-cd24-4418-821a-2675d0e2ed9a" />
-
-* `/video`：生成视频
-
-  <img width="400" alt="image" src="https://github.com/user-attachments/assets/8e895453-6e2d-49b0-a3f8-a625404d136e" />
-
-* `/state`：查看当前会话状态（包括模型信息和系统提示）
-
-  <img width="400" alt="image" src="https://github.com/user-attachments/assets/c6bf87b0-706f-40dc-9aa1-20790af94923" />
-
-* `/clear`：清除当前对话上下文
-
-  <img width="400" alt="image" src="https://github.com/user-attachments/assets/d49ff765-6a62-4a8c-aefd-77fe5bc834e7" />
-
----
-
-### 群聊模式
-
-在 QQ 群聊中，你可以通过 `@机器人名称` 与它对话，或直接输入命令。
-
-上述所有指令在群聊中也可以直接使用，无需切换到私聊。
-
+- `QQ_APP_ID` / `QQ_APP_SECRET`
+- 回调地址是否正确
+- TinyClaw HTTP 服务是否可达
+- 容器健康状态和运行日志

@@ -1,66 +1,112 @@
+# TinyClaw Feishu / Lark Guide
 
-# ✨ Lark (Feishu) DeepSeek Bot
+Feishu / Lark long connection mode is the currently recommended TinyClaw integration path.
 
-This project is a cross-platform chatbot powered by the **DeepSeek LLM**, supporting **Telegram**, **Slack**, **Discord**, and **Lark (Feishu)**.
-It comes with a variety of built-in commands, including image and video generation, conversation clearing, and more.
+This document keeps only the setup that is actually relevant for the current TinyClaw project and no longer follows the older “many platforms + one old model” wording.
 
-## 🚀 Starting in Lark Mode
+## Recommended Stack
 
-You can launch the bot in **Lark** mode using the following command:
+- Platform: Feishu / Lark
+- Model: `qwen-max` through Aliyun Bailian
+- Deployment: Docker Compose
+- Connection mode: Lark websocket long connection
 
-```bash
-./TinyClaw-darwin-amd64 \
-  -lark_app_id=xx \
-  -lark_app_secret=xx \
-  -deepseek_token=sk-xxx \
-  -gemini_token=xxx \
-  -openai_token=xxx \
-  -vol_token=xxx
+This means:
+
+- no public webhook is required
+- no `cloudflared` tunnel is required
+- no callback URL needs to be exposed
+
+## Required Configuration
+
+Edit:
+
+`deploy/docker/.env`
+
+At minimum, configure:
+
+```env
+BOT_NAME=TinyClawLark
+LANG=zh
+TYPE=aliyun
+MEDIA_TYPE=aliyun
+DEFAULT_MODEL=qwen-max
+DB_TYPE=sqlite3
+
+LARK_APP_ID=your_lark_app_id
+LARK_APP_SECRET=your_lark_app_secret
+ALIYUN_TOKEN=your_qwen_api_key
 ```
 
-### Parameter Descriptions:
+## Start TinyClaw
 
-* `lark_app_id`: Your Lark (Feishu) App ID (required)
-* `lark_app_secret`: Your Lark (Feishu) App Secret (required)
-* `deepseek_token`: Your DeepSeek API Token (required)
+```bash
+./scripts/start.sh
+```
 
-Other usage see this [doc](https://github.com/LittleSongxx/TinyClaw)
+Then check status:
 
----
+```bash
+./scripts/status.sh
+```
 
-## 💬 How to Use
+## What To Configure in Feishu Open Platform
 
-### create bot
-go to web: https://open.feishu.cn/app/    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/4c96862e-3d90-48ad-a491-6d459ebebcc2" />    
+You need to complete these steps in the Feishu developer console:
 
+1. create the application
+2. enable bot capability
+3. set the correct visibility scope
+4. grant message-related permissions
+5. install the app into the target account or tenant scope
 
-define auth:     
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/27f6747c-bd44-4ad2-ae4c-c600078d93e5" />
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/bded8047-1994-4018-b885-4f68dae3eb99" />
+Because TinyClaw currently uses long connection mode, you do not need to configure a classic webhook callback URL.
 
-choose subscription method and event:    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/302d5aa8-863c-4a6c-92fc-2f9348b0e147" />
+## How To Verify It Works
 
+Once startup succeeds, logs usually contain:
 
-### Private Chat with the Bot
+- `LarkBot Info`
 
-You can directly chat with the bot in Lark via **Private Chat**.    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/462f1b06-8d75-427c-afe0-0f77cc85bb2f" />    
+That indicates TinyClaw has successfully connected to Feishu.
 
-Supported commands:
+Then test with:
 
-* `/photo`: Generate an image.    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/b32a54e9-fb17-4baf-a284-42d44156e776" />
+- direct private chat
+- group chat with `@bot`
 
-* `/video`: Generate a video.    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/2d903781-2ad8-4e1a-9b34-dd99dc398688" />
+## Common Commands
 
-* `/state`: View the current chat state (including model info and system prompts)    
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/50cb16f8-f94e-459b-85a0-c25dec10afaa" />
+The most commonly used commands in Feishu are:
 
+- `/help`
+- `/clear`
+- `/retry`
+- `/mode`
+- `/state`
+- `/photo`
+- `/video`
+- `/mcp`
 
-* `/clear`: Clear the current conversation context
-<img width="400" alt="image" src="https://github.com/user-attachments/assets/deb65625-3e51-4581-a6d1-736de4ad7c5e" />
+## Common Issues
 
+### The bot cannot be found in Feishu
 
+Check:
+
+- whether the app is installed
+- whether the visibility scope includes your account
+- whether bot capability is enabled
+
+### The connection is up but messages get no reply
+
+Check:
+
+- `LARK_APP_ID` / `LARK_APP_SECRET`
+- `ALIYUN_TOKEN`
+- whether the bot was mentioned in a group
+- container health
+
+### I want to switch to another platform
+
+No code change is usually needed. Update the platform credentials in `deploy/docker/.env` and restart the stack.
