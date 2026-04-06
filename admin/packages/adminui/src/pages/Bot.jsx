@@ -116,19 +116,31 @@ function Bots() {
         setModalVisible(true);
     };
 
-    const handleEditClick = (bot) => {
-        setForm({
-            id: bot.id,
-            name: bot.name || "",
-            address: bot.address,
-            crt_file: bot.crt_file,
-            key_file: bot.key_file,
-            ca_file: bot.ca_file,
-            command: bot.command || "-bot_name=TinyClaw\n-http_host=127.0.0.1:36060",
-            is_start: true,
-        });
-        setEditingBot(bot);
-        setModalVisible(true);
+    const handleEditClick = async (botId) => {
+        try {
+            const res = await fetch(`/bot/get?id=${botId}`);
+            const data = await res.json();
+            if (data.code !== 0) {
+                showToast(data.message || "Failed to fetch bot");
+                return;
+            }
+
+            const bot = data.data;
+            setForm({
+                id: bot.id,
+                name: bot.name || "",
+                address: bot.address,
+                crt_file: bot.crt_file,
+                key_file: bot.key_file,
+                ca_file: bot.ca_file,
+                command: bot.command || "-bot_name=TinyClaw\n-http_host=127.0.0.1:36060",
+                is_start: true,
+            });
+            setEditingBot(bot);
+            setModalVisible(true);
+        } catch (err) {
+            showToast("Request error: " + err.message);
+        }
     };
 
     const handleDeleteClick = (botId) => {
@@ -297,7 +309,7 @@ function Bots() {
                                 {!isRegister && (
                                     <>
                                         <button
-                                            onClick={() => handleEditClick(bot)}
+                                            onClick={() => handleEditClick(bot.id)}
                                             className="text-blue-600 hover:underline"
                                         >
                                             {t("edit")}

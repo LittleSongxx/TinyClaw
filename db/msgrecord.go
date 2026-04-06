@@ -170,6 +170,73 @@ func DeleteRecord(userId string) error {
 	return err
 }
 
+func DeleteRecordByID(ctx context.Context, recordID int64) error {
+	record, err := GetRecordByID(recordID)
+	if err != nil {
+		return err
+	}
+
+	query := `UPDATE records SET is_deleted = 1, update_time = ? WHERE id = ?`
+	_, err = DB.Exec(query, time.Now().Unix(), recordID)
+	if err != nil {
+		return err
+	}
+
+	if err = RefreshMsgRecord(record.UserId); err != nil {
+		logger.ErrorCtx(ctx, "refresh msg record cache error", "user_id", record.UserId, "record_id", recordID, "err", err)
+	}
+
+	return nil
+}
+
+func GetRecordByID(recordID int64) (*Record, error) {
+	query := `SELECT id, user_id, question, answer, content, token, is_deleted, create_time, record_type, mode, update_time FROM records WHERE id = ?`
+	row := DB.QueryRow(query, recordID)
+
+	var record Record
+	err := row.Scan(
+		&record.ID,
+		&record.UserId,
+		&record.Question,
+		&record.Answer,
+		&record.Content,
+		&record.Token,
+		&record.IsDeleted,
+		&record.CreateTime,
+		&record.RecordType,
+		&record.Mode,
+		&record.UpdateTime,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &record, nil
+}
+
+func RefreshMsgRecord(userId string) error {
+	MsgRecord.Delete(userId)
+
+	records, err := getRecordsByUserId(userId)
+	if err != nil {
+		return err
+	}
+
+	for i := len(records) - 1; i >= 0; i-- {
+		record := records[i]
+		InsertMsgRecord(context.Background(), userId, &AQ{
+			Question:   record.Question,
+			Answer:     record.Answer,
+			Content:    record.Content,
+			Token:      record.Token,
+			Mode:       record.Mode,
+			CreateTime: record.CreateTime,
+		}, false)
+	}
+
+	return nil
+}
+
 func GetTokenByUserIdAndTime(userId string, start, end int64) (int, error) {
 	querySQL := `SELECT sum(token) FROM records WHERE user_id = ? and create_time >= ? and create_time <= ?`
 	row := DB.QueryRow(querySQL, userId, start, end)

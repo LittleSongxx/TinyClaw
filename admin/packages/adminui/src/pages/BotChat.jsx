@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import Modal from "../components/Modal";
 import Editor from "@monaco-editor/react";
 import Toast from "../components/Toast.jsx";
+import ConfirmModal from "../components/ConfirmModal";
 import {useTranslation} from "react-i18next";
 
 function BotRecordsPage() {
@@ -16,6 +17,8 @@ function BotRecordsPage() {
     const [total, setTotal] = useState(0);
 
     const [toast, setToast] = useState({show: false, message: "", type: "error"});
+    const [confirmVisible, setConfirmVisible] = useState(false);
+    const [recordToDelete, setRecordToDelete] = useState(null);
     const showToast = (message, type = "error") => {
         setToast({show: true, message, type});
     };
@@ -43,6 +46,7 @@ function BotRecordsPage() {
                 id: botId,
                 page,
                 pageSize,
+                isDeleted: 0,
             });
             if (userIdSearch.trim() !== "") {
                 params.append("userId", userIdSearch.trim());
@@ -84,6 +88,38 @@ function BotRecordsPage() {
 
     const handlePageChange = (newPage) => {
         setPage(newPage);
+    };
+
+    const handleDeleteClick = (recordId) => {
+        setRecordToDelete(recordId);
+        setConfirmVisible(true);
+    };
+
+    const cancelDelete = () => {
+        setRecordToDelete(null);
+        setConfirmVisible(false);
+    };
+
+    const confirmDelete = async () => {
+        if (!recordToDelete) return;
+
+        try {
+            const res = await fetch(`/bot/record/delete?id=${botId}&record_id=${recordToDelete}`, {
+                method: "DELETE",
+            });
+            const data = await res.json();
+            if (data.code !== 0) {
+                showToast(data.message || t("bot_record_delete_failed"));
+                return;
+            }
+
+            showToast(t("bot_record_deleted"), "success");
+            setConfirmVisible(false);
+            setRecordToDelete(null);
+            await fetchBotRecords();
+        } catch (err) {
+            showToast(t("bot_record_delete_failed") + ": " + err.message);
+        }
     };
 
     function renderAnswerContent(answer) {
@@ -185,7 +221,7 @@ function BotRecordsPage() {
                 <table className="min-w-full bg-white divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                     <tr>
-                        {[t("user_id"), t("question"), t("rich_text"), t("answer"), t("token"), t("status"), t("model"), t("create_time"), t("update_time")].map(title => (
+                        {[t("user_id"), t("question"), t("rich_text"), t("answer"), t("token"), t("status"), t("model"), t("create_time"), t("update_time"), t("action")].map(title => (
                             <th
                                 key={title}
                                 className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
@@ -218,12 +254,20 @@ function BotRecordsPage() {
                                 <td className="px-6 py-4 text-sm text-gray-800">
                                     {record.update_time != 0 ? new Date(record.update_time * 1000).toLocaleString() : "-"}
                                 </td>
+                                <td className="px-6 py-4 text-sm text-gray-800">
+                                    <button
+                                        onClick={() => handleDeleteClick(record.id)}
+                                        className="text-red-600 hover:underline"
+                                    >
+                                        {t("delete")}
+                                    </button>
+                                </td>
                             </tr>
                         ))
                     ) : (
                         <tr>
-                            <td colSpan={6} className="text-center py-6 text-gray-500">
-                                No records found.
+                            <td colSpan={10} className="text-center py-6 text-gray-500">
+                                {t("no_records_found")}
                             </td>
                         </tr>
                     )}
@@ -232,6 +276,14 @@ function BotRecordsPage() {
             </div>
 
             <Pagination page={page} pageSize={pageSize} total={total} onPageChange={handlePageChange} />
+
+            <ConfirmModal
+                visible={confirmVisible}
+                title={t("delete")}
+                message={t("delete_bot_record_confirm")}
+                onConfirm={confirmDelete}
+                onCancel={cancelDelete}
+            />
 
             <Modal visible={isModalOpen} onClose={() => setIsModalOpen(false)} title={"Insert Record"}>
                 <div className="mb-4">

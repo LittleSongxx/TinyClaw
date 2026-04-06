@@ -3,6 +3,7 @@ import Pagination from "../components/Pagination";
 import Modal from "../components/Modal";
 import Toast from "../components/Toast";
 import BotSelector from "../components/BotSelector";
+import ConfirmModal from "../components/ConfirmModal";
 import {useTranslation} from "react-i18next";
 
 function BotUserListPage() {
@@ -18,6 +19,8 @@ function BotUserListPage() {
     const [newToken, setNewToken] = useState("");
 
     const [toast, setToast] = useState({ show: false, message: "", type: "error" });
+    const [confirmVisible, setConfirmVisible] = useState(false);
+    const [userToDelete, setUserToDelete] = useState(null);
     const showToast = (message, type = "error") => {
         setToast({ show: true, message, type });
     };
@@ -80,6 +83,38 @@ function BotUserListPage() {
         setPage(1);
     };
 
+    const handleDeleteClick = (userId) => {
+        setUserToDelete(userId);
+        setConfirmVisible(true);
+    };
+
+    const cancelDelete = () => {
+        setUserToDelete(null);
+        setConfirmVisible(false);
+    };
+
+    const confirmDelete = async () => {
+        if (!userToDelete) return;
+
+        try {
+            const res = await fetch(`/bot/user/delete?id=${botId}&user_id=${encodeURIComponent(userToDelete)}`, {
+                method: "DELETE",
+            });
+            const data = await res.json();
+            if (data.code !== 0) {
+                showToast(data.message || t("bot_user_delete_failed"));
+                return;
+            }
+
+            showToast(t("bot_user_deleted"), "success");
+            setConfirmVisible(false);
+            setUserToDelete(null);
+            await fetchBotUsers();
+        } catch (err) {
+            showToast(t("bot_user_delete_failed") + ": " + err.message);
+        }
+    };
+
     return (
         <div className="p-6 bg-gray-100 min-h-screen">
             {toast.show && (
@@ -128,7 +163,7 @@ function BotUserListPage() {
                 <table className="min-w-full bg-white divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                     <tr>
-                        {[t("id"), t("user_id"), t("mode"), t("token"), t("available_token"), t("create_time"), t("update_time")].map((title) => (
+                        {[t("id"), t("user_id"), t("mode"), t("token"), t("available_token"), t("create_time"), t("update_time"), t("action")].map((title) => (
                             <th
                                 key={title}
                                 className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
@@ -153,12 +188,20 @@ function BotUserListPage() {
                                 <td className="px-6 py-4 text-sm text-gray-800">
                                     {new Date(user.update_time * 1000).toLocaleString()}
                                 </td>
+                                <td className="px-6 py-4 text-sm text-gray-800">
+                                    <button
+                                        onClick={() => handleDeleteClick(user.user_id)}
+                                        className="text-red-600 hover:underline"
+                                    >
+                                        {t("delete")}
+                                    </button>
+                                </td>
                             </tr>
                         ))
                     ) : (
                         <tr>
-                            <td colSpan={5} className="text-center py-6 text-gray-500">
-                                No users found.
+                            <td colSpan={8} className="text-center py-6 text-gray-500">
+                                {t("no_users_found")}
                             </td>
                         </tr>
                     )}
@@ -167,6 +210,14 @@ function BotUserListPage() {
             </div>
 
             <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
+
+            <ConfirmModal
+                visible={confirmVisible}
+                title={t("delete")}
+                message={t("delete_bot_user_confirm")}
+                onConfirm={confirmDelete}
+                onCancel={cancelDelete}
+            />
 
             <Modal visible={showModal} title="Add New Token" onClose={() => setShowModal(false)}>
                 <div className="space-y-4">

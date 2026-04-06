@@ -62,6 +62,19 @@ var (
 	SkipKey = map[string]bool{"bot": true}
 )
 
+func sanitizeBotForResponse(bot *db.Bot) *db.Bot {
+	if bot == nil {
+		return nil
+	}
+
+	sanitized := *bot
+	sanitized.Command = adminConf.MaskCommandSecrets(bot.Command)
+	sanitized.KeyFile = adminConf.MaskStoredSecret("key_file", bot.KeyFile)
+	sanitized.CrtFile = adminConf.MaskStoredSecret("crt_file", bot.CrtFile)
+	sanitized.CaFile = adminConf.MaskStoredSecret("ca_file", bot.CaFile)
+	return &sanitized
+}
+
 func Dashboard(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	botInfo, err := getBot(r)
@@ -159,6 +172,7 @@ func RestartBot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params := r.URL.Query().Get("params")
+	params = adminConf.MergeMaskedCommand(params, botInfo.Command)
 	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodGet, strings.TrimSuffix(botInfo.Address, "/")+
 		"/restart?params="+url.QueryEscape(params), bytes.NewBuffer(nil)))
 	if err != nil {
@@ -206,7 +220,7 @@ func GetBot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.Success(ctx, w, r, bot)
+	utils.Success(ctx, w, r, sanitizeBotForResponse(bot))
 }
 
 func UpdateBotAddress(w http.ResponseWriter, r *http.Request) {
@@ -218,6 +232,17 @@ func UpdateBotAddress(w http.ResponseWriter, r *http.Request) {
 		utils.Failure(ctx, w, r, param.CodeParamError, param.MsgParamError, err)
 		return
 	}
+
+	botInfo, err := db.GetBotByID(strconv.Itoa(b.ID))
+	if err != nil {
+		logger.ErrorCtx(ctx, "update bot address error", "reason", "not found", "id", b.ID, "err", err)
+		utils.Failure(ctx, w, r, param.CodeDBQueryFail, param.MsgDBQueryFail, err)
+		return
+	}
+
+	b.KeyFile = adminConf.MergeMaskedStoredSecret("key_file", b.KeyFile, botInfo.KeyFile)
+	b.CrtFile = adminConf.MergeMaskedStoredSecret("crt_file", b.CrtFile, botInfo.CrtFile)
+	b.CaFile = adminConf.MergeMaskedStoredSecret("ca_file", b.CaFile, botInfo.CaFile)
 
 	if b.Command == "" {
 		resp, err := adminUtils.GetCrtClient(&db.Bot{
@@ -234,19 +259,14 @@ func UpdateBotAddress(w http.ResponseWriter, r *http.Request) {
 				b.Command, _ = httpRes.Data.(string)
 			}
 		}
+	} else {
+		b.Command = adminConf.MergeMaskedCommand(b.Command, botInfo.Command)
 	}
 
 	commands := adminUtils.ParseCommand(b.Command)
 	if len(commands) == 0 || commands["bot_name"] == "" || commands["http_host"] == "" {
 		logger.ErrorCtx(ctx, "create bot error", "commands", commands)
 		utils.Failure(ctx, w, r, param.CodeParamError, param.MsgParamError, errors.New("command is empty"))
-		return
-	}
-
-	botInfo, err := db.GetBotByID(strconv.Itoa(b.ID))
-	if err != nil {
-		logger.ErrorCtx(ctx, "update bot address error", "reason", "not found", "id", b.ID, "err", err)
-		utils.Failure(ctx, w, r, param.CodeDBQueryFail, param.MsgDBQueryFail, err)
 		return
 	}
 
@@ -357,8 +377,13 @@ func ListBots(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	sanitizedBots := make([]*db.Bot, 0, len(bots))
+	for _, bot := range bots {
+		sanitizedBots = append(sanitizedBots, sanitizeBotForResponse(bot))
+	}
+
 	utils.Success(ctx, w, r, map[string]interface{}{
-		"list":        bots,
+		"list":        sanitizedBots,
 		"total":       total,
 		"is_register": false,
 	})
@@ -475,6 +500,38 @@ func GetBotUser(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func DeleteBotUser(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	botInfo, err := getBot(r)
+	if err != nil {
+		logger.ErrorCtx(ctx, "delete bot user error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeDBQueryFail, param.MsgDBQueryFail, err)
+		return
+	}
+
+	userID := r.URL.Query().Get("user_id")
+	if userID == "" {
+		utils.Failure(ctx, w, r, param.CodeParamError, "user_id is required", nil)
+		return
+	}
+
+	targetURL := strings.TrimSuffix(botInfo.Address, "/") + "/user/delete?user_id=" + url.QueryEscape(userID)
+	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodDelete, targetURL, bytes.NewBuffer(nil)))
+	if err != nil {
+		logger.ErrorCtx(ctx, "delete bot user error", "user_id", userID, "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
+	}
+
+	defer resp.Body.Close()
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		logger.ErrorCtx(ctx, "copy response body error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
+	}
+}
+
 func GetBotAdminRecord(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	session, err := sessionStore.Get(r, sessionName)
@@ -527,11 +584,48 @@ func GetBotUserRecord(w http.ResponseWriter, r *http.Request) {
 		utils.Failure(ctx, w, r, param.CodeParamError, param.MsgParamError, err)
 		return
 	}
+
+	isDeleted := r.FormValue("isDeleted")
+	if isDeleted == "" {
+		isDeleted = "0"
+	}
 	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodGet, strings.TrimSuffix(botInfo.Address, "/")+
-		fmt.Sprintf("/record/list?page=%s&page_size=%s&user_id=%s&record_type=0,1,2,4", r.FormValue("page"),
-			r.FormValue("pageSize"), r.FormValue("userId")), bytes.NewBuffer(nil)))
+		fmt.Sprintf("/record/list?page=%s&page_size=%s&user_id=%s&is_deleted=%s&record_type=0,1,2,4", r.FormValue("page"),
+			r.FormValue("pageSize"), url.QueryEscape(r.FormValue("userId")), isDeleted), bytes.NewBuffer(nil)))
 	if err != nil {
 		logger.ErrorCtx(ctx, "get bot user record error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
+	}
+
+	defer resp.Body.Close()
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		logger.ErrorCtx(ctx, "copy response body error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
+	}
+}
+
+func DeleteBotRecord(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	botInfo, err := getBot(r)
+	if err != nil {
+		logger.ErrorCtx(ctx, "delete bot record error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeDBQueryFail, param.MsgDBQueryFail, err)
+		return
+	}
+
+	recordID := r.URL.Query().Get("record_id")
+	if recordID == "" {
+		utils.Failure(ctx, w, r, param.CodeParamError, "record_id is required", nil)
+		return
+	}
+
+	targetURL := strings.TrimSuffix(botInfo.Address, "/") + "/record/delete?record_id=" + url.QueryEscape(recordID)
+	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodDelete, targetURL, bytes.NewBuffer(nil)))
+	if err != nil {
+		logger.ErrorCtx(ctx, "delete bot record error", "record_id", recordID, "err", err)
 		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
 		return
 	}
@@ -624,7 +718,8 @@ func GetBotCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.Success(ctx, w, r, realRsp.Data)
+	command, _ := realRsp.Data.(string)
+	utils.Success(ctx, w, r, adminConf.MaskCommandSecrets(command))
 
 }
 

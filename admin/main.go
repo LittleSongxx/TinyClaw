@@ -10,12 +10,12 @@ import (
 	_ "net/http/pprof"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/LittleSongxx/TinyClaw/admin/checkpoint"
 	"github.com/LittleSongxx/TinyClaw/admin/conf"
 	"github.com/LittleSongxx/TinyClaw/admin/controller"
 	"github.com/LittleSongxx/TinyClaw/admin/db"
 	"github.com/LittleSongxx/TinyClaw/logger"
+	"github.com/google/uuid"
 )
 
 func main() {
@@ -49,7 +49,9 @@ func main() {
 	mux.HandleFunc("/bot/conf/update", controller.RequireLogin(controller.UpdateBotConf))
 	mux.HandleFunc("/bot/command/get", controller.RequireLogin(controller.GetBotCommand))
 	mux.HandleFunc("/bot/record/list", controller.RequireLogin(controller.GetBotUserRecord))
+	mux.HandleFunc("/bot/record/delete", controller.RequireLogin(controller.DeleteBotRecord))
 	mux.HandleFunc("/bot/user/list", controller.RequireLogin(controller.GetBotUser))
+	mux.HandleFunc("/bot/user/delete", controller.RequireLogin(controller.DeleteBotUser))
 	mux.HandleFunc("/bot/user/mode/update", controller.RequireLogin(controller.UpdateUserMode))
 	mux.HandleFunc("/bot/user/insert/records", controller.RequireLogin(controller.InsertUserRecord))
 	mux.HandleFunc("/bot/add/token", controller.RequireLogin(controller.AddUserToken))

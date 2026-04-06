@@ -257,3 +257,52 @@ func GetCtxUserInfo(ctx context.Context) *User {
 
 	return nil
 }
+
+func DeleteUserByUserID(ctx context.Context, userId string) error {
+	tx, err := DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	now := time.Now().Unix()
+
+	recordUpdateResult, err := tx.Exec(
+		`UPDATE records SET is_deleted = 1, update_time = ? WHERE user_id = ? AND is_deleted = 0`,
+		now,
+		userId,
+	)
+	if err != nil {
+		return err
+	}
+
+	userDeleteResult, err := tx.Exec(`DELETE FROM users WHERE user_id = ?`, userId)
+	if err != nil {
+		return err
+	}
+
+	userRowsAffected, err := userDeleteResult.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	recordRowsAffected, err := recordUpdateResult.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if userRowsAffected == 0 && recordRowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+
+	MsgRecord.Delete(userId)
+	return nil
+}

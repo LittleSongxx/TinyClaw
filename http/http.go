@@ -10,11 +10,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/logger"
 	"github.com/LittleSongxx/TinyClaw/metrics"
+	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
@@ -51,6 +51,7 @@ func (p *HTTPServer) Start() {
 		mux.Handle("/metrics", promhttp.Handler())
 
 		mux.HandleFunc("/user/token/add", AddUserToken)
+		mux.HandleFunc("/user/delete", DeleteUser)
 
 		mux.HandleFunc("/conf/update", UpdateConf)
 		mux.HandleFunc("/conf/get", GetConf)
@@ -68,6 +69,7 @@ func (p *HTTPServer) Start() {
 		mux.HandleFunc("/user/list", GetUsers)
 		mux.HandleFunc("/user/insert/record", InsertUserRecords)
 		mux.HandleFunc("/record/list", GetRecords)
+		mux.HandleFunc("/record/delete", DeleteRecord)
 
 		mux.HandleFunc("/rag/list", GetRagFile)
 		mux.HandleFunc("/rag/delete", DeleteRagFile)

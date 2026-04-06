@@ -1,6 +1,7 @@
 package http
 
 import (
+	"database/sql"
 	"net/http"
 
 	"github.com/LittleSongxx/TinyClaw/db"
@@ -70,6 +71,28 @@ func GetUsers(w http.ResponseWriter, r *http.Request) {
 	utils.Success(ctx, w, r, result)
 }
 
+func DeleteUser(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userId := r.URL.Query().Get("user_id")
+	if userId == "" {
+		utils.Failure(ctx, w, r, param.CodeParamError, "user_id is required", nil)
+		return
+	}
+
+	err := db.DeleteUserByUserID(ctx, userId)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			utils.Failure(ctx, w, r, param.CodeDBQueryFail, "user not found", err)
+			return
+		}
+		logger.ErrorCtx(ctx, "delete user error", "user_id", userId, "err", err)
+		utils.Failure(ctx, w, r, param.CodeDBWriteFail, param.MsgDBWriteFail, err)
+		return
+	}
+
+	utils.Success(ctx, w, r, "success")
+}
+
 func GetRecords(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	// 获取参数
@@ -112,6 +135,28 @@ func GetRecords(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.Success(ctx, w, r, result)
+}
+
+func DeleteRecord(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	recordID := utils.ParseInt(r.URL.Query().Get("record_id"))
+	if recordID <= 0 {
+		utils.Failure(ctx, w, r, param.CodeParamError, "record_id is required", nil)
+		return
+	}
+
+	err := db.DeleteRecordByID(ctx, int64(recordID))
+	if err != nil {
+		if err == sql.ErrNoRows {
+			utils.Failure(ctx, w, r, param.CodeDBQueryFail, "record not found", err)
+			return
+		}
+		logger.ErrorCtx(ctx, "delete record error", "record_id", recordID, "err", err)
+		utils.Failure(ctx, w, r, param.CodeDBWriteFail, param.MsgDBWriteFail, err)
+		return
+	}
+
+	utils.Success(ctx, w, r, "success")
 }
 
 func InsertUserRecords(w http.ResponseWriter, r *http.Request) {

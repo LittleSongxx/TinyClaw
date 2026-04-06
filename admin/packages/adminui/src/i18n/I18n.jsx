@@ -34,9 +34,17 @@ i18n
                     bot_user_manage: "Bot User Management",
                     search_user_id: "Search User ID",
                     add_token: "Add Token",
+                    no_users_found: "No users found.",
+                    delete_bot_user_confirm: "Are you sure you want to delete this bot user and all related records?",
+                    bot_user_deleted: "Bot user deleted",
+                    bot_user_delete_failed: "Failed to delete bot user",
 
                     bot_record_manage: "Bot Record Management",
                     add_record: "Add Record",
+                    no_records_found: "No records found.",
+                    delete_bot_record_confirm: "Are you sure you want to delete this record?",
+                    bot_record_deleted: "Record deleted",
+                    bot_record_delete_failed: "Failed to delete record",
 
                     search: "Search",
 
@@ -142,9 +150,17 @@ i18n
                     bot_user_manage: "机器人用户管理",
                     search_user_id: "搜索用户 ID",
                     add_token: "添加令牌",
+                    no_users_found: "没有找到用户。",
+                    delete_bot_user_confirm: "确认删除这个机器人用户，并同时删除关联记录吗？",
+                    bot_user_deleted: "机器人用户已删除",
+                    bot_user_delete_failed: "删除机器人用户失败",
 
                     bot_record_manage: "机器人记录管理",
                     add_record: "添加记录",
+                    no_records_found: "没有找到记录。",
+                    delete_bot_record_confirm: "确认删除这条记录吗？",
+                    bot_record_deleted: "记录已删除",
+                    bot_record_delete_failed: "删除记录失败",
 
                     search: "搜索",
 
