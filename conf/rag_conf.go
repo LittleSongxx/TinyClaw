@@ -12,9 +12,12 @@ import (
 )
 
 type RagConf struct {
-	EmbeddingType string `json:"embedding_type"`
-	KnowledgePath string `json:"knowledge_path"`
-	VectorDBType  string `json:"vector_db_type"`
+	EmbeddingType             string `json:"embedding_type"`
+	EmbeddingBaseURL          string `json:"embedding_base_url"`
+	EmbeddingModelID          string `json:"embedding_model_id"`
+	EmbeddingQueryInstruction string `json:"embedding_query_instruction"`
+	KnowledgePath             string `json:"knowledge_path"`
+	VectorDBType              string `json:"vector_db_type"`
 
 	ChromaURL      string `json:"chroma_url"`
 	MilvusURL      string `json:"milvus_url"`
@@ -39,12 +42,15 @@ var (
 )
 
 func InitRagConf() {
-	flag.StringVar(&RagConfInfo.EmbeddingType, "embedding_type", "", "embedding split api: openai gemini ernie")
+	flag.StringVar(&RagConfInfo.EmbeddingType, "embedding_type", "", "embedding split api: openai gemini ernie huggingface")
+	flag.StringVar(&RagConfInfo.EmbeddingBaseURL, "embedding_base_url", "http://localhost:8080", "huggingface text embeddings inference base url")
+	flag.StringVar(&RagConfInfo.EmbeddingModelID, "embedding_model_id", "", "huggingface embedding model id")
+	flag.StringVar(&RagConfInfo.EmbeddingQueryInstruction, "embedding_query_instruction", "", "query instruction prepended before query embedding")
 	flag.StringVar(&RagConfInfo.KnowledgePath, "knowledge_path", GetAbsPath("data/knowledge"), "knowledge")
 	flag.StringVar(&RagConfInfo.VectorDBType, "vector_db_type", "milvus", "vector db type: chroma weaviate milvus")
 
 	flag.StringVar(&RagConfInfo.ChromaURL, "chroma_url", "http://localhost:8000", "chroma url")
-	flag.StringVar(&RagConfInfo.MilvusURL, "milvus_url", "http://localhost:19530", "milvus url")
+	flag.StringVar(&RagConfInfo.MilvusURL, "milvus_url", "localhost:19530", "milvus url")
 	flag.StringVar(&RagConfInfo.WeaviateURL, "weaviate_url", "localhost:8000", "weaviate url localhost:8000")
 	flag.StringVar(&RagConfInfo.WeaviateScheme, "weaviate_scheme", "http", "weaviate scheme: http")
 	flag.StringVar(&RagConfInfo.Space, "space", "TinyClaw", "chroma space")
@@ -57,6 +63,18 @@ func InitRagConf() {
 func EnvRagConf() {
 	if os.Getenv("EMBEDDING_TYPE") != "" {
 		RagConfInfo.EmbeddingType = os.Getenv("EMBEDDING_TYPE")
+	}
+
+	if os.Getenv("EMBEDDING_BASE_URL") != "" {
+		RagConfInfo.EmbeddingBaseURL = os.Getenv("EMBEDDING_BASE_URL")
+	}
+
+	if os.Getenv("EMBEDDING_MODEL_ID") != "" {
+		RagConfInfo.EmbeddingModelID = os.Getenv("EMBEDDING_MODEL_ID")
+	}
+
+	if os.Getenv("EMBEDDING_QUERY_INSTRUCTION") != "" {
+		RagConfInfo.EmbeddingQueryInstruction = os.Getenv("EMBEDDING_QUERY_INSTRUCTION")
 	}
 
 	if os.Getenv("KNOWLEDGE_PATH") != "" {

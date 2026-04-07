@@ -3,15 +3,20 @@ package llm
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/db"
 	"github.com/LittleSongxx/TinyClaw/param"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestVolSend(t *testing.T) {
+	if os.Getenv("VOLC_AK") == "" || os.Getenv("VOLC_SK") == "" {
+		t.Skip("VOLC_AK and VOLC_SK are required for live Volcengine send test")
+	}
+
 	messageChan := make(chan *param.MsgInfo)
 
 	go func() {

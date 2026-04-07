@@ -6,14 +6,18 @@ import (
 	"os"
 	"testing"
 
-	"github.com/sashabaranov/go-openai"
-	"github.com/stretchr/testify/assert"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/db"
 	"github.com/LittleSongxx/TinyClaw/param"
+	"github.com/sashabaranov/go-openai"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestOpenAISend(t *testing.T) {
+	if os.Getenv("OPENAI_TOKEN") == "" {
+		t.Skip("OPENAI_TOKEN is required for live OpenAI send test")
+	}
+
 	messageChan := make(chan *param.MsgInfo)
 
 	go func() {
@@ -63,6 +67,12 @@ func TestOpenAIReq_AppendMessages(t *testing.T) {
 }
 
 func TestOpenAIReq_GetModel_Default(t *testing.T) {
+	oldToken := conf.BaseConfInfo.OpenAIToken
+	conf.BaseConfInfo.OpenAIToken = "test-openai-token"
+	defer func() {
+		conf.BaseConfInfo.OpenAIToken = oldToken
+	}()
+
 	req := &OpenAIReq{}
 	ctx := context.WithValue(context.Background(), "user_info", &db.User{
 		LLMConfig:    `{"type":"openai"}`,

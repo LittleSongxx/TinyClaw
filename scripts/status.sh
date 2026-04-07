@@ -13,6 +13,9 @@ if [[ -f "${RUNTIME_FILE}" ]]; then
   cat "${RUNTIME_FILE}"
 fi
 
+echo
+printf 'AUTO_START=enabled (restart: unless-stopped)\n'
+
 if [[ -f "${PUBLIC_URL_FILE}" ]]; then
   echo
   printf 'QQ_WEBHOOK=%s\n' "$(cat "${PUBLIC_URL_FILE}")"

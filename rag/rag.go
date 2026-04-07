@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -106,6 +107,8 @@ func InitRag() {
 		conf.RagConfInfo.Embedder, err = initGeminiEmbedding(ctx)
 	case "ernie":
 		conf.RagConfInfo.Embedder, err = initErnieEmbedding()
+	case "huggingface":
+		conf.RagConfInfo.Embedder, err = initHuggingFaceEmbedding()
 	default:
 		logger.Error("embedding type not exist", "embedding type", conf.RagConfInfo.EmbeddingType)
 		return
@@ -159,7 +162,7 @@ func InitRag() {
 		return
 	}
 
-	docs, err := handleKnowledgeBase(ctx)
+	docs, err := rebuildKnowledgeBase(ctx)
 	if err != nil {
 		logger.Error("get doc fail", "err", err)
 		return
@@ -174,37 +177,66 @@ func InitRag() {
 }
 
 func insertVectorDb(ctx context.Context, docs []schema.Document) {
+	if len(docs) == 0 {
+		return
+	}
+
 	ids, err := conf.RagConfInfo.Store.AddDocuments(ctx, docs)
 	if err != nil {
 		logger.Error("get save doc fail", "err", err)
 		return
 	}
 
-	fileVectorIds := make(map[string]string)
-	for i := range docs {
-		fileMd5 := docs[i].Metadata["file_md5"].(string)
-		fileVectorIds[fileMd5] += ids[i] + ","
+	fileVectorIds := make(map[string][]string)
+	if len(ids) == len(docs) {
+		for i := range docs {
+			fileMd5, ok := docs[i].Metadata["file_md5"].(string)
+			if !ok || fileMd5 == "" {
+				continue
+			}
+			fileVectorIds[fileMd5] = append(fileVectorIds[fileMd5], ids[i])
+		}
+	} else if len(ids) != 0 {
+		logger.Warn("vector id count mismatch", "doc_count", len(docs), "id_count", len(ids))
+	}
+
+	if len(fileVectorIds) == 0 && conf.RagConfInfo.VectorDBType == "milvus" {
+		fileVectorIds, err = queryMilvusVectorIDsByDocs(ctx, docs)
+		if err != nil {
+			logger.Error("query milvus vector ids fail", "err", err)
+			return
+		}
+	}
+
+	if len(fileVectorIds) == 0 {
+		logger.Warn("vector ids unavailable after insert", "doc_count", len(docs), "vector_db_type", conf.RagConfInfo.VectorDBType)
+		return
 	}
 
 	for fileMd5, vectorIds := range fileVectorIds {
-		err = db.UpdateVectorIdByFileMd5(fileMd5, strings.TrimRight(vectorIds, ","))
+		err = db.UpdateVectorIdByFileMd5(fileMd5, strings.Join(vectorIds, ","))
 		if err != nil {
 			logger.Error("update vector id fail", "err", err)
 		}
 	}
 }
 
-func handleKnowledgeBase(ctx context.Context) ([]schema.Document, error) {
+func rebuildKnowledgeBase(ctx context.Context) ([]schema.Document, error) {
+	err := db.DeleteAllRagFiles()
+	if err != nil {
+		return nil, err
+	}
+
 	entries, err := os.ReadDir(conf.RagConfInfo.KnowledgePath)
 	if err != nil {
 		return nil, err
 	}
 
-	return handleEntry(ctx, entries)
+	return handleEntry(ctx, entries, true)
 
 }
 
-func handleEntry(ctx context.Context, entries []os.DirEntry) ([]schema.Document, error) {
+func handleEntry(ctx context.Context, entries []os.DirEntry, force bool) ([]schema.Document, error) {
 	var err error
 	res := make([]schema.Document, 0)
 	for _, entry := range entries {
@@ -212,22 +244,22 @@ func handleEntry(ctx context.Context, entries []os.DirEntry) ([]schema.Document,
 			var docs []schema.Document
 			switch {
 			case strings.HasSuffix(strings.ToLower(entry.Name()), ".txt"):
-				docs, err = handleTextDoc(ctx, entry)
+				docs, err = handleTextDoc(ctx, entry, force)
 				if err != nil {
 					logger.Error("handle text doc fail", "err", err)
 				}
 			case strings.HasSuffix(strings.ToLower(entry.Name()), ".pdf"):
-				docs, err = handlePDFDoc(ctx, entry)
+				docs, err = handlePDFDoc(ctx, entry, force)
 				if err != nil {
 					logger.Error("handle pdf doc fail", "err", err)
 				}
 			case strings.HasSuffix(strings.ToLower(entry.Name()), ".csv"):
-				docs, err = handleCSVDoc(ctx, entry)
+				docs, err = handleCSVDoc(ctx, entry, force)
 				if err != nil {
 					logger.Error("handle csv doc fail", "err", err)
 				}
 			case strings.HasSuffix(strings.ToLower(entry.Name()), ".html"):
-				docs, err = handleHTMLDoc(ctx, entry)
+				docs, err = handleHTMLDoc(ctx, entry, force)
 				if err != nil {
 					logger.Error("handle html doc fail", "err", err)
 				}
@@ -290,7 +322,11 @@ func initGeminiEmbedding(ctx context.Context) (embeddings.Embedder, error) {
 	return embedder, err
 }
 
-func getFileResource(entry os.DirEntry) (*os.File, string, error) {
+func initHuggingFaceEmbedding() (embeddings.Embedder, error) {
+	return newTEIEmbedder()
+}
+
+func getFileResource(entry os.DirEntry, force bool) (*os.File, string, error) {
 	fullPath := filepath.Join(conf.RagConfInfo.KnowledgePath, entry.Name())
 
 	fileMd5, err := utils.FileToMd5(fullPath)
@@ -299,15 +335,17 @@ func getFileResource(entry os.DirEntry) (*os.File, string, error) {
 		return nil, "", err
 	}
 
-	fileInfos, err := db.GetRagFileByFileMd5(fileMd5)
-	if err != nil {
-		logger.Error("get file from db fail", "err", err)
-		return nil, "", err
-	}
+	if !force {
+		fileInfos, err := db.GetRagFileByFileMd5(fileMd5)
+		if err != nil {
+			logger.Error("get file from db fail", "err", err)
+			return nil, "", err
+		}
 
-	if len(fileInfos) > 0 {
-		logger.Info("file exist", "path", fullPath)
-		return nil, "", nil
+		if len(fileInfos) > 0 {
+			logger.Info("file exist", "path", fullPath)
+			return nil, "", nil
+		}
 	}
 
 	err = db.DeleteRagFileByFileName(entry.Name())
@@ -324,8 +362,8 @@ func getFileResource(entry os.DirEntry) (*os.File, string, error) {
 	return f, fileMd5, err
 }
 
-func handleTextDoc(ctx context.Context, entry os.DirEntry) ([]schema.Document, error) {
-	f, fMd5, err := getFileResource(entry)
+func handleTextDoc(ctx context.Context, entry os.DirEntry, force bool) ([]schema.Document, error) {
+	f, fMd5, err := getFileResource(entry, force)
 	if err != nil {
 		logger.Error("read file fail", "err", err)
 		return nil, err
@@ -339,8 +377,8 @@ func handleTextDoc(ctx context.Context, entry os.DirEntry) ([]schema.Document, e
 	return saveDocIntoStore(ctx, loader, fMd5, entry)
 }
 
-func handlePDFDoc(ctx context.Context, entry os.DirEntry) ([]schema.Document, error) {
-	f, fMd5, err := getFileResource(entry)
+func handlePDFDoc(ctx context.Context, entry os.DirEntry, force bool) ([]schema.Document, error) {
+	f, fMd5, err := getFileResource(entry, force)
 	if err != nil {
 		logger.Error("read file fail", "err", err)
 		return nil, err
@@ -359,8 +397,8 @@ func handlePDFDoc(ctx context.Context, entry os.DirEntry) ([]schema.Document, er
 	return saveDocIntoStore(ctx, loader, fMd5, entry)
 }
 
-func handleCSVDoc(ctx context.Context, entry os.DirEntry) ([]schema.Document, error) {
-	f, fMd5, err := getFileResource(entry)
+func handleCSVDoc(ctx context.Context, entry os.DirEntry, force bool) ([]schema.Document, error) {
+	f, fMd5, err := getFileResource(entry, force)
 	if err != nil {
 		logger.Error("read file fail", "err", err)
 		return nil, err
@@ -374,8 +412,8 @@ func handleCSVDoc(ctx context.Context, entry os.DirEntry) ([]schema.Document, er
 	return saveDocIntoStore(ctx, loader, fMd5, entry)
 }
 
-func handleHTMLDoc(ctx context.Context, entry os.DirEntry) ([]schema.Document, error) {
-	f, fMd5, err := getFileResource(entry)
+func handleHTMLDoc(ctx context.Context, entry os.DirEntry, force bool) ([]schema.Document, error) {
+	f, fMd5, err := getFileResource(entry, force)
 	if err != nil {
 		logger.Error("read file fail", "err", err)
 		return nil, err
@@ -411,12 +449,6 @@ func saveDocIntoStore(ctx context.Context, loader documentloaders.Loader, fMd5 s
 }
 
 func CheckDirChange() {
-	defer func() {
-		if err := recover(); err != nil {
-			logger.Error("CheckDirChange panic", "err", err)
-		}
-	}()
-
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		logger.Error("create watcher fail", "err", err)
@@ -437,7 +469,14 @@ func CheckDirChange() {
 			if !ok {
 				return
 			}
-			insertNewDoc(event)
+			func() {
+				defer func() {
+					if err := recover(); err != nil {
+						logger.Error("CheckDirChange panic", "err", err, "event", event.Name)
+					}
+				}()
+				insertNewDoc(event)
+			}()
 		case err, ok := <-watcher.Errors:
 			if !ok {
 				logger.Error("watcher channel closed")
@@ -475,7 +514,11 @@ func DeleteDoc(ctx context.Context, event fsnotify.Event) {
 		return
 	}
 	if fileDbInfo != nil && len(fileDbInfo) > 0 {
-		err = DeleteStoreData(ctx, fileDbInfo[0].VectorId)
+		if fileDbInfo[0].VectorId != "" {
+			err = DeleteStoreData(ctx, fileDbInfo[0].VectorId)
+		} else if fileDbInfo[0].FileMd5 != "" {
+			err = DeleteStoreDataByFileMd5(ctx, fileDbInfo[0].FileMd5)
+		}
 		if err != nil {
 			logger.Error("delete doc fail", "err", err)
 			return
@@ -499,7 +542,7 @@ func InsertDoc(ctx context.Context, event fsnotify.Event) {
 		logger.Error("find dir entry fail", "err", err)
 		return
 	}
-	docs, err := handleEntry(ctx, []os.DirEntry{entry})
+	docs, err := handleEntry(ctx, []os.DirEntry{entry}, false)
 	if err != nil {
 		logger.Error("handle entry fail", "err", err)
 		return
@@ -528,6 +571,10 @@ func DeleteStoreData(ctx context.Context, vectorIds string) error {
 	switch conf.RagConfInfo.VectorDBType {
 	case "weaviate":
 		for _, vectorId := range strings.Split(vectorIds, ",") {
+			vectorId = strings.TrimSpace(vectorId)
+			if vectorId == "" {
+				continue
+			}
 			err = conf.RagConfInfo.WeaviateClient.Data().Deleter().
 				WithClassName(weaviateIndexName).
 				WithID(vectorId).
@@ -539,10 +586,63 @@ func DeleteStoreData(ctx context.Context, vectorIds string) error {
 
 	case "milvus":
 		for _, vectorId := range strings.Split(vectorIds, ",") {
+			vectorId = strings.TrimSpace(vectorId)
+			if vectorId == "" {
+				continue
+			}
 			expr := fmt.Sprintf(`pk == %s`, vectorId)
 			err = conf.RagConfInfo.MilvusClient.Delete(ctx, conf.RagConfInfo.Space, "", expr)
 		}
 	}
 
 	return nil
+}
+
+func queryMilvusVectorIDsByDocs(ctx context.Context, docs []schema.Document) (map[string][]string, error) {
+	if conf.RagConfInfo.MilvusClient == nil {
+		return nil, fmt.Errorf("milvus client is nil")
+	}
+
+	fileMd5Set := make(map[string]struct{})
+	for _, doc := range docs {
+		fileMd5, ok := doc.Metadata["file_md5"].(string)
+		if !ok || fileMd5 == "" {
+			continue
+		}
+		fileMd5Set[fileMd5] = struct{}{}
+	}
+
+	fileVectorIds := make(map[string][]string)
+	for fileMd5 := range fileMd5Set {
+		expr := fmt.Sprintf(`meta["file_md5"] == "%s"`, fileMd5)
+		result, err := conf.RagConfInfo.MilvusClient.Query(ctx, conf.RagConfInfo.Space, nil, expr, []string{"pk"}, client.WithLimit(16384))
+		if err != nil {
+			return nil, err
+		}
+
+		pkCol := result.GetColumn("pk")
+		if pkCol == nil {
+			return nil, fmt.Errorf("pk column not found for file_md5=%s", fileMd5)
+		}
+
+		for i := 0; i < pkCol.Len(); i++ {
+			pk, err := pkCol.GetAsInt64(i)
+			if err != nil {
+				return nil, err
+			}
+			fileVectorIds[fileMd5] = append(fileVectorIds[fileMd5], strconv.FormatInt(pk, 10))
+		}
+	}
+
+	return fileVectorIds, nil
+}
+
+func DeleteStoreDataByFileMd5(ctx context.Context, fileMd5 string) error {
+	switch conf.RagConfInfo.VectorDBType {
+	case "milvus":
+		expr := fmt.Sprintf(`meta["file_md5"] == "%s"`, fileMd5)
+		return conf.RagConfInfo.MilvusClient.Delete(ctx, conf.RagConfInfo.Space, "", expr)
+	default:
+		return fmt.Errorf("delete by file md5 is not supported for vector db type %s", conf.RagConfInfo.VectorDBType)
+	}
 }

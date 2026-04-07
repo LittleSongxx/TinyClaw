@@ -89,6 +89,12 @@ func DeleteRagFileByFileName(fileName string) error {
 	return err
 }
 
+func DeleteAllRagFiles() error {
+	query := `UPDATE rag_files set is_deleted = 1 WHERE is_deleted = 0 and from_bot = ?`
+	_, err := DB.Exec(query, conf.BaseConfInfo.BotName)
+	return err
+}
+
 func DeleteRagFileByVectorId(fileName string) error {
 	query := `UPDATE rag_files set is_deleted = 1 WHERE vector_id = ? and from_bot = ?`
 	_, err := DB.Exec(query, fileName, conf.BaseConfInfo.BotName)

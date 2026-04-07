@@ -16,15 +16,6 @@ import (
 
 	"github.com/ArtisanCloud/PowerWeChat/v3/src/kernel/messages"
 	"github.com/ArtisanCloud/PowerWeChat/v3/src/work/message/request"
-	"github.com/bwmarrin/discordgo"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/google/uuid"
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
-	cron "github.com/robfig/cron/v3"
-	"github.com/sashabaranov/go-openai"
-	"github.com/slack-go/slack"
-	"github.com/tencent-connect/botgo/dto"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/db"
 	"github.com/LittleSongxx/TinyClaw/i18n"
@@ -35,6 +26,15 @@ import (
 	"github.com/LittleSongxx/TinyClaw/utils"
 	"github.com/LittleSongxx/langchaingo/chains"
 	"github.com/LittleSongxx/langchaingo/vectorstores"
+	"github.com/bwmarrin/discordgo"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/google/uuid"
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
+	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
+	cron "github.com/robfig/cron/v3"
+	"github.com/sashabaranov/go-openai"
+	"github.com/slack-go/slack"
+	"github.com/tencent-connect/botgo/dto"
 )
 
 const (
@@ -1317,6 +1317,17 @@ func (r *RobotInfo) ExecChain(msgContent string, msgChan *MsgChan) {
 			llm.WithUserId(userId),
 			llm.WithPerMsgLen(perMsgLen),
 			llm.WithCS(r.cs),
+			llm.WithContext(r.Ctx),
+			llm.WithContentParameter(map[string]string{
+				"username":  r.Robot.getUserName(),
+				"image_day": strconv.Itoa(conf.BaseConfInfo.ImageDay),
+			}),
+			llm.WithTaskTools(&conf.AgentInfo{
+				DeepseekTool: conf.DeepseekTools,
+				VolTool:      conf.VolTools,
+				OpenAITools:  conf.OpenAITools,
+				GeminiTools:  conf.GeminiTools,
+			}),
 		)
 		qaChain := chains.NewRetrievalQAFromLLM(
 			dpLLM,
@@ -1515,10 +1526,15 @@ func (r *RobotInfo) sendMultiAgent(agentType string, emptyPromptFunc func()) {
 			}
 		}()
 
-		go r.HandleUpdate(&MsgChan{
+		msgChan := &MsgChan{
 			NormalMessageChan: dpReq.MessageChan,
 			StrMessageChan:    dpReq.HTTPMsgChan,
-		}, "")
+		}
+		if _, ok := r.Robot.(*Web); ok {
+			r.HandleUpdate(msgChan, "")
+		} else {
+			go r.HandleUpdate(msgChan, "")
+		}
 	})
 }
 

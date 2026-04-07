@@ -93,10 +93,18 @@ ALIYUN_TOKEN=your_qwen_api_key
 ./scripts/status.sh
 ```
 
-5. 停止服务
+5. 安全停止辅助脚本
 
 ```bash
 ./scripts/stop.sh
+```
+
+这个命令现在默认不会停掉容器，只会提醒你当前启用了自启动，并输出栈状态。
+
+如果你确实要主动停止整套 Docker Compose：
+
+```bash
+./scripts/stop.sh --down
 ```
 
 ## 运行入口
@@ -107,6 +115,23 @@ ALIYUN_TOKEN=your_qwen_api_key
 - 指标：`/metrics`
 
 实际使用端口以 `./scripts/status.sh` 输出为准。
+
+## 容器自启动
+
+[deploy/docker/docker-compose.yml](/home/song/code/Agent/TinyClaw/deploy/docker/docker-compose.yml) 里的服务已经统一设置了 `restart: unless-stopped`。
+
+这表示：
+
+- 只要你执行过一次 `./scripts/start.sh`，后续 Docker 守护进程或主机重启后，容器会自动恢复运行
+- 其他机器只要沿用当前仓库的 Compose 部署文件，也会直接继承这套自启动策略
+
+如果你部署在普通 Linux 主机上，还需要确保 Docker 服务本身是开机自启：
+
+```bash
+sudo systemctl enable --now docker
+```
+
+如果你使用的是 Docker Desktop，则以 Docker Desktop 自身的启动设置为准。
 
 ## 开发与构建
 

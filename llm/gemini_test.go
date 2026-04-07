@@ -3,15 +3,20 @@ package llm
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/db"
 	"github.com/LittleSongxx/TinyClaw/param"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGeminiSend(t *testing.T) {
+	if os.Getenv("GEMINI_TOKEN") == "" {
+		t.Skip("GEMINI_TOKEN is required for live Gemini send test")
+	}
+
 	conf.InitConf()
 	messageChan := make(chan *param.MsgInfo)
 

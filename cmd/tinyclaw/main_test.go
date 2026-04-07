@@ -5,14 +5,14 @@ import (
 	"os"
 	"testing"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/stretchr/testify/assert"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/db"
 	"github.com/LittleSongxx/TinyClaw/i18n"
 	"github.com/LittleSongxx/TinyClaw/llm"
 	"github.com/LittleSongxx/TinyClaw/param"
 	"github.com/LittleSongxx/TinyClaw/robot"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMain(m *testing.M) {
@@ -30,6 +30,10 @@ func setup() {
 }
 
 func TestSendTelegramMsg(t *testing.T) {
+	if os.Getenv("DEEPSEEK_TOKEN") == "" {
+		t.Skip("DEEPSEEK_TOKEN is required for live DeepSeek send test")
+	}
+
 	messageChan := make(chan *param.MsgInfo)
 
 	go func() {

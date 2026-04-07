@@ -26,7 +26,7 @@ MCP_CONF_PATH
 {
   "mcpServers": {
     "playwright": {
-      "url": "http://localhost:8931/mcp",
+      "url": "http://playwright-mcp:8931/mcp",
       "description": "Browser automation and page interaction."
     }
   }
@@ -73,6 +73,7 @@ export MCP_CONF_PATH=/path/to/your/mcp_config.json
 
 - 把 MCP 配置文件放进仓库或映射卷可访问的位置
 - 在 `deploy/docker/.env` 中设置 `USE_TOOLS=true`
+- 如果使用当前仓库自带的 Compose，优先使用容器内地址 `http://playwright-mcp:8931/mcp`
 - 如有需要，再补充 `MCP_CONF_PATH`
 
 ## 常见问题

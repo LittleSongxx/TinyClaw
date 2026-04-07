@@ -66,6 +66,9 @@
 ./scripts/stop.sh
 ```
 
+`./scripts/stop.sh` 现在是安全辅助脚本，默认不会停掉容器。
+只有在你明确要停整套 Compose 时，才使用 `./scripts/stop.sh --down`。
+
 ### 方式 2：单独运行 Admin
 
 如果你只想单独调试后台，也可以手动构建并启动：

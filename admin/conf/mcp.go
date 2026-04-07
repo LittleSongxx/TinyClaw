@@ -6,7 +6,7 @@ var MCPConf = &param.McpClientGoConfig{
 	McpServers: map[string]*param.MCPConfig{
 		"playwright": {
 			Description: "Simulates browser behavior for tasks like web navigation, data scraping, and automated interactions with web pages.",
-			Url:         "http://localhost:8931/sse",
+			Url:         "http://playwright-mcp:8931/mcp",
 		},
 		"filesystem": {
 			Command:     "npx",

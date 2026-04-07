@@ -12,7 +12,7 @@ fi
 
 source_env_file "${ENV_FILE}"
 
-mkdir -p "${DATA_DIR}" "${LOG_DIR}"
+mkdir -p "${DATA_DIR}" "${DATA_DIR}/knowledge" "${LOG_DIR}"
 
 ENABLE_CLOUDFLARED="${ENABLE_CLOUDFLARED:-false}"
 
@@ -61,6 +61,7 @@ fi
 
 printf 'TinyClaw HTTP: http://127.0.0.1:%s\n' "${HOST_HTTP_PORT}"
 printf 'TinyClaw Admin: http://127.0.0.1:%s\n' "${HOST_ADMIN_PORT}"
+printf 'Auto-start: enabled (Docker restart policy: unless-stopped)\n'
 if [[ -n "${tunnel_url}" ]]; then
   printf 'QQ Webhook: %s/qq\n' "${tunnel_url}"
 fi

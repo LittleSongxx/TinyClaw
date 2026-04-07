@@ -176,12 +176,28 @@ func (web *Web) sendChatMessage() {
 
 	web.Robot.TalkingPreCheck(func() {
 		if conf.RagConfInfo.Store != nil {
-			//web.executeChain()
+			web.executeChain()
 		} else {
 			web.executeLLM()
 		}
 	})
 
+}
+
+func (web *Web) executeChain() {
+	var msgChan *MsgChan
+	if conf.BaseConfInfo.IsStreaming {
+		msgChan = &MsgChan{
+			StrMessageChan: make(chan string),
+		}
+	} else {
+		msgChan = &MsgChan{
+			NormalMessageChan: make(chan *param.MsgInfo),
+		}
+	}
+
+	go web.Robot.ExecChain(web.Prompt, msgChan)
+	web.Robot.HandleUpdate(msgChan, "mp3")
 }
 
 func (web *Web) sendTextStream(messageChan *MsgChan) {

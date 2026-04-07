@@ -26,7 +26,7 @@ MCP_CONF_PATH
 {
   "mcpServers": {
     "playwright": {
-      "url": "http://localhost:8931/mcp",
+      "url": "http://playwright-mcp:8931/mcp",
       "description": "Browser automation and page interaction."
     }
   }
@@ -73,6 +73,7 @@ With the current Docker Compose layout, the recommended approach is:
 
 - place the MCP config where the runtime can access it
 - set `USE_TOOLS=true` in `deploy/docker/.env`
+- for the bundled Docker Compose stack, use the internal URL `http://playwright-mcp:8931/mcp`
 - optionally set `MCP_CONF_PATH` if you use a non-default file
 
 ## Common Issues

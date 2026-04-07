@@ -567,6 +567,9 @@ func logConf(allowedUserIds, allowedGroupIds string) {
 	logger.Info("AUDIO_CONF", "AliyunAudioRecModel", AudioConfInfo.AliyunAudioRecModel)
 
 	logger.Info("RAG_CONF", "EmbeddingType", RagConfInfo.EmbeddingType)
+	logger.Info("RAG_CONF", "EmbeddingBaseURL", RagConfInfo.EmbeddingBaseURL)
+	logger.Info("RAG_CONF", "EmbeddingModelID", RagConfInfo.EmbeddingModelID)
+	logger.Info("RAG_CONF", "EmbeddingQueryInstruction", RagConfInfo.EmbeddingQueryInstruction)
 	logger.Info("RAG_CONF", "KnowledgePath", RagConfInfo.KnowledgePath)
 	logger.Info("RAG_CONF", "VectorDBType", RagConfInfo.VectorDBType)
 	logger.Info("RAG_CONF", "ChromaURL", RagConfInfo.ChromaURL)

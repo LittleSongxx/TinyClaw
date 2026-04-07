@@ -64,6 +64,9 @@ This is the default project workflow.
 ./scripts/stop.sh
 ```
 
+`./scripts/stop.sh` is now a safe helper and does not stop containers by default.
+Use `./scripts/stop.sh --down` only when you intentionally want to stop the Compose stack.
+
 ### Option 2: Run Admin Separately
 
 If you want to debug the admin service by itself:

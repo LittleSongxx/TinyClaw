@@ -93,10 +93,18 @@ ALIYUN_TOKEN=your_qwen_api_key
 ./scripts/status.sh
 ```
 
-5. Stop services
+5. Safe stop helper
 
 ```bash
 ./scripts/stop.sh
+```
+
+This command no longer stops containers by default. It only reminds you that auto-start is enabled and prints the current stack state.
+
+If you intentionally want to stop the Docker Compose stack:
+
+```bash
+./scripts/stop.sh --down
 ```
 
 ## Runtime Endpoints
@@ -107,6 +115,23 @@ ALIYUN_TOKEN=your_qwen_api_key
 - Metrics: `/metrics`
 
 Use `./scripts/status.sh` to see the actual resolved ports on your machine.
+
+## Auto-start
+
+The Docker Compose stack in [deploy/docker/docker-compose.yml](/home/song/code/Agent/TinyClaw/deploy/docker/docker-compose.yml) already uses `restart: unless-stopped` for the bundled services.
+
+That means:
+
+- after you run `./scripts/start.sh` once, the containers will auto-restart after the Docker daemon or host comes back
+- the same behavior is inherited on other machines that deploy with this repository's Compose files
+
+If you deploy on a regular Linux host, also make sure the Docker service itself starts on boot:
+
+```bash
+sudo systemctl enable --now docker
+```
+
+If you deploy with Docker Desktop, Docker Desktop startup behavior controls whether the daemon is available after login or reboot.
 
 ## Build
 
