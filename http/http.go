@@ -61,6 +61,7 @@ func (p *HTTPServer) Start() {
 		mux.HandleFunc("/log", Log)
 
 		mux.HandleFunc("/mcp/get", GetMCPConf)
+		mux.HandleFunc("/mcp/inspect", InspectMCPConf)
 		mux.HandleFunc("/mcp/update", UpdateMCPConf)
 		mux.HandleFunc("/mcp/disable", DisableMCPConf)
 		mux.HandleFunc("/mcp/delete", DeleteMCPConf)

@@ -316,7 +316,7 @@ function Communicate() {
                                 <div
                                     className={`max-w-xl px-4 py-2 rounded-lg shadow flex flex-col ${
                                         msg.role === "user"
-                                            ? "bg-blue-100 self-end ml-auto"
+                                            ? "bg-claw-100 self-end ml-auto"
                                             : "bg-gray-100 self-start mr-auto"
                                     }`}
                                 >

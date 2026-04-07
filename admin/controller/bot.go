@@ -732,21 +732,14 @@ func GetBotMCPConf(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodGet,
-		strings.TrimSuffix(botInfo.Address, "/")+"/mcp/get", bytes.NewBuffer(nil)))
+	inspectData, err := fetchBotMCPInspectData(ctx, botInfo)
 	if err != nil {
 		logger.ErrorCtx(ctx, "get bot conf error", "err", err)
 		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
 		return
 	}
 
-	defer resp.Body.Close()
-	_, err = io.Copy(w, resp.Body)
-	if err != nil {
-		logger.ErrorCtx(ctx, "copy response body error", "err", err)
-		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
-		return
-	}
+	utils.Success(ctx, w, r, inspectData)
 }
 
 func UpdateBotMCPConf(w http.ResponseWriter, r *http.Request) {
@@ -830,29 +823,9 @@ func GetPrepareMCPServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodGet,
-		strings.TrimSuffix(botInfo.Address, "/")+"/mcp/get", bytes.NewBuffer(nil)))
+	currentInspect, err := fetchBotMCPInspectData(ctx, botInfo)
 	if err != nil {
 		logger.ErrorCtx(ctx, "get bot conf error", "err", err)
-		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
-		return
-	}
-	defer resp.Body.Close()
-
-	byteBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		logger.ErrorCtx(ctx, "read response body error", "err", err)
-		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
-		return
-	}
-
-	getRes := struct {
-		Data *mcpParam.McpClientGoConfig `json:"data"`
-	}{}
-
-	err = json.Unmarshal(byteBody, &getRes)
-	if err != nil {
-		logger.ErrorCtx(ctx, "unmarshal response body error", "err", err)
 		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
 		return
 	}
@@ -861,12 +834,77 @@ func GetPrepareMCPServer(w http.ResponseWriter, r *http.Request) {
 		McpServers: make(map[string]*mcpParam.MCPConfig),
 	}
 	for name, config := range adminConf.MCPConf.McpServers {
-		if _, ok := getRes.Data.McpServers[name]; !ok {
+		if _, ok := currentInspect.McpServers[name]; !ok {
 			res.McpServers[name] = config
 		}
 	}
 
-	utils.Success(ctx, w, r, res)
+	inspectData, err := inspectBotMCPConfig(ctx, botInfo, res)
+	if err != nil {
+		logger.ErrorCtx(ctx, "inspect prepare mcp server error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
+	}
+
+	utils.Success(ctx, w, r, inspectData)
+}
+
+func fetchBotMCPInspectData(ctx context.Context, botInfo *db.Bot) (*param.MCPInspectData, error) {
+	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodGet,
+		strings.TrimSuffix(botInfo.Address, "/")+"/mcp/inspect", bytes.NewBuffer(nil)))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	return decodeBotMCPInspectResponse(resp.Body)
+}
+
+func inspectBotMCPConfig(ctx context.Context, botInfo *db.Bot, config *mcpParam.McpClientGoConfig) (*param.MCPInspectData, error) {
+	byteBody, err := json.Marshal(config)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodPost,
+		strings.TrimSuffix(botInfo.Address, "/")+"/mcp/inspect", bytes.NewBuffer(byteBody)))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	return decodeBotMCPInspectResponse(resp.Body)
+}
+
+func decodeBotMCPInspectResponse(body io.Reader) (*param.MCPInspectData, error) {
+	res := struct {
+		Code    int                   `json:"code"`
+		Message string                `json:"message"`
+		Data    *param.MCPInspectData `json:"data"`
+	}{}
+
+	if err := json.NewDecoder(body).Decode(&res); err != nil {
+		return nil, err
+	}
+
+	if res.Code != param.CodeSuccess {
+		if res.Message == "" {
+			res.Message = param.MsgServerFail
+		}
+		return nil, errors.New(res.Message)
+	}
+
+	if res.Data == nil {
+		res.Data = &param.MCPInspectData{}
+	}
+	if res.Data.McpServers == nil {
+		res.Data.McpServers = map[string]*mcpParam.MCPConfig{}
+	}
+	if res.Data.Availability == nil {
+		res.Data.Availability = map[string]*param.MCPAvailability{}
+	}
+
+	return res.Data, nil
 }
 
 func SyncMCPServer(w http.ResponseWriter, r *http.Request) {

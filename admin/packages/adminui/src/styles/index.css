@@ -11,4 +11,13 @@ body {
     sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    background:
+        radial-gradient(circle at top, rgba(249, 128, 128, 0.10), transparent 30%),
+        linear-gradient(180deg, #fffbfb 0%, #fff7f7 52%, #fffafa 100%);
+    color: #2e1518;
+}
+
+::selection {
+    background: #d83a3f;
+    color: #fff;
 }

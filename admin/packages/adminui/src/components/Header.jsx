@@ -37,7 +37,7 @@ export default function Header({ username = "USER", avatarUrl = "" }) {
     }, []);
 
     return (
-        <header className="flex justify-between items-center px-6 py-4 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 shadow-lg z-1000">
+        <header className="flex justify-between items-center px-6 py-4 bg-gradient-to-r from-claw-800 via-claw-600 to-claw-400 shadow-lg z-1000">
             {/* 左侧标题 */}
             <div className="text-xl font-bold text-white drop-shadow-md">
                 <a
@@ -56,11 +56,11 @@ export default function Header({ username = "USER", avatarUrl = "" }) {
                         onClick={() => setLangOpen(!langOpen)}
                         className="flex items-center space-x-1 bg-white bg-opacity-90 hover:bg-opacity-100 active:bg-opacity-80
                                    px-3 py-1.5 rounded-full text-sm font-semibold text-gray-800
-                                   focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                   focus:outline-none focus:ring-2 focus:ring-claw-300"
                     >
                         🌐 {i18n.language.toUpperCase()}
                         <svg
-                            className={`w-3 h-3 text-indigo-600 transition-transform duration-200 ${
+                            className={`w-3 h-3 text-claw-600 transition-transform duration-200 ${
                                 langOpen ? "rotate-180" : "rotate-0"
                             }`}
                             fill="none"
@@ -80,13 +80,13 @@ export default function Header({ username = "USER", avatarUrl = "" }) {
                     >
                         <button
                             onClick={() => changeLanguage("en")}
-                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-100"
+                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-claw-100"
                         >
                             English
                         </button>
                         <button
                             onClick={() => changeLanguage("zh")}
-                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-100"
+                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-claw-100"
                         >
                             中文
                         </button>
@@ -100,18 +100,18 @@ export default function Header({ username = "USER", avatarUrl = "" }) {
                         className="flex items-center space-x-2 cursor-pointer select-none
                                    bg-white bg-opacity-90 hover:bg-opacity-100 active:bg-opacity-80
                                    transition-colors rounded-full px-3 py-1.5
-                                   focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                                   focus:outline-none focus:ring-2 focus:ring-claw-300"
                         aria-haspopup="true"
                         aria-expanded={menuOpen}
                     >
                         <img
-                            src={avatarUrl || "/avatar.jpeg"}
+                            src={avatarUrl || "/Claw.png"}
                             alt="avatar"
-                            className="w-8 h-8 rounded-full border-2 border-indigo-500"
+                            className="w-8 h-8 rounded-full border-2 border-claw-500 bg-white object-cover shadow-sm"
                         />
                         <span className="text-gray-800 text-sm font-semibold">{username}</span>
                         <svg
-                            className={`w-3 h-3 text-indigo-600 transition-transform duration-200 ${
+                            className={`w-3 h-3 text-claw-600 transition-transform duration-200 ${
                                 menuOpen ? "rotate-180" : "rotate-0"
                             }`}
                             fill="none"
@@ -130,7 +130,7 @@ export default function Header({ username = "USER", avatarUrl = "" }) {
                     >
                         <button
                             onClick={handleLogout}
-                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-indigo-100 transition-colors"
+                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-claw-100 transition-colors"
                         >
                             LOGOUT
                         </button>

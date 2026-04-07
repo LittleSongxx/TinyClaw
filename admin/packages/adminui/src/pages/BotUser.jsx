@@ -129,7 +129,7 @@ function BotUserListPage() {
                 <h2 className="text-2xl font-bold text-gray-800">{t("bot_user_manage")}</h2>
                 <button
                     onClick={() => setShowModal(true)}
-                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                    className="bg-claw-600 text-white px-4 py-2 rounded hover:bg-claw-700"
                 >
                     + {t("add_token")}
                 </button>
@@ -154,7 +154,7 @@ function BotUserListPage() {
                         value={userIdSearch}
                         onChange={handleUserIdSearchChange}
                         placeholder={t("user_id_placeholder")}
-                        className="w-full px-4 py-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring focus:border-blue-400"
+                        className="w-full px-4 py-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring focus:border-claw-400"
                     />
                 </div>
             </div>
@@ -242,7 +242,7 @@ function BotUserListPage() {
                     <div className="text-right">
                         <button
                             onClick={handleSubmitNewToken}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+                            className="bg-claw-600 hover:bg-claw-700 text-white px-4 py-2 rounded"
                         >
                             {t("submit")}
                         </button>

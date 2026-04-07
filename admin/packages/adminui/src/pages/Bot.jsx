@@ -254,7 +254,7 @@ function Bots() {
                 {!isRegister && (
                     <button
                         onClick={handleAddClick}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow"
+                        className="bg-claw-600 hover:bg-claw-700 text-white px-4 py-2 rounded shadow"
                     >
                         + {t("add_bot")}
                     </button>
@@ -267,11 +267,11 @@ function Bots() {
                     placeholder={t("address_placeholder")}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="w-full sm:w-64 px-4 py-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring focus:border-blue-400"
+                    className="w-full sm:w-64 px-4 py-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring focus:border-claw-400"
                 />
                 <button
                     onClick={handleSearch}
-                    className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                    className="px-4 py-2 bg-claw-500 text-white rounded hover:bg-claw-600"
                 >
                     {t("search")}
                 </button>
@@ -310,7 +310,7 @@ function Bots() {
                                     <>
                                         <button
                                             onClick={() => handleEditClick(bot.id)}
-                                            className="text-blue-600 hover:underline"
+                                            className="text-claw-600 hover:underline"
                                         >
                                             {t("edit")}
                                         </button>
@@ -322,7 +322,7 @@ function Bots() {
                                         </button>
                                         <button
                                             onClick={() => handleStopClick(bot.id)}
-                                            className="text-purple-600 hover:underline"
+                                            className="text-claw-700 hover:underline"
                                         >
                                             {t("stop")}
                                         </button>
@@ -370,7 +370,7 @@ function Bots() {
                     <div
                         onClick={() => setForm({ ...form, is_start: !form.is_start })}
                         className={`w-6 h-6 border rounded flex items-center justify-center cursor-pointer 
-            ${form.is_start ? "bg-blue-600 border-blue-600" : "bg-white border-gray-400"}`}
+            ${form.is_start ? "bg-claw-600 border-claw-600" : "bg-white border-gray-400"}`}
                     >
                         {form.is_start && (
                             <svg
@@ -402,21 +402,21 @@ function Bots() {
                                 placeholder="CA File"
                                 value={form.ca_file}
                                 onChange={(e) => setForm({ ...form, ca_file: e.target.value })}
-                                className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring focus:border-blue-400"
+                                className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring focus:border-claw-400"
                                 rows={3}
                             />
                             <textarea
                                 placeholder="KEY File"
                                 value={form.key_file}
                                 onChange={(e) => setForm({ ...form, key_file: e.target.value })}
-                                className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring focus:border-blue-400"
+                                className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring focus:border-claw-400"
                                 rows={3}
                             />
                             <textarea
                                 placeholder="CRT File"
                                 value={form.crt_file}
                                 onChange={(e) => setForm({ ...form, crt_file: e.target.value })}
-                                className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring focus:border-blue-400"
+                                className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring focus:border-claw-400"
                                 rows={3}
                             />
                         </div>
@@ -432,7 +432,7 @@ function Bots() {
                     </button>
                     <button
                         onClick={handleSave}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+                        className="bg-claw-600 hover:bg-claw-700 text-white px-4 py-2 rounded"
                     >
                         {t("save")}
                     </button>
@@ -463,7 +463,7 @@ function Bots() {
                     </button>
                     <button
                         onClick={handleRestart}
-                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                        className="px-4 py-2 bg-claw-600 text-white rounded hover:bg-claw-700"
                     >
                         {t("start")}
                     </button>

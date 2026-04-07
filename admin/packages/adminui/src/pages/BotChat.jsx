@@ -187,7 +187,7 @@ function BotRecordsPage() {
                 <h2 className="text-2xl font-bold text-gray-800">{t("bot_record_manage")}</h2>
                 <button
                     onClick={() => setIsModalOpen(true)}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700"
+                    className="px-4 py-2 bg-claw-600 text-white rounded-lg shadow hover:bg-claw-700"
                 >
                     {t("add_record")}
                 </button>
@@ -212,7 +212,7 @@ function BotRecordsPage() {
                         value={userIdSearch}
                         onChange={handleUserIdSearchChange}
                         placeholder={t("user_id_placeholder")}
-                        className="w-full px-4 py-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring focus:border-blue-400"
+                        className="w-full px-4 py-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring focus:border-claw-400"
                     />
                 </div>
             </div>
@@ -310,7 +310,7 @@ function BotRecordsPage() {
                     </button>
                     <button
                         onClick={insertRecords}
-                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                        className="px-4 py-2 bg-claw-600 text-white rounded hover:bg-claw-700"
                     >
                         {t("add")}
                     </button>

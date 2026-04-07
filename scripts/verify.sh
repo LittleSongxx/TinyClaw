@@ -20,11 +20,14 @@ HOST_ADMIN_PORT="${HOST_ADMIN_PORT:-${HOST_ADMIN_PORT_START:-18080}}"
 HTTP_BASE="http://127.0.0.1:${HOST_HTTP_PORT}"
 ADMIN_BASE="http://127.0.0.1:${HOST_ADMIN_PORT}"
 
-VERIFY_DOC_NAME="${VERIFY_DOC_NAME:-tinyclaw-live-verify.txt}"
-VERIFY_DOC_CONTENT="${VERIFY_DOC_CONTENT:-TinyClaw RAG v2 live verification document. TinyClaw uses PostgreSQL pgvector, Redis, and MinIO as the new knowledge stack.}"
-VERIFY_DOC_QUERY="${VERIFY_DOC_QUERY:-TinyClaw RAG v2 uses which storage components?}"
-VERIFY_TASK_USER_ID="${VERIFY_TASK_USER_ID:-9101}"
-VERIFY_MCP_USER_ID="${VERIFY_MCP_USER_ID:-9102}"
+VERIFY_RUN_ID="${VERIFY_RUN_ID:-$(date +%s)}"
+VERIFY_MARKER="${VERIFY_MARKER:-tinyclaw-verify-marker-${VERIFY_RUN_ID}}"
+VERIFY_DOC_NAME="${VERIFY_DOC_NAME:-tinyclaw-live-verify-${VERIFY_RUN_ID}.txt}"
+VERIFY_DOC_CONTENT="${VERIFY_DOC_CONTENT:-TinyClaw live verification marker: ${VERIFY_MARKER}. TinyClaw uses PostgreSQL pgvector, Redis, and MinIO as the new knowledge stack.}"
+VERIFY_DOC_QUERY="${VERIFY_DOC_QUERY:-${VERIFY_MARKER}}"
+VERIFY_USER_BASE="${VERIFY_USER_BASE:-$((100000 + (VERIFY_RUN_ID % 900000) * 10))}"
+VERIFY_TASK_USER_ID="${VERIFY_TASK_USER_ID:-$((VERIFY_USER_BASE + 1))}"
+VERIFY_MCP_USER_ID="${VERIFY_MCP_USER_ID:-$((VERIFY_USER_BASE + 2))}"
 
 request_json() {
   local method="$1"
@@ -91,9 +94,19 @@ fi
 
 echo "[8/8] Running retrieval debug"
 debug_payload="$(printf '{"query":"%s"}' "${VERIFY_DOC_QUERY}" | sed 's/\\/\\\\/g')"
-debug_response="$(request_json POST "${HTTP_BASE}/rag/retrieval/debug" "${debug_payload}")"
-if [[ "${debug_response}" != *"PostgreSQL pgvector"* && "${debug_response}" != *"Redis"* && "${debug_response}" != *"MinIO"* ]]; then
-  echo "Retrieval debug response does not include expected knowledge content" >&2
+debug_ok=false
+debug_response=""
+for _ in $(seq 1 30); do
+  debug_response="$(request_json POST "${HTTP_BASE}/rag/retrieval/debug" "${debug_payload}")"
+  if [[ "${debug_response}" == *"\"document_name\":\"${VERIFY_DOC_NAME}\""* && "${debug_response}" == *"${VERIFY_MARKER}"* ]]; then
+    debug_ok=true
+    break
+  fi
+  sleep 2
+done
+
+if [[ "${debug_ok}" != "true" ]]; then
+  echo "Retrieval debug response does not include the verification document" >&2
   echo "${debug_response}" >&2
   exit 1
 fi

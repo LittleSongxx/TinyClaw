@@ -26,8 +26,8 @@ function BotLogPage() {
             eventSourceRef.current.close();
         }
 
-        // ✅ 将 typ 参数加入请求 URL
-        const url = `http://127.0.0.1:18080/bot/log?id=${botId}&type=${typ}`;
+        // Reuse the current admin origin so dynamic host ports and auth cookies keep working.
+        const url = `/bot/log?id=${botId}&type=${typ}`;
         const es = new EventSource(url);
 
         es.onmessage = (event) => {
@@ -150,7 +150,7 @@ function BotLogPage() {
 
                     <select
                         id="logType"
-                        className="w-full px-4 py-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring focus:border-blue-400"
+                        className="w-full px-4 py-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring focus:border-claw-400"
                         value={typ}
                         onChange={(e) => {
                             const value = e.target.value === "all" ? "" : e.target.value;

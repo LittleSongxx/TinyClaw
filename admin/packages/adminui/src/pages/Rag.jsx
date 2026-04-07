@@ -352,7 +352,7 @@ export default function Rag() {
                     </button>
                     <button
                         onClick={openCreateTextModal}
-                        className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                        className="rounded bg-claw-600 px-4 py-2 text-white hover:bg-claw-700"
                     >
                         {t("add_text_document")}
                     </button>
@@ -378,7 +378,7 @@ export default function Rag() {
                         onClick={() => setActiveTab(tab.key)}
                         className={`rounded-full px-4 py-2 text-sm font-semibold ${
                             activeTab === tab.key
-                                ? "bg-blue-600 text-white"
+                                ? "bg-claw-600 text-white"
                                 : "bg-white text-gray-700 shadow"
                         }`}
                     >
@@ -432,7 +432,7 @@ export default function Rag() {
                                         {isEditableDocument(document) && (
                                             <button
                                                 onClick={() => openEditTextModal(document.name)}
-                                                className="text-blue-600 hover:underline"
+                                                className="text-claw-600 hover:underline"
                                             >
                                                 {t("edit")}
                                             </button>
@@ -534,7 +534,7 @@ export default function Rag() {
                             />
                             <button
                                 onClick={debugRetrieve}
-                                className="self-end rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                                className="self-end rounded bg-claw-600 px-4 py-2 text-white hover:bg-claw-700"
                             >
                                 {t("run_debug")}
                             </button>
@@ -586,7 +586,7 @@ export default function Rag() {
                                     <button
                                         key={run.id}
                                         onClick={() => loadRetrievalRun(run.id)}
-                                        className="w-full rounded border border-gray-200 p-3 text-left hover:border-blue-400 hover:bg-blue-50"
+                                        className="w-full rounded border border-gray-200 p-3 text-left hover:border-claw-400 hover:bg-claw-50"
                                     >
                                         <div className="mb-1 text-sm font-semibold text-gray-800">#{run.id} {run.status}</div>
                                         <div className="text-sm text-gray-600">{run.query_text}</div>
@@ -642,7 +642,7 @@ export default function Rag() {
                         </button>
                         <button
                             onClick={saveTextDocument}
-                            className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                            className="rounded bg-claw-600 px-4 py-2 text-white hover:bg-claw-700"
                         >
                             {t("save")}
                         </button>

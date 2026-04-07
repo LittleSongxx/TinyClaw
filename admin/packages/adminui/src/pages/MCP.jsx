@@ -5,6 +5,13 @@ import BotSelector from "../components/BotSelector";
 import ConfirmModal from "../components/ConfirmModal.jsx";
 import Editor from "@monaco-editor/react";
 import {useTranslation} from "react-i18next";
+import {getMcpDescription} from "../utils/mcpDescriptions";
+import {
+    getMcpAvailability,
+    getMcpAvailabilityCounts,
+    MCP_AVAILABILITY_ORDER,
+    serviceMatchesAvailabilityFilter,
+} from "../utils/mcpAvailability";
 
 function BotMcpListPage() {
     const [botId, setBotId] = useState(null);
@@ -18,13 +25,18 @@ function BotMcpListPage() {
     const [editingService, setEditingService] = useState(null);
     const [editJson, setEditJson] = useState("");
     const [prepareSearch, setPrepareSearch] = useState("");
+    const [descriptionLanguage, setDescriptionLanguage] = useState("zh");
+    const [prepareDescriptionLanguage, setPrepareDescriptionLanguage] = useState("zh");
+    const [availabilityFilter, setAvailabilityFilter] = useState(null);
+    const [prepareAvailabilityFilter, setPrepareAvailabilityFilter] = useState(null);
     const [MCPToDelete, setMCPToDelete] = useState(null);
     const [confirmVisible, setConfirmVisible] = useState(false);
     const [toast, setToast] = useState({ show: false, message: "", type: "error" });
 
     const [confirmSyncVisible, setConfirmSyncVisible] = useState(false);
 
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
+    const availabilityLanguage = i18n.resolvedLanguage?.startsWith("zh") ? "zh" : "en";
 
     const handleSyncClick = () => {
         setConfirmSyncVisible(true); // 显示弹窗
@@ -41,11 +53,11 @@ function BotMcpListPage() {
             });
             const data = await res.json();
             if (data.code !== 0) return showToast(data.message || "Failed to fetch services");
-            showToast("Service synced", "success");
+            showToast(t("service_synced"), "success");
             setConfirmSyncVisible(false);
             await fetchMcpServices();
         } catch (error) {
-            showToast("Request error: " + err.message);
+            showToast(`${t("request_error")}: ${error.message}`);
         }
     };
 
@@ -59,14 +71,25 @@ function BotMcpListPage() {
         }
     }, [botId]);
 
+    const normalizeMcpServices = (inspectData) => {
+        const mcpObj = inspectData?.mcpServers || {};
+        const availabilityObj = inspectData?.availability || {};
+
+        return Object.entries(mcpObj)
+            .map(([name, config]) => ({
+                name,
+                config,
+                availability: availabilityObj[name] || null,
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    };
+
     const fetchMcpServices = async () => {
         try {
             const res = await fetch(`/bot/mcp/get?id=${botId}`);
             const data = await res.json();
             if (data.code !== 0) return showToast(data.message || "Failed to fetch services");
-            const mcpObj = data.data.mcpServers || {};
-            const entries = Object.entries(mcpObj).map(([name, config]) => ({ name, config }));
-            setMcpServices(entries);
+            setMcpServices(normalizeMcpServices(data.data));
         } catch (err) {
             showToast("Request error: " + err.message);
         }
@@ -77,9 +100,7 @@ function BotMcpListPage() {
             const res = await fetch(`/bot/mcp/prepare?id=${botId}`);
             const data = await res.json();
             if (data.code !== 0) return showToast(data.message || "Failed to prepare");
-            const mcpObj = data.data.mcpServers || {};
-            const entries = Object.entries(mcpObj).map(([name, config]) => ({ name, config }));
-            setPrepareServices(entries);
+            setPrepareServices(normalizeMcpServices(data.data));
             setPrepareTab("list");
             setShowPrepareModal(true);
         } catch (err) {
@@ -106,7 +127,7 @@ function BotMcpListPage() {
 
             const data = await res.json();
             if (data.code !== 0) return showToast(data.message || "Failed to add");
-            showToast("Service added", "success");
+            showToast(t("service_added"), "success");
             setShowPrepareModal(false);
             await fetchMcpServices();
         } catch (err) {
@@ -134,7 +155,7 @@ function BotMcpListPage() {
             const data = await res.json();
             if (data.code !== 0) return showToast(data.message || "Failed to update MCP");
 
-            showToast("Service updated", "success");
+            showToast(t("service_updated"), "success");
             setShowEditModal(false);
             await fetchMcpServices();
         } catch (err) {
@@ -155,9 +176,16 @@ function BotMcpListPage() {
         }
     };
 
-    const filteredPrepareServices = prepareServices.filter(svc =>
+    const filterServicesByAvailability = (services, activeStatus) =>
+        services.filter((svc) => serviceMatchesAvailabilityFilter(svc, activeStatus));
+
+    const filteredMcpServices = filterServicesByAvailability(mcpServices, availabilityFilter);
+
+    const searchedPrepareServices = prepareServices.filter(svc =>
         svc.name.toLowerCase().includes(prepareSearch.toLowerCase())
     );
+
+    const filteredPrepareServices = filterServicesByAvailability(searchedPrepareServices, prepareAvailabilityFilter);
 
     const handleDeleteClick = (name) => {
         setMCPToDelete(name);
@@ -179,13 +207,155 @@ function BotMcpListPage() {
                 showToast(data.message || "Failed to delete bot");
                 return;
             }
-            showToast("Bot deleted", "success");
+            showToast(t("service_deleted"), "success");
             setConfirmVisible(false);
             setMCPToDelete(null);
             await fetchMcpServices();
         } catch (error) {
             showToast("Request error: " + error.message);
         }
+    };
+
+    const renderServiceDescription = (svc, language) =>
+        getMcpDescription(svc.name, svc.config.description, language);
+
+    const getServiceAvailability = (svc) =>
+        getMcpAvailability(svc, availabilityLanguage);
+
+    const renderAvailabilityBadge = (status, showCount = null) => {
+        const styleMap = {
+            ready: "border-emerald-200 bg-emerald-50 text-emerald-700",
+            secret: "border-amber-200 bg-amber-50 text-amber-700",
+            runtime: "border-sky-200 bg-sky-50 text-sky-700",
+            setup: "border-rose-200 bg-rose-50 text-rose-700",
+        };
+
+        return (
+            <span
+                key={`${status}-${showCount ?? "plain"}`}
+                className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${styleMap[status]}`}
+            >
+                {t(`mcp_status_${status}`)}
+                {showCount !== null ? ` ${showCount}` : ""}
+            </span>
+        );
+    };
+
+    const renderAvailabilityFilterBadge = (status, count, activeStatus, onChange) => {
+        const styleMap = {
+            ready: {
+                active: "border-emerald-500 bg-emerald-500 text-white shadow-sm",
+                inactive: "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100",
+            },
+            secret: {
+                active: "border-amber-500 bg-amber-500 text-white shadow-sm",
+                inactive: "border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300 hover:bg-amber-100",
+            },
+            runtime: {
+                active: "border-sky-500 bg-sky-500 text-white shadow-sm",
+                inactive: "border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-300 hover:bg-sky-100",
+            },
+            setup: {
+                active: "border-rose-500 bg-rose-500 text-white shadow-sm",
+                inactive: "border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100",
+            },
+        };
+
+        const isActive = activeStatus === status;
+        const isDisabled = count === 0 && !isActive;
+        const variant = styleMap[status];
+
+        return (
+            <button
+                key={`${status}-${count}`}
+                type="button"
+                disabled={isDisabled}
+                onClick={() => onChange(isActive ? null : status)}
+                className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold transition ${
+                    isActive ? variant.active : variant.inactive
+                } ${isDisabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
+            >
+                {t(`mcp_status_${status}`)} {count}
+            </button>
+        );
+    };
+
+    const renderAllFilterBadge = (count, activeStatus, onChange) => {
+        const isActive = activeStatus === null;
+
+        return (
+            <button
+                type="button"
+                onClick={() => onChange(null)}
+                className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold transition ${
+                    isActive
+                        ? "border-claw-500 bg-claw-500 text-white shadow-sm"
+                        : "border-claw-200 bg-white text-claw-700 hover:border-claw-300 hover:bg-claw-50"
+                }`}
+            >
+                {t("all_status")} {count}
+            </button>
+        );
+    };
+
+    const renderAvailabilityInfo = (svc, language) => {
+        const availability = getServiceAvailability(svc);
+
+        return (
+            <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                    {availability.statuses.map((status) => renderAvailabilityBadge(status))}
+                </div>
+                <div>{renderServiceDescription(svc, language)}</div>
+                <div className="text-xs text-gray-500">{availability.note}</div>
+            </div>
+        );
+    };
+
+    const renderDescriptionLanguageToggle = (selectedLanguage, onChange) => (
+        <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-gray-600">{t("description_language")}</span>
+            <div className="inline-flex rounded-full border border-claw-200 bg-white p-1 shadow-sm">
+                <button
+                    type="button"
+                    onClick={() => onChange("zh")}
+                    className={`rounded-full px-3 py-1 text-sm font-medium transition ${
+                        selectedLanguage === "zh"
+                            ? "bg-claw-600 text-white shadow-sm"
+                            : "text-gray-600 hover:text-claw-700"
+                    }`}
+                >
+                    {t("chinese")}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => onChange("en")}
+                    className={`rounded-full px-3 py-1 text-sm font-medium transition ${
+                        selectedLanguage === "en"
+                            ? "bg-claw-600 text-white shadow-sm"
+                            : "text-gray-600 hover:text-claw-700"
+                    }`}
+                >
+                    {t("english")}
+                </button>
+            </div>
+        </div>
+    );
+
+    const renderAvailabilityLegend = (services, activeStatus, onChange) => {
+        const counts = getMcpAvailabilityCounts(services);
+
+        return (
+            <div className="rounded-xl border border-claw-100 bg-claw-50/70 p-3">
+                <div className="text-sm font-medium text-gray-700">{t("mcp_availability_hint")}</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                    {renderAllFilterBadge(services.length, activeStatus, onChange)}
+                    {MCP_AVAILABILITY_ORDER.map((status) =>
+                        renderAvailabilityFilterBadge(status, counts[status], activeStatus, onChange)
+                    )}
+                </div>
+            </div>
+        );
     };
 
     return (
@@ -196,10 +366,11 @@ function BotMcpListPage() {
 
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-gray-800">{t("mcp_manage")}</h2>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-3">
+                    {renderDescriptionLanguageToggle(descriptionLanguage, setDescriptionLanguage)}
                     <button
                         onClick={handlePrepareClick}
-                        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                        className="bg-claw-600 text-white px-4 py-2 rounded hover:bg-claw-700"
                     >
                         + {t("add_mcp")}
                     </button>
@@ -223,6 +394,10 @@ function BotMcpListPage() {
                 </div>
             </div>
 
+            <div className="mb-4">
+                {renderAvailabilityLegend(mcpServices, availabilityFilter, setAvailabilityFilter)}
+            </div>
+
             <div className="overflow-x-auto rounded-lg shadow">
                 <table className="min-w-full bg-white divide-y divide-gray-200">
                     <thead className="bg-gray-50">
@@ -234,13 +409,13 @@ function BotMcpListPage() {
                     </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                    {mcpServices.map((svc) => (
+                    {filteredMcpServices.map((svc) => (
                         <tr key={svc.name} className="hover:bg-gray-50">
                             <td className="px-6 py-4 text-sm text-gray-800">{svc.name}</td>
-                            <td className="px-6 py-4 text-sm text-gray-800 whitespace-pre-line">{svc.config.description}</td>
+                            <td className="px-6 py-4 text-sm text-gray-800 whitespace-pre-line">{renderAvailabilityInfo(svc, descriptionLanguage)}</td>
                             <td className="px-6 py-4 text-sm text-gray-800">{svc.config.disabled ? t("disable") : t("enable")}</td>
                             <td className="px-6 py-4 text-sm space-x-3">
-                                <button onClick={() => openEditModal(svc)} className="text-blue-600 hover:underline">{t("edit")}</button>
+                                <button onClick={() => openEditModal(svc)} className="text-claw-600 hover:underline">{t("edit")}</button>
                                 {svc.config.disabled ? (
                                     <button onClick={() => toggleDisableService(svc.name, false)} className="text-green-600 hover:underline">{t("enable")}</button>
                                 ) : (
@@ -256,7 +431,7 @@ function BotMcpListPage() {
 
             <Modal
                 visible={showEditModal}
-                title="Edit MCP Service"
+                title={t("edit_mcp_service")}
                 onClose={() => setShowEditModal(false)}
             >
                 <div className="space-y-4">
@@ -273,7 +448,7 @@ function BotMcpListPage() {
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">
-                            Config JSON
+                            {t("config_json")}
                         </label>
                         <div className="border rounded">
                             <Editor
@@ -294,7 +469,7 @@ function BotMcpListPage() {
                     <div className="text-right">
                         <button
                             onClick={handleUpdateService}
-                            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                            className="bg-claw-600 text-white px-4 py-2 rounded hover:bg-claw-700"
                         >
                             {t("update")}
                         </button>
@@ -302,22 +477,28 @@ function BotMcpListPage() {
                 </div>
             </Modal>
 
-            <Modal visible={showPrepareModal} title="Prepared MCP Services" onClose={() => setShowPrepareModal(false)}>
+            <Modal visible={showPrepareModal} title={t("prepared_mcp_services")} onClose={() => setShowPrepareModal(false)}>
                 <div className="max-h-[80vh] overflow-y-auto">
-                    <div className="flex space-x-4 mb-4 border-b">
-                        <button className={`pb-2 ${prepareTab === "list" ? "border-b-2 border-blue-500 font-semibold" : "text-gray-500"}`} onClick={() => setPrepareTab("list")}>{t("service_list")}</button>
-                        <button className={`pb-2 ${prepareTab === "json" ? "border-b-2 border-blue-500 font-semibold" : "text-gray-500"}`} onClick={() => setPrepareTab("json")}>{t("json_edit")}</button>
+                    <div className="mb-4 flex items-center justify-between gap-4 border-b">
+                        <div className="flex space-x-4">
+                            <button className={`pb-2 ${prepareTab === "list" ? "border-b-2 border-claw-500 font-semibold" : "text-gray-500"}`} onClick={() => setPrepareTab("list")}>{t("service_list")}</button>
+                            <button className={`pb-2 ${prepareTab === "json" ? "border-b-2 border-claw-500 font-semibold" : "text-gray-500"}`} onClick={() => setPrepareTab("json")}>{t("json_edit")}</button>
+                        </div>
+                        {renderDescriptionLanguageToggle(prepareDescriptionLanguage, setPrepareDescriptionLanguage)}
                     </div>
 
                     {prepareTab === "list" && (
                         <>
                             <div className="mb-4">
+                                {renderAvailabilityLegend(searchedPrepareServices, prepareAvailabilityFilter, setPrepareAvailabilityFilter)}
+                            </div>
+                            <div className="mb-4">
                                 <input
                                     type="text"
-                                    placeholder="Search service name"
+                                    placeholder={t("search_service_name")}
                                     value={prepareSearch}
                                     onChange={(e) => setPrepareSearch(e.target.value)}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring focus:border-blue-400"
+                                    className="w-full px-4 py-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring focus:border-claw-400"
                                 />
                             </div>
                             <table className="min-w-full bg-white divide-y divide-gray-200">
@@ -332,9 +513,9 @@ function BotMcpListPage() {
                                 {filteredPrepareServices.map((svc) => (
                                     <tr key={svc.name} className="hover:bg-gray-50">
                                         <td className="px-6 py-4 text-sm text-gray-800">{svc.name}</td>
-                                        <td className="px-6 py-4 text-sm text-gray-800 whitespace-pre-line">{svc.config.description}</td>
+                                        <td className="px-6 py-4 text-sm text-gray-800 whitespace-pre-line">{renderAvailabilityInfo(svc, prepareDescriptionLanguage)}</td>
                                         <td className="px-6 py-4 text-sm">
-                                            <button onClick={() => handleAddPreparedService(svc.name, svc.config)} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded">{t("add")}</button>
+                                            <button onClick={() => handleAddPreparedService(svc.name, svc.config)} className="bg-claw-600 hover:bg-claw-700 text-white px-3 py-1 rounded">{t("add")}</button>
                                         </td>
                                     </tr>
                                 ))}
@@ -346,7 +527,7 @@ function BotMcpListPage() {
                     {prepareTab === "json" && (
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">Service Name</label>
+                                <label className="block text-sm font-medium text-gray-700">{t("service_name")}</label>
                                 <input
                                     type="text"
                                     value={selectedPreparedService || ""}
@@ -388,13 +569,13 @@ function BotMcpListPage() {
             </Modal>
             <ConfirmModal
                 visible={confirmVisible}
-                message="Are you sure you want to delete this bot?"
+                message={t("delete_mcp_confirm")}
                 onConfirm={confirmDelete}
                 onCancel={cancelDelete}
             />
             <ConfirmModal
                 visible={confirmSyncVisible}
-                message="Are you sure you want to sync bots?"
+                message={t("sync_mcp_confirm")}
                 onConfirm={confirmSync}
                 onCancel={cancelSync}
             />

@@ -248,7 +248,7 @@ export default function Runs() {
                                 <td className="px-4 py-4 text-sm text-gray-800 space-x-3">
                                     <button
                                         onClick={() => openRunDetail(run.id)}
-                                        className="text-blue-600 hover:underline"
+                                        className="text-claw-600 hover:underline"
                                     >
                                         {t("view")}
                                     </button>

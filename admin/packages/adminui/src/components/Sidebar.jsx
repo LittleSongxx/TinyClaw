@@ -38,14 +38,14 @@ export default function Sidebar() {
 
     return (
         <div
-            className={`h-full bg-gradient-to-b from-indigo-700 via-indigo-800 to-indigo-900 p-4 shadow-lg text-gray-100 transition-all duration-300 ${
+            className={`h-full bg-gradient-to-b from-claw-700 via-claw-800 to-claw-900 p-4 shadow-lg text-gray-100 transition-all duration-300 ${
                 collapsed ? "w-20" : "w-60"
             }`}
         >
             <div className="flex justify-center">
                 <button
                     onClick={() => setCollapsed(!collapsed)}
-                    className="text-white p-1 rounded hover:bg-indigo-600 transition"
+                    className="text-white p-1 rounded hover:bg-claw-700 transition"
                 >
                     {collapsed ? <ChevronLast size={20} /> : <ChevronFirst size={20} />}
                 </button>
@@ -63,7 +63,7 @@ export default function Sidebar() {
                             } px-3 py-3 rounded-lg text-sm font-semibold transition-colors ${
                                 isActive
                                     ? "bg-white bg-opacity-20 text-white shadow-md"
-                                    : "text-indigo-300 hover:bg-white hover:bg-opacity-30 hover:text-white"
+                                    : "text-claw-200 hover:bg-white hover:bg-opacity-30 hover:text-white"
                             }`}
                         >
                             <Icon size={20} />

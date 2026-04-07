@@ -87,7 +87,7 @@ export default function DashboardPage() {
         return parts.join(' ');
     }
 
-    const buildChartData = (dayCountArray, color = "rgb(59 130 246)") => {
+    const buildChartData = (dayCountArray, color = "rgb(216 58 63)") => {
         if (!dayCountArray || dayCountArray.length === 0) {
             return {
                 labels: [],
@@ -146,30 +146,30 @@ export default function DashboardPage() {
                     <div className="flex space-x-6 mb-4">
                         <div className="flex-1 bg-white rounded shadow p-4 text-center flex flex-col items-center">
                             <div className="text-gray-500 mb-2 flex items-center justify-center space-x-2">
-                                <ClipboardList className="text-blue-600 w-6 h-6"/>
+                                <ClipboardList className="text-claw-600 w-6 h-6"/>
                                 <span>{t("message_num")}</span>
                             </div>
-                            <div className="text-3xl font-semibold text-blue-700">
+                            <div className="text-3xl font-semibold text-claw-700">
                                 {loading ? "Loading..." : dashboardData?.record_count ?? "-"}
                             </div>
                         </div>
 
                         <div className="flex-1 bg-white rounded shadow p-4 text-center flex flex-col items-center">
                             <div className="text-gray-500 mb-2 flex items-center justify-center space-x-2">
-                                <Users className="text-green-600 w-6 h-6"/>
+                                <Users className="text-claw-500 w-6 h-6"/>
                                 <span>{t("user_num")}</span>
                             </div>
-                            <div className="text-3xl font-semibold text-green-700">
+                            <div className="text-3xl font-semibold text-claw-600">
                                 {loading ? "Loading..." : dashboardData?.user_count ?? "-"}
                             </div>
                         </div>
 
                         <div className="flex-1 bg-white rounded shadow p-4 text-center flex flex-col items-center">
                             <div className="text-gray-500 mb-2 flex items-center justify-center space-x-2">
-                                <Bot className="text-black-600 w-6 h-6"/>
+                                <Bot className="text-claw-800 w-6 h-6"/>
                                 <span>{t("running_time")}</span>
                             </div>
-                            <div className="text-3xl font-semibold text-black-700">
+                            <div className="text-3xl font-semibold text-claw-900">
                                 {loading ? "Loading..." : formatDurationFromTimestamp(dashboardData?.start_time)}
                             </div>
                         </div>
@@ -183,7 +183,7 @@ export default function DashboardPage() {
                                 onClick={() => setDayRange(d)}
                                 className={`mr-2 px-4 py-1 rounded ${
                                     dayRange === d
-                                        ? "bg-blue-600 text-white"
+                                        ? "bg-claw-600 text-white"
                                         : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                                 }`}
                             >
@@ -199,7 +199,7 @@ export default function DashboardPage() {
                                 <div className="text-center text-gray-500 py-16">Loading chart...</div>
                             ) : (
                                 <Line
-                                    data={buildChartData(dashboardData.record_day_count, "rgb(59 130 246)")}
+                                    data={buildChartData(dashboardData.record_day_count, "rgb(216 58 63)")}
                                     options={chartOptions}
                                 />
                             )}
@@ -211,7 +211,7 @@ export default function DashboardPage() {
                                 <div className="text-center text-gray-500 py-16">Loading chart...</div>
                             ) : (
                                 <Line
-                                    data={buildChartData(dashboardData.user_day_count, "rgb(22 163 74)")}
+                                    data={buildChartData(dashboardData.user_day_count, "rgb(183 43 51)")}
                                     options={chartOptions}
                                 />
                             )}

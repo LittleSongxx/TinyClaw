@@ -113,12 +113,12 @@ function ConfigForm({ botId }) {
                                         type="text"
                                         value={value ?? ""}
                                         onChange={(e) => handleChange(sectionName, key, e.target.value)}
-                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent text-sm"
+                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-claw-300 focus:border-transparent text-sm"
                                     />
 
                                     <button
                                         onClick={() => handleSaveSingle(sectionName, key)}
-                                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm transition"
+                                        className="px-3 py-1 bg-claw-600 hover:bg-claw-700 text-white rounded-md text-sm transition"
                                     >
                                         {t("save")}
                                     </button>

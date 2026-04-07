@@ -141,7 +141,7 @@ function Users() {
                 <h2 className="text-2xl font-bold text-gray-800">{t("user_manage")}</h2>
                 <button
                     onClick={handleAddClick}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow"
+                    className="bg-claw-600 hover:bg-claw-700 text-white px-4 py-2 rounded shadow"
                 >
                     + {t("add_user")}
                 </button>
@@ -153,11 +153,11 @@ function Users() {
                     placeholder={t("username_placeholder")}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="w-full sm:w-64 px-4 py-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring focus:border-blue-400"
+                    className="w-full sm:w-64 px-4 py-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring focus:border-claw-400"
                 />
                 <button
                     onClick={handleSearch}
-                    className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                    className="px-4 py-2 bg-claw-500 text-white rounded hover:bg-claw-600"
                 >
                     {t("search")}
                 </button>
@@ -191,7 +191,7 @@ function Users() {
                             <td className="px-6 py-4 space-x-2">
                                 <button
                                     onClick={() => handleEditClick(user)}
-                                    className="text-blue-600 hover:underline text-sm"
+                                    className="text-claw-600 hover:underline text-sm"
                                 >
                                     {t("edit")}
                                 </button>
@@ -224,7 +224,7 @@ function Users() {
                         value={form.username}
                         onChange={(e) => setForm({ ...form, username: e.target.value })}
                         disabled={!!editingUser}
-                        className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring focus:border-blue-400"
+                        className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring focus:border-claw-400"
                     />
                 </div>
 
@@ -234,7 +234,7 @@ function Users() {
                         placeholder="Password"
                         value={form.password}
                         onChange={(e) => setForm({ ...form, password: e.target.value })}
-                        className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring focus:border-blue-400"
+                        className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring focus:border-claw-400"
                     />
                 </div>
 
@@ -247,7 +247,7 @@ function Users() {
                     </button>
                     <button
                         onClick={handleSave}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+                        className="bg-claw-600 hover:bg-claw-700 text-white px-4 py-2 rounded"
                     >
                         {t("save")}
                     </button>

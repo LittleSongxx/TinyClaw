@@ -9,10 +9,10 @@ var MCPConf = &param.McpClientGoConfig{
 			Url:         "http://playwright-mcp:8931/mcp",
 		},
 		"filesystem": {
-			Command:     "npx",
-			Description: "supports file operations such as reading, writing, deleting, renaming, moving, and listing files and directories.\n",
+			Command:     "mcp-server-filesystem",
+			Description: "supports file and directory operations for the mounted local workspace, data, and log directories.",
 			Args: []string{
-				"-y", "@modelcontextprotocol/server-filesystem", "/path/to/your/directory",
+				"/workspace", "/app/data", "/app/log",
 			},
 		},
 		"chrome-mcp-server": {
@@ -46,25 +46,22 @@ var MCPConf = &param.McpClientGoConfig{
 			Args:        []string{"-y", "@snjyor/binance-mcp@latest"},
 		},
 		"github": {
-			Description: "manage Github base on GitHub API.",
-			Command:     "docker",
-			Args:        []string{"run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "ghcr.io/github/github-mcp-server"},
-			Env: map[string]string{
-				"GITHUB_PERSONAL_ACCESS_TOKEN": "<YOUR_TOKEN>",
-			},
+			Description: "Manage GitHub through GitHub's official MCP server. Requires GITHUB_PERSONAL_ACCESS_TOKEN in the app environment.",
+			Command:     "github-mcp-server",
+			Args:        []string{"stdio"},
+			Disabled:    true,
 		},
 		"fetch": {
-			Command:     "uvx",
-			Args:        []string{"mcp-server-fetch"},
-			Description: "Web content crawling",
+			Command: "mcp-server-fetch",
+			Env: map[string]string{
+				"REQUESTS_CA_BUNDLE": "/etc/ssl/certs/ca-certificates.crt",
+			},
+			Description: "Crawls and summarizes web content for lightweight network retrieval tasks.",
 		},
 		"amap": {
-			Command: "npx",
-			Args:    []string{"-y", "@amap/amap-maps-mcp-server"},
-			Env: map[string]string{
-				"AMAP_MAPS_API_KEY": "",
-			},
-			Description: "get geo info from amap service",
+			Command:     "mcp-amap",
+			Description: "Gets geolocation and map data from AMap. Requires AMAP_MAPS_API_KEY in the app environment.",
+			Disabled:    true,
 		},
 		"mcp-server-alipay": {
 			Command: "npx",
@@ -108,14 +105,16 @@ var MCPConf = &param.McpClientGoConfig{
 			},
 			Description: "get geo info from baidu map service",
 		},
-		"tavily": {
-			Command: "npx",
-			Args:    []string{"-y", "tavily-mcp@0.1.4"},
-			Env: map[string]string{
-				"TAVILY_API_KEY": "your-api-key-here",
+		"bocha-search": {
+			Command: "python",
+			Args: []string{
+				"/app/scripts/bocha_search_mcp.py",
 			},
-			Disabled:    false,
-			Description: "search engine optimized for LLMs and RAG, aimed at efficient, quick and persistent search result",
+			Env: map[string]string{
+				"REQUESTS_CA_BUNDLE": "/etc/ssl/certs/ca-certificates.crt",
+			},
+			Description: "Searches the public web with Bocha AI. Requires BOCHA_API_KEY in the app environment.",
+			Disabled:    true,
 		},
 		"oceanbase": {
 			Command: "uvx",
@@ -145,9 +144,8 @@ var MCPConf = &param.McpClientGoConfig{
 			Description: "deploying HTML content, folder, and zip file to EdgeOne Pages and obtaining a publicly accessible URL.",
 		},
 		"time": {
-			Command:     "uvx",
-			Args:        []string{"mcp-server-time"},
-			Description: "Processing time related functions",
+			Command:     "mcp-server-time",
+			Description: "Provides current time, timezone conversion, and other time-related functions.",
 		},
 		"gitlab": {
 			Command: "npx",
@@ -263,9 +261,11 @@ var MCPConf = &param.McpClientGoConfig{
 			Description: " integrates with Google Drive to allow listing, reading, and searching files, as well as the ability to read and write to Google Sheets.",
 		},
 		"memory": {
-			Command:     "npx",
-			Args:        []string{"-y", "@modelcontextprotocol/server-memory"},
-			Description: "A basic implementation of persistent memory using a local knowledge graph. This lets AI remember information about the user across chats.",
+			Command: "mcp-server-memory",
+			Env: map[string]string{
+				"MEMORY_FILE_PATH": "/app/data/mcp/memory/memory.jsonl",
+			},
+			Description: "Persists long-term memory in a local knowledge graph stored under /app/data.",
 		},
 		"brave-search": {
 			Command: "npx",
@@ -314,13 +314,10 @@ var MCPConf = &param.McpClientGoConfig{
 			Description: "integrates with EverArt's AI models to generate both vector and raster images.",
 		},
 		"arxiv": {
-			Command: "uv",
+			Command: "arxiv-mcp-server",
 			Args: []string{
-				"tool",
-				"run",
-				"arxiv-mcp-server",
 				"--storage-path",
-				"/path/to/paper/storage",
+				"/app/data/mcp/arxiv",
 			},
 			Description: "provides a bridge between AI assistants and arXiv's research repository",
 		},

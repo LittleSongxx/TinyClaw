@@ -27,12 +27,12 @@ export default function LoginForm() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-tr from-indigo-900 via-purple-900 to-pink-900 px-6">
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-tr from-claw-800 via-claw-600 to-claw-500 px-6">
             <form
                 onSubmit={handleSubmit}
                 className="bg-white bg-opacity-90 backdrop-blur-md rounded-2xl shadow-xl p-10 max-w-md w-full animate-fadeIn"
             >
-                <h2 className="text-4xl font-extrabold text-center mb-8 text-indigo-700 drop-shadow-lg">
+                <h2 className="text-4xl font-extrabold text-center mb-8 text-claw-700 drop-shadow-lg">
                     {t("welcome_back")}
                 </h2>
 
@@ -50,7 +50,7 @@ export default function LoginForm() {
                         onChange={(e) => setUsername(e.target.value)}
                         required
                         className="peer w-full px-5 py-3 rounded-xl border border-gray-300
-              focus:outline-none focus:ring-4 focus:ring-indigo-400
+              focus:outline-none focus:ring-4 focus:ring-claw-300
               transition transform duration-200
               focus:shadow-lg focus:scale-105"
                     />
@@ -64,7 +64,7 @@ export default function LoginForm() {
                         onChange={(e) => setPassword(e.target.value)}
                         required
                         className="peer w-full px-5 py-3 rounded-xl border border-gray-300
-              focus:outline-none focus:ring-4 focus:ring-indigo-400
+              focus:outline-none focus:ring-4 focus:ring-claw-300
               transition transform duration-200
               focus:shadow-lg focus:scale-105"
                     />
@@ -72,14 +72,14 @@ export default function LoginForm() {
 
                 <button
                     type="submit"
-                    className="w-full py-3 bg-indigo-600 text-white font-semibold rounded-xl shadow-lg
-            hover:bg-indigo-700 active:scale-95 transition-transform duration-150"
+                    className="w-full py-3 bg-claw-600 text-white font-semibold rounded-xl shadow-lg
+            hover:bg-claw-700 active:scale-95 transition-transform duration-150"
                 >
                     {t("login")}
                 </button>
 
                 <p className="mt-6 text-center text-gray-600 text-sm select-none">
-                    Open source at <a href="https://github.com/LittleSongxx/TinyClaw" className="font-bold text-indigo-600">LittleSongxx/TinyClaw</a>
+                    Open source at <a href="https://github.com/LittleSongxx/TinyClaw" className="font-bold text-claw-600">LittleSongxx/TinyClaw</a>
                 </p>
             </form>
         </div>

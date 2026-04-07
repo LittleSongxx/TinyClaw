@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+mkdir -p /app/data/mcp/memory /app/data/mcp/arxiv
+
 wait_for_http() {
   local name="$1"
   local url="$2"
@@ -18,6 +20,43 @@ wait_for_http() {
 
   echo "Timed out waiting for ${name} at ${url}" >&2
   return 1
+}
+
+wait_for_tcp() {
+  local name="$1"
+  local host="$2"
+  local port="$3"
+  local attempts="${4:-120}"
+
+  for _ in $(seq 1 "${attempts}"); do
+    if exec 3<>"/dev/tcp/${host}/${port}" 2>/dev/null; then
+      exec 3<&-
+      exec 3>&-
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "Timed out waiting for ${name} at ${host}:${port}" >&2
+  return 1
+}
+
+split_host_port() {
+  local value="$1"
+  local default_port="$2"
+
+  value="${value#*://}"
+  value="${value%%/*}"
+  value="${value##*@}"
+
+  local host="${value}"
+  local port="${default_port}"
+  if [[ "${value}" == *:* ]]; then
+    host="${value%%:*}"
+    port="${value##*:}"
+  fi
+
+  printf '%s %s\n' "${host}" "${port}"
 }
 
 http_status() {
@@ -56,6 +95,21 @@ http_status() {
   set -- ${status_line}
   echo "${2:-000}"
 }
+
+if [[ -n "${POSTGRES_DSN:-}" && -n "${REDIS_ADDR:-}" && -n "${MINIO_ENDPOINT:-}" ]]; then
+  read -r postgres_host postgres_port < <(split_host_port "${POSTGRES_DSN}" "5432")
+  wait_for_tcp "PostgreSQL" "${postgres_host}" "${postgres_port}"
+
+  read -r redis_host redis_port < <(split_host_port "${REDIS_ADDR}" "6379")
+  wait_for_tcp "Redis" "${redis_host}" "${redis_port}"
+
+  read -r minio_host minio_port < <(split_host_port "${MINIO_ENDPOINT}" "9000")
+  minio_scheme="http"
+  if [[ "${MINIO_USE_SSL:-false}" == "true" ]]; then
+    minio_scheme="https"
+  fi
+  wait_for_http "MinIO" "${minio_scheme}://${minio_host}:${minio_port}/minio/health/live" "200"
+fi
 
 if [[ "${EMBEDDING_TYPE:-}" == "huggingface" && -n "${EMBEDDING_BASE_URL:-}" ]]; then
   wait_for_http "HF embeddings" "${EMBEDDING_BASE_URL%/}/health" "200"

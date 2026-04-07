@@ -122,7 +122,7 @@ function BotSelector({ value, onChange }) {
                 }}
                 onFocus={() => setDropdownOpen(true)}
                 placeholder="Search and select bot"
-                className="w-full px-4 py-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring focus:border-blue-400"
+                className="w-full px-4 py-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring focus:border-claw-400"
             />
             {dropdownOpen && (
                 <ul className="absolute z-10 mt-1 w-full max-h-48 overflow-auto bg-white border border-gray-300 rounded shadow-lg">
@@ -131,7 +131,7 @@ function BotSelector({ value, onChange }) {
                             <li
                                 key={bot.id}
                                 onClick={() => handleSelectBot(bot)}
-                                className="px-4 py-2 cursor-pointer hover:bg-blue-100"
+                                className="px-4 py-2 cursor-pointer hover:bg-claw-100"
                             >
                                 {bot.name || bot.address}
                             </li>

@@ -1,8 +1,8 @@
 services:
   hf-embeddings:
-    image: ghcr.io/huggingface/text-embeddings-inference:89-1.9
+    # Use the CPU image by default for maximum compatibility across hosts.
+    image: ${HF_EMBEDDINGS_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-1.9}
     restart: unless-stopped
-    gpus: all
     command:
       - --model-id
       - ${EMBEDDING_MODEL_ID:-BAAI/bge-small-zh-v1.5}
@@ -114,6 +114,32 @@ services:
       HTTP_HOST: ":36060"
       ADMIN_PORT: "18080"
       TZ: ${TZ}
+      SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
+      REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
+      USE_TOOLS: ${USE_TOOLS:-true}
+      EMBEDDING_TYPE: ${EMBEDDING_TYPE:-huggingface}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://hf-embeddings:80}
+      EMBEDDING_MODEL_ID: ${EMBEDDING_MODEL_ID:-BAAI/bge-small-zh-v1.5}
+      EMBEDDING_QUERY_INSTRUCTION: ${EMBEDDING_QUERY_INSTRUCTION:-为这个句子生成表示以用于检索相关文章：}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-512}
+      VECTOR_DB_TYPE: ${VECTOR_DB_TYPE:-milvus}
+      MILVUS_URL: ${MILVUS_URL:-milvus:19530}
+      SPACE: ${SPACE:-TinyClaw}
+      CHUNK_SIZE: ${CHUNK_SIZE:-500}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-50}
+      POSTGRES_DSN: ${POSTGRES_DSN:-postgres://tinyclaw:tinyclawpass@postgres:5432/tinyclaw?sslmode=disable}
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DB: ${REDIS_DB:-0}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-tinyclaw-knowledge}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      DEFAULT_KNOWLEDGE_BASE: ${DEFAULT_KNOWLEDGE_BASE:-default}
+      DEFAULT_COLLECTION: ${DEFAULT_COLLECTION:-default}
+      KNOWLEDGE_AUTO_MIGRATE: ${KNOWLEDGE_AUTO_MIGRATE:-true}
+      RERANKER_BASE_URL: ${RERANKER_BASE_URL:-}
     depends_on:
       - hf-embeddings
       - postgres
@@ -127,12 +153,13 @@ services:
     volumes:
       - ../../data:/app/data
       - ../../log:/app/log
+      - ../..:/workspace
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:36060/pong >/dev/null || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 10
-      start_period: 20s
+      start_period: 60s
 
   cloudflared:
     image: cloudflare/cloudflared:latest

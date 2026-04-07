@@ -243,7 +243,7 @@ function Cron() {
                 <div className="flex gap-2">
                     <button
                         onClick={handleAddCronClick}
-                        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                        className="bg-claw-600 text-white px-4 py-2 rounded hover:bg-claw-700"
                     >
                         + {t("add_cron_task")}
                     </button>
@@ -269,7 +269,7 @@ function Cron() {
                             setSearchName(e.target.value);
                             setPage(1);
                         }}
-                        className="w-full px-4 py-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring focus:border-blue-400"
+                        className="w-full px-4 py-2 border border-gray-300 rounded shadow-sm focus:outline-none focus:ring focus:border-claw-400"
                     />
                 </div>
             </div>
@@ -301,7 +301,7 @@ function Cron() {
                                 <td className="px-6 py-4 text-sm text-gray-800">{renderStatus(task.status)}</td>
                                 <td className="px-6 py-4 text-sm space-x-3">
                                     <button onClick={() => openEditModal(task)}
-                                            className="text-blue-600 hover:underline">{t("edit")}</button>
+                                            className="text-claw-600 hover:underline">{t("edit")}</button>
                                     {task.status === 1 ? (
                                         <button onClick={() => toggleDisableService(task.id, 1)}
                                                 className="text-yellow-600 hover:underline">{t("disable")}</button>
@@ -363,7 +363,7 @@ function Cron() {
                     <div className="text-right pt-4">
                         <button
                             onClick={showCreateModal ? handleSubmitNewCron : handleUpdateCron}
-                            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                            className="bg-claw-600 text-white px-4 py-2 rounded hover:bg-claw-700"
                         >
                             {showCreateModal ? t("create") : t("update")}
                         </button>
