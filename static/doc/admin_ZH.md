@@ -37,6 +37,8 @@
 
 - `Dashboard`
   查看整体运行状态、消息量、用户量和基础统计
+- `Runs`
+  查看 Agent 运行列表、步骤轨迹、tool observation，并直接 replay
 - `Bots`
   查看和修改 Bot 配置
 - `BotUsers`
@@ -48,7 +50,7 @@
 - `Log`
   查看运行日志
 - `RAG`
-  上传和管理知识库文件
+  通过 `Documents / Ingestion Jobs / Retrieval Debug` 三个页签管理知识库
 - `MCP`
   查看和管理 MCP 服务配置
 - `Cron`
@@ -63,11 +65,18 @@
 ```bash
 ./scripts/start.sh
 ./scripts/status.sh
+./scripts/verify.sh
 ./scripts/stop.sh
 ```
 
 `./scripts/stop.sh` 现在是安全辅助脚本，默认不会停掉容器。
 只有在你明确要停整套 Compose 时，才使用 `./scripts/stop.sh --down`。
+
+如果要对 Agent 和 RAG 新栈做一轮完整在线验证，可以执行：
+
+```bash
+./scripts/verify.sh --full
+```
 
 ### 方式 2：单独运行 Admin
 
@@ -111,6 +120,7 @@ ADMIN_PORT=18080 \
 
 - 主服务数据库：`data/tiny_claw.db`
 - 后台数据库：`data/tiny_claw_admin.db`
+- Agent / RAG v2：`postgres + redis + minio`
 - 主日志：`log/tiny_claw.log`
 - 部署配置：`deploy/docker/.env`
 

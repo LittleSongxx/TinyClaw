@@ -35,6 +35,8 @@ The admin panel is most useful for these areas:
 
 - `Dashboard`
   runtime overview and basic metrics
+- `Runs`
+  agent run traces, step details, tool observations, and replay
 - `Bots`
   bot configuration management
 - `BotUsers`
@@ -46,7 +48,7 @@ The admin panel is most useful for these areas:
 - `Log`
   runtime logs
 - `RAG`
-  knowledge file management
+  knowledge management through `Documents / Ingestion Jobs / Retrieval Debug`
 - `MCP`
   MCP service configuration
 - `Cron`
@@ -61,11 +63,18 @@ This is the default project workflow.
 ```bash
 ./scripts/start.sh
 ./scripts/status.sh
+./scripts/verify.sh
 ./scripts/stop.sh
 ```
 
 `./scripts/stop.sh` is now a safe helper and does not stop containers by default.
 Use `./scripts/stop.sh --down` only when you intentionally want to stop the Compose stack.
+
+If you want a full live validation for the Agent and RAG stack, run:
+
+```bash
+./scripts/verify.sh --full
+```
 
 ### Option 2: Run Admin Separately
 
@@ -109,6 +118,7 @@ The most relevant files are:
 
 - main database: `data/tiny_claw.db`
 - admin database: `data/tiny_claw_admin.db`
+- Agent / RAG v2 services: `postgres + redis + minio`
 - main log: `log/tiny_claw.log`
 - runtime config: `deploy/docker/.env`
 

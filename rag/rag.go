@@ -60,6 +60,18 @@ func (l *Rag) GenerateContent(ctx context.Context, messages []llms.MessageConten
 		opt(opts)
 	}
 
+	if KnowledgeV2Enabled() {
+		prompt := ""
+		for _, msg := range messages {
+			for _, part := range msg.Parts {
+				if txtPart, ok := part.(llms.TextContent); ok {
+					prompt += txtPart.Text
+				}
+			}
+		}
+		return answerWithKnowledgeV2(ctx, l.LLM, prompt, options...)
+	}
+
 	doc, err := conf.RagConfInfo.Store.SimilaritySearch(ctx, l.LLM.Content, 3)
 	if err != nil {
 		logger.Error("request vector db fail", "err", err)
@@ -116,6 +128,14 @@ func InitRag() {
 
 	if err != nil {
 		logger.Error("init embedding fail", "err", err)
+		return
+	}
+
+	if conf.RagConfInfo.UseKnowledgeV2() {
+		err = initKnowledgeV2(ctx)
+		if err != nil {
+			logger.Error("init knowledge v2 fail", "err", err)
+		}
 		return
 	}
 

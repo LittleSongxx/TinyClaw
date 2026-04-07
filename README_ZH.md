@@ -7,7 +7,8 @@ TinyClaw 是一个基于 Go 的多平台 AI 机器人项目，用来把聊天平
 - 平台：飞书
 - 模型：阿里云百炼 `qwen-max`
 - 部署：Docker Compose
-- 数据库：SQLite
+- 应用数据：SQLite
+- Agent / RAG v2：PostgreSQL `pgvector` + Redis + MinIO
 - 管理方式：内置 Admin 后台
 
 仓库里仍然保留了其他平台和模型适配器，但 README 不再把所有历史能力都堆在首页，优先围绕当前可直接落地的 TinyClaw 使用方式来写。
@@ -28,7 +29,7 @@ TinyClaw 是一个基于 Go 的多平台 AI 机器人项目，用来把聊天平
 - 飞书机器人
 - Qwen 文本模型
 - Docker Compose
-- SQLite
+- SQLite + PostgreSQL `pgvector` + Redis + MinIO
 
 这也是我当前仓库内已经完成验证的运行方式。
 
@@ -93,7 +94,19 @@ ALIYUN_TOKEN=your_qwen_api_key
 ./scripts/status.sh
 ```
 
-5. 安全停止辅助脚本
+5. 执行自检
+
+```bash
+./scripts/verify.sh
+```
+
+如果你希望把 `/task`、`/mcp` 和 `/run/replay` 也一起做一轮真实在线验证：
+
+```bash
+./scripts/verify.sh --full
+```
+
+6. 安全停止辅助脚本
 
 ```bash
 ./scripts/stop.sh
@@ -107,12 +120,16 @@ ALIYUN_TOKEN=your_qwen_api_key
 ./scripts/stop.sh --down
 ```
 
+`./scripts/start.sh` 现在会在当前栈已运行时复用已有端口，先拉起依赖服务，再单独重建 `app`。第一次启动或 Go 依赖变化后，`app` 的 build 阶段可能会花一些时间。
+
 ## 运行入口
 
 - Bot HTTP：默认从 `36060` 起自动选择空闲端口
 - Admin：默认从 `18080` 起自动选择空闲端口
 - 健康检查：`/pong`
 - 指标：`/metrics`
+- Agent 运行轨迹页：Admin `#/runs`
+- RAG 工作台：Admin `#/rag`
 
 实际使用端口以 `./scripts/status.sh` 输出为准。
 

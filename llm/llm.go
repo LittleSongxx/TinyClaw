@@ -10,18 +10,19 @@ import (
 	"strings"
 	"time"
 
-	godeepseek "github.com/cohesion-org/deepseek-go"
-	"github.com/revrost/go-openrouter"
-	"github.com/sashabaranov/go-openai"
-	"github.com/volcengine/volcengine-go-sdk/service/arkruntime/model"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/db"
 	"github.com/LittleSongxx/TinyClaw/i18n"
 	"github.com/LittleSongxx/TinyClaw/logger"
 	"github.com/LittleSongxx/TinyClaw/metrics"
 	"github.com/LittleSongxx/TinyClaw/param"
+	"github.com/LittleSongxx/TinyClaw/tooling"
 	"github.com/LittleSongxx/TinyClaw/utils"
 	"github.com/LittleSongxx/mcp-client-go/clients"
+	godeepseek "github.com/cohesion-org/deepseek-go"
+	"github.com/revrost/go-openrouter"
+	"github.com/sashabaranov/go-openai"
+	"github.com/volcengine/volcengine-go-sdk/service/arkruntime/model"
 	"google.golang.org/genai"
 )
 
@@ -63,6 +64,8 @@ type LLM struct {
 
 	WholeContent string // whole answer from llm
 	LoopNum      int
+
+	ToolObserver func(tooling.Observation)
 }
 
 type LLMClient interface {
@@ -366,6 +369,12 @@ func WithContext(ctx context.Context) Option {
 	}
 }
 
+func WithToolObserver(observer func(tooling.Observation)) Option {
+	return func(p *LLM) {
+		p.ToolObserver = observer
+	}
+}
+
 func WithContentParameter(contentParameter map[string]string) Option {
 	return func(p *LLM) {
 		p.ContentParameter = contentParameter
@@ -376,6 +385,7 @@ func (l *LLM) ExecMcpReq(ctx context.Context, funcName string, property map[stri
 	mc, err := clients.GetMCPClientByToolName(funcName)
 	if err != nil {
 		logger.ErrorCtx(ctx, "get mcp fail", "err", err, "function", funcName, "argument", property)
+		l.observeTool(funcName, property, "", err)
 		return "", err
 	}
 
@@ -394,6 +404,7 @@ func (l *LLM) ExecMcpReq(ctx context.Context, funcName string, property map[stri
 
 	if err != nil {
 		logger.ErrorCtx(ctx, "get mcp fail", "err", err, "function", funcName, "argument", property)
+		l.observeTool(funcName, property, "", err)
 		return "", err
 	}
 
@@ -440,5 +451,24 @@ func (l *LLM) ExecMcpReq(ctx context.Context, funcName string, property map[stri
 		}
 	}
 
+	l.observeTool(funcName, property, toolsData, nil)
 	return toolsData, nil
+}
+
+func (l *LLM) observeTool(funcName string, property map[string]interface{}, output string, err error) {
+	if l == nil || l.ToolObserver == nil {
+		return
+	}
+
+	obs := tooling.Observation{
+		Function:  funcName,
+		Arguments: property,
+		Output:    output,
+		CreatedAt: time.Now().Unix(),
+	}
+	if err != nil {
+		obs.Error = err.Error()
+	}
+
+	l.ToolObserver(obs)
 }

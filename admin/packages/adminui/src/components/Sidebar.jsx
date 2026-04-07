@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
+    Activity,
     LayoutDashboard,
     Users,
     Bot,
@@ -30,6 +31,7 @@ export default function Sidebar() {
         { path: "/users", label: t("bot_users"), icon: UserCircle },
         { path: "/chats", label: t("bot_chats"), icon: MessageCircle },
         { path: "/communicate", label: t("chat"), icon: MessageSquare },
+        { path: "/runs", label: t("runs"), icon: Activity },
         { path: "/rag", label: t("rag"), icon: DatabaseIcon },
         { path: "/log", label: t("log"), icon: ScrollText },
     ];

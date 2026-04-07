@@ -1329,11 +1329,16 @@ func (r *RobotInfo) ExecChain(msgContent string, msgChan *MsgChan) {
 				GeminiTools:  conf.GeminiTools,
 			}),
 		)
-		qaChain := chains.NewRetrievalQAFromLLM(
-			dpLLM,
-			vectorstores.ToRetriever(conf.RagConfInfo.Store, 3),
-		)
-		_, err := chains.Run(ctx, qaChain, content)
+		var err error
+		if rag.KnowledgeV2Enabled() {
+			_, err = dpLLM.Call(ctx, content)
+		} else {
+			qaChain := chains.NewRetrievalQAFromLLM(
+				dpLLM,
+				vectorstores.ToRetriever(conf.RagConfInfo.Store, 3),
+			)
+			_, err = chains.Run(ctx, qaChain, content)
+		}
 		if err != nil {
 			r.SendMsg(chatId, err.Error(), msgId, "", nil)
 		}

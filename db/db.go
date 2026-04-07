@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"os"
 
-	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/logger"
 	botUtils "github.com/LittleSongxx/TinyClaw/utils"
+	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 var (
@@ -76,6 +76,52 @@ var (
 		    type VARCHAR(255) NOT NULL DEFAULT '',
 		    create_by VARCHAR(255) NOT NULL DEFAULT ''
 		);
+	`,
+		"agent_runs": `
+		CREATE TABLE IF NOT EXISTS agent_runs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id VARCHAR(100) NOT NULL DEFAULT '',
+			chat_id VARCHAR(255) NOT NULL DEFAULT '',
+			msg_id VARCHAR(255) NOT NULL DEFAULT '',
+			mode VARCHAR(100) NOT NULL DEFAULT '',
+			input TEXT NOT NULL,
+			final_output TEXT NOT NULL DEFAULT '',
+			status VARCHAR(50) NOT NULL DEFAULT '',
+			error TEXT NOT NULL DEFAULT '',
+			token_total INTEGER NOT NULL DEFAULT 0,
+			step_count INTEGER NOT NULL DEFAULT 0,
+			replay_of INTEGER NOT NULL DEFAULT 0,
+			create_time INTEGER NOT NULL DEFAULT '0',
+			update_time INTEGER NOT NULL DEFAULT '0',
+			from_bot VARCHAR(255) NOT NULL DEFAULT ''
+		);
+		CREATE INDEX IF NOT EXISTS idx_agent_runs_user_id ON agent_runs(user_id);
+		CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status);
+		CREATE INDEX IF NOT EXISTS idx_agent_runs_mode ON agent_runs(mode);
+		CREATE INDEX IF NOT EXISTS idx_agent_runs_create_time ON agent_runs(create_time);
+	`,
+		"agent_steps": `
+		CREATE TABLE IF NOT EXISTS agent_steps (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			run_id INTEGER NOT NULL DEFAULT 0,
+			step_index INTEGER NOT NULL DEFAULT 0,
+			kind VARCHAR(50) NOT NULL DEFAULT '',
+			name VARCHAR(255) NOT NULL DEFAULT '',
+			tool_name VARCHAR(255) NOT NULL DEFAULT '',
+			input TEXT NOT NULL,
+			raw_output TEXT NOT NULL DEFAULT '',
+			observations TEXT NOT NULL DEFAULT '',
+			token INTEGER NOT NULL DEFAULT 0,
+			status VARCHAR(50) NOT NULL DEFAULT '',
+			error TEXT NOT NULL DEFAULT '',
+			provider VARCHAR(100) NOT NULL DEFAULT '',
+			model VARCHAR(255) NOT NULL DEFAULT '',
+			create_time INTEGER NOT NULL DEFAULT '0',
+			update_time INTEGER NOT NULL DEFAULT '0',
+			from_bot VARCHAR(255) NOT NULL DEFAULT ''
+		);
+		CREATE INDEX IF NOT EXISTS idx_agent_steps_run_id ON agent_steps(run_id);
+		CREATE INDEX IF NOT EXISTS idx_agent_steps_run_idx ON agent_steps(run_id, step_index);
 	`,
 	}
 
@@ -148,6 +194,52 @@ var (
     	  create_by VARCHAR(255) NOT NULL DEFAULT ''
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 	`,
+		`CREATE TABLE IF NOT EXISTS agent_runs (
+          id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          user_id VARCHAR(100) NOT NULL DEFAULT '',
+          chat_id VARCHAR(255) NOT NULL DEFAULT '',
+          msg_id VARCHAR(255) NOT NULL DEFAULT '',
+          mode VARCHAR(100) NOT NULL DEFAULT '',
+          input MEDIUMTEXT NOT NULL,
+          final_output MEDIUMTEXT NOT NULL,
+          status VARCHAR(50) NOT NULL DEFAULT '',
+          error MEDIUMTEXT NOT NULL,
+          token_total INT NOT NULL DEFAULT 0,
+          step_count INT NOT NULL DEFAULT 0,
+          replay_of BIGINT NOT NULL DEFAULT 0,
+          create_time INT(10) NOT NULL DEFAULT 0,
+          update_time INT(10) NOT NULL DEFAULT 0,
+          from_bot VARCHAR(255) NOT NULL DEFAULT '',
+
+          INDEX idx_agent_runs_user_id (user_id),
+          INDEX idx_agent_runs_status (status),
+          INDEX idx_agent_runs_mode (mode),
+          INDEX idx_agent_runs_create_time (create_time)
+       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+	`,
+		`CREATE TABLE IF NOT EXISTS agent_steps (
+          id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          run_id INT NOT NULL DEFAULT 0,
+          step_index INT NOT NULL DEFAULT 0,
+          kind VARCHAR(50) NOT NULL DEFAULT '',
+          name VARCHAR(255) NOT NULL DEFAULT '',
+          tool_name VARCHAR(255) NOT NULL DEFAULT '',
+          input MEDIUMTEXT NOT NULL,
+          raw_output MEDIUMTEXT NOT NULL,
+          observations MEDIUMTEXT NOT NULL,
+          token INT NOT NULL DEFAULT 0,
+          status VARCHAR(50) NOT NULL DEFAULT '',
+          error MEDIUMTEXT NOT NULL,
+          provider VARCHAR(100) NOT NULL DEFAULT '',
+          model VARCHAR(255) NOT NULL DEFAULT '',
+          create_time INT(10) NOT NULL DEFAULT 0,
+          update_time INT(10) NOT NULL DEFAULT 0,
+          from_bot VARCHAR(255) NOT NULL DEFAULT '',
+
+          INDEX idx_agent_steps_run_id (run_id),
+          INDEX idx_agent_steps_run_idx (run_id, step_index)
+       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+	`,
 	}
 )
 
@@ -192,6 +284,11 @@ func InitTable() {
 	}
 
 	InsertRecord(context.Background())
+
+	err = InitFeatureDB()
+	if err != nil {
+		logger.Error("feature db initialize fail", "err", err)
+	}
 
 	logger.Info("db initialize successfully")
 }

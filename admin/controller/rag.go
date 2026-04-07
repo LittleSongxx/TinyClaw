@@ -2,7 +2,6 @@ package controller
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -13,69 +12,63 @@ import (
 	"github.com/LittleSongxx/TinyClaw/utils"
 )
 
-type RagInfo struct {
-	FileName string `json:"file_name"`
-	Content  string `json:"content"`
-}
-
 func ListRagFiles(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	botInfo, err := getBot(r)
-	if err != nil {
-		logger.ErrorCtx(ctx, "get bot user error", "err", err)
-		utils.Failure(ctx, w, r, param.CodeDBQueryFail, param.MsgDBQueryFail, err)
-		return
-	}
-	err = r.ParseForm()
-	if err != nil {
-		logger.ErrorCtx(ctx, "parse form error", "err", err)
-		utils.Failure(ctx, w, r, param.CodeParamError, param.MsgParamError, err)
-		return
-	}
-	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodGet, strings.TrimSuffix(botInfo.Address, "/")+
-		fmt.Sprintf("/rag/list?page=%s&page_size=%s&name=%s", r.FormValue("page"), r.FormValue("pageSize"), r.FormValue("name")), bytes.NewBuffer(nil)))
-	if err != nil {
-		logger.ErrorCtx(ctx, "get bot user error", "err", err)
-		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
-		return
-	}
-
-	defer resp.Body.Close()
-	_, err = io.Copy(w, resp.Body)
-	if err != nil {
-		logger.ErrorCtx(ctx, "copy response body error", "err", err)
-		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
-		return
-	}
+	proxyBotRequest(w, r, http.MethodGet, "/rag/list", nil)
 }
 
 func GetRagFile(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	botInfo, err := getBot(r)
-	if err != nil {
-		logger.ErrorCtx(ctx, "get bot conf error", "err", err)
-		utils.Failure(ctx, w, r, param.CodeDBQueryFail, param.MsgDBQueryFail, err)
-		return
-	}
-
-	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodGet,
-		strings.TrimSuffix(botInfo.Address, "/")+"/rag/get?file_name="+r.FormValue("file_name"), bytes.NewBuffer(nil)))
-	if err != nil {
-		logger.ErrorCtx(ctx, "get bot conf error", "err", err)
-		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
-		return
-	}
-
-	defer resp.Body.Close()
-	_, err = io.Copy(w, resp.Body)
-	if err != nil {
-		logger.ErrorCtx(ctx, "copy response body error", "err", err)
-		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
-		return
-	}
+	proxyBotRequest(w, r, http.MethodGet, "/rag/get", nil)
 }
 
 func DeleteRagFile(w http.ResponseWriter, r *http.Request) {
+	proxyBotRequest(w, r, http.MethodPost, "/rag/delete", nil)
+}
+
+func CreateRagFile(w http.ResponseWriter, r *http.Request) {
+	proxyBotRequest(w, r, http.MethodPost, "/rag/create", r.Body)
+}
+
+func ListRagCollectionsV2(w http.ResponseWriter, r *http.Request) {
+	proxyBotRequest(w, r, http.MethodGet, "/rag/collections/list", nil)
+}
+
+func CreateRagCollectionV2(w http.ResponseWriter, r *http.Request) {
+	proxyBotRequest(w, r, http.MethodPost, "/rag/collections/create", r.Body)
+}
+
+func ListRagDocuments(w http.ResponseWriter, r *http.Request) {
+	proxyBotRequest(w, r, http.MethodGet, "/rag/documents/list", nil)
+}
+
+func GetRagDocument(w http.ResponseWriter, r *http.Request) {
+	proxyBotRequest(w, r, http.MethodGet, "/rag/documents/get", nil)
+}
+
+func CreateRagDocument(w http.ResponseWriter, r *http.Request) {
+	proxyBotRequest(w, r, http.MethodPost, "/rag/documents/create", r.Body)
+}
+
+func DeleteRagDocument(w http.ResponseWriter, r *http.Request) {
+	proxyBotRequest(w, r, http.MethodPost, "/rag/documents/delete", nil)
+}
+
+func ListRagJobs(w http.ResponseWriter, r *http.Request) {
+	proxyBotRequest(w, r, http.MethodGet, "/rag/jobs/list", nil)
+}
+
+func DebugRagRetrieval(w http.ResponseWriter, r *http.Request) {
+	proxyBotRequest(w, r, http.MethodPost, "/rag/retrieval/debug", r.Body)
+}
+
+func ListRagRetrievalRuns(w http.ResponseWriter, r *http.Request) {
+	proxyBotRequest(w, r, http.MethodGet, "/rag/retrieval/runs/list", nil)
+}
+
+func GetRagRetrievalRun(w http.ResponseWriter, r *http.Request) {
+	proxyBotRequest(w, r, http.MethodGet, "/rag/retrieval/runs/get", nil)
+}
+
+func proxyBotRequest(w http.ResponseWriter, r *http.Request, method, suffix string, body io.Reader) {
 	ctx := r.Context()
 	botInfo, err := getBot(r)
 	if err != nil {
@@ -84,45 +77,32 @@ func DeleteRagFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodGet,
-		strings.TrimSuffix(botInfo.Address, "/")+"/rag/delete?file_name="+r.FormValue("file_name"), bytes.NewBuffer(nil)))
+	targetURL := strings.TrimSuffix(botInfo.Address, "/") + suffix
+	if rawQuery := forwardBotQuery(r); rawQuery != "" {
+		targetURL += "?" + rawQuery
+	}
+
+	if body == nil {
+		body = bytes.NewBuffer(nil)
+	}
+
+	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, method, targetURL, body))
 	if err != nil {
-		logger.ErrorCtx(ctx, "get bot conf error", "err", err)
+		logger.ErrorCtx(ctx, "proxy bot request error", "err", err, "url", targetURL)
 		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
 		return
 	}
-
 	defer resp.Body.Close()
-	_, err = io.Copy(w, resp.Body)
-	if err != nil {
+
+	if _, err = io.Copy(w, resp.Body); err != nil {
 		logger.ErrorCtx(ctx, "copy response body error", "err", err)
 		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
 		return
 	}
 }
 
-func CreateRagFile(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	botInfo, err := getBot(r)
-	if err != nil {
-		logger.ErrorCtx(ctx, "get bot conf error", "err", err)
-		utils.Failure(ctx, w, r, param.CodeDBQueryFail, param.MsgDBQueryFail, err)
-		return
-	}
-
-	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodGet,
-		strings.TrimSuffix(botInfo.Address, "/")+"/rag/create", r.Body))
-	if err != nil {
-		logger.ErrorCtx(ctx, "get bot conf error", "err", err)
-		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
-		return
-	}
-
-	defer resp.Body.Close()
-	_, err = io.Copy(w, resp.Body)
-	if err != nil {
-		logger.ErrorCtx(ctx, "copy response body error", "err", err)
-		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
-		return
-	}
+func forwardBotQuery(r *http.Request) string {
+	values := r.URL.Query()
+	values.Del("id")
+	return values.Encode()
 }

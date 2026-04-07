@@ -7,7 +7,8 @@ This repository has already been reworked into my own project layout. The curren
 - Platform: Feishu / Lark
 - Model: Qwen via Aliyun Bailian
 - Deployment: Docker Compose
-- Database: SQLite
+- App data: SQLite
+- Agent / RAG v2: PostgreSQL `pgvector` + Redis + MinIO
 - Operations: built-in Admin panel
 
 The codebase still contains other platform and model adapters, but this README now focuses on the setup that is actually maintained and validated in this repository.
@@ -28,7 +29,7 @@ If you just want TinyClaw running quickly, use this combination:
 - Feishu / Lark bot
 - `qwen-max`
 - Docker Compose
-- SQLite
+- SQLite + PostgreSQL `pgvector` + Redis + MinIO
 
 This is also the stack currently verified in this repository.
 
@@ -93,7 +94,19 @@ ALIYUN_TOKEN=your_qwen_api_key
 ./scripts/status.sh
 ```
 
-5. Safe stop helper
+5. Run verification
+
+```bash
+./scripts/verify.sh
+```
+
+If you want a live validation for `/task`, `/mcp`, and `/run/replay` as well:
+
+```bash
+./scripts/verify.sh --full
+```
+
+6. Safe stop helper
 
 ```bash
 ./scripts/stop.sh
@@ -107,12 +120,16 @@ If you intentionally want to stop the Docker Compose stack:
 ./scripts/stop.sh --down
 ```
 
+`./scripts/start.sh` now reuses the current runtime ports when the stack is already running, brings the infra services up first, then rebuilds and recreates `app`. On first boot or after Go dependency changes, the `app` build step can take a while.
+
 ## Runtime Endpoints
 
 - Bot HTTP: starts from port `36060`
 - Admin: starts from port `18080`
 - Health check: `/pong`
 - Metrics: `/metrics`
+- Agent runs page: Admin `#/runs`
+- RAG workbench: Admin `#/rag`
 
 Use `./scripts/status.sh` to see the actual resolved ports on your machine.
 
