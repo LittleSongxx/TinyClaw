@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/LittleSongxx/TinyClaw/i18n"
 	"github.com/LittleSongxx/TinyClaw/logger"
 	"github.com/LittleSongxx/TinyClaw/param"
+	"github.com/LittleSongxx/TinyClaw/skill"
 	"github.com/LittleSongxx/TinyClaw/tooling"
 	"github.com/LittleSongxx/TinyClaw/utils"
 )
@@ -86,17 +88,14 @@ func (a *runtimeAdapter) SelectTool(ctx context.Context, input string, tools []t
 }
 
 func (a *runtimeAdapter) JudgeTask(ctx context.Context, input string, evidence []agentruntime.StepEvidence, lastPlan string, tools []tooling.ToolSpec) ([]agentruntime.TaskPlan, string, int, error) {
+	taskParam := a.promptArgs(input, tools)
 	completeTasks := make(map[string]bool, len(evidence))
 	for _, step := range evidence {
 		completeTasks[step.Prompt] = true
 	}
 
-	taskParam := map[string]interface{}{
-		"user_task":      input,
-		"complete_tasks": completeTasks,
-		"last_plan":      lastPlan,
-	}
-
+	taskParam["complete_tasks"] = completeTasks
+	taskParam["last_plan"] = lastPlan
 	prompt := i18n.GetMessage("loop_task_prompt", taskParam)
 	if len(evidence) > 0 {
 		rawEvidence, err := json.MarshalIndent(evidence, "", "  ")
@@ -152,8 +151,18 @@ func (a *runtimeAdapter) executeWithTool(ctx context.Context, prompt, recordInpu
 	runCtx, cancel := a.toolContext(ctx, entry)
 	defer cancel()
 
+	execPrompt := prompt
+	allowedTools := make([]string, 0)
+	memoryObservations := make([]tooling.Observation, 0)
+	if entry.Skill != nil {
+		memoryContext, observations := skill.LoadMemoryContext(runCtx, a.req.UserId, prompt, entry)
+		memoryObservations = append(memoryObservations, observations...)
+		execPrompt = skill.BuildPromptWithMemory(entry, prompt, memoryContext)
+		allowedTools = append(allowedTools, entry.Skill.AllowedTools...)
+	}
+
 	startedAt := time.Now().Unix()
-	observations := make([]tooling.Observation, 0)
+	observations := append([]tooling.Observation(nil), memoryObservations...)
 	var lock sync.Mutex
 
 	observer := func(obs tooling.Observation) {
@@ -169,9 +178,15 @@ func (a *runtimeAdapter) executeWithTool(ctx context.Context, prompt, recordInpu
 	)
 
 	if visible {
-		output, token, err = a.executeVisible(runCtx, prompt, recordInput, WithTaskTools(entry.AgentInfo), WithToolObserver(observer))
+		output, token, err = a.executeVisible(runCtx, execPrompt, recordInput, WithTaskTools(entry.AgentInfo), WithToolObserver(observer), WithAllowedToolNames(allowedTools))
 	} else {
-		output, token, err = a.executeSilent(runCtx, prompt, WithTaskTools(entry.AgentInfo), WithToolObserver(observer))
+		output, token, err = a.executeSilent(runCtx, execPrompt, WithTaskTools(entry.AgentInfo), WithToolObserver(observer), WithAllowedToolNames(allowedTools))
+	}
+
+	if err == nil && entry.Skill != nil {
+		lock.Lock()
+		observations = append(observations, skill.PersistMemoryContext(runCtx, a.req.UserId, prompt, output, entry)...)
+		lock.Unlock()
 	}
 
 	lock.Lock()
@@ -247,9 +262,28 @@ func (a *runtimeAdapter) toolContext(ctx context.Context, entry *tooling.Entry) 
 func (a *runtimeAdapter) promptArgs(input string, tools []tooling.ToolSpec) map[string]interface{} {
 	assignParam := make([]map[string]string, 0, len(tools))
 	for _, tool := range tools {
+		allowedTools := strings.Join(tool.AllowedTools, ", ")
+		if allowedTools == "" {
+			allowedTools = "-"
+		}
+		triggers := strings.Join(tool.Triggers, ", ")
+		if triggers == "" {
+			triggers = "-"
+		}
+
 		assignParam = append(assignParam, map[string]string{
-			"tool_name": tool.Name,
-			"tool_desc": tool.Description,
+			"tool_name":             tool.Name,
+			"tool_desc":             tool.Description,
+			"tool_version":          fallbackString(tool.Version, "v1"),
+			"tool_memory":           fallbackString(tool.Memory, "conversation"),
+			"tool_when_to_use":      fallbackString(tool.WhenToUse, tool.Description),
+			"tool_when_not_to_use":  fallbackString(tool.WhenNotToUse, "No explicit exclusion guidance."),
+			"tool_instructions":     fallbackString(tool.Instructions, "Stay focused on the assigned sub-task."),
+			"tool_output_contract":  fallbackString(tool.OutputContract, "Return the requested result clearly."),
+			"tool_failure_handling": fallbackString(tool.FailureHandling, "Explain blockers and missing information."),
+			"tool_allowed_tools":    allowedTools,
+			"tool_triggers":         triggers,
+			"tool_legacy":           strconv.FormatBool(tool.Legacy),
 		})
 	}
 
@@ -257,6 +291,14 @@ func (a *runtimeAdapter) promptArgs(input string, tools []tooling.ToolSpec) map[
 		"assign_param": assignParam,
 		"user_task":    input,
 	}
+}
+
+func fallbackString(value, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 func (a *runtimeAdapter) baseOptions(content string, visible bool) []Option {

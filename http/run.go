@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 
 	"github.com/LittleSongxx/TinyClaw/db"
@@ -132,7 +133,11 @@ func ReplayAgentRun(w http.ResponseWriter, r *http.Request) {
 	var replayed *db.AgentRun
 	switch run.Mode {
 	case "mcp":
+		req.SkillID = run.SkillID
 		replayed, err = req.ExecuteMcpRun()
+	case "skill":
+		req.SkillID = run.SkillID
+		replayed, err = req.ExecuteSkillRun()
 	default:
 		replayed, err = req.ExecuteTaskRun()
 	}
@@ -150,6 +155,38 @@ func ReplayAgentRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.Success(ctx, w, r, detail)
+}
+
+func DeleteAgentRun(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	if err := r.ParseForm(); err != nil {
+		logger.ErrorCtx(ctx, "parse form error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeParamError, param.MsgParamError, err)
+		return
+	}
+
+	id := utils.ParseInt(r.FormValue("id"))
+	if id == 0 {
+		id = utils.ParseInt(r.FormValue("run_id"))
+	}
+	if id == 0 {
+		utils.Failure(ctx, w, r, param.CodeParamError, "ID is required", nil)
+		return
+	}
+
+	err := db.DeleteAgentRunByID(int64(id))
+	if err != nil {
+		if err == sql.ErrNoRows {
+			utils.Failure(ctx, w, r, param.CodeDBQueryFail, "run not found", err)
+			return
+		}
+		logger.ErrorCtx(ctx, "delete agent run fail", "err", err, "id", id)
+		utils.Failure(ctx, w, r, param.CodeDBWriteFail, param.MsgDBWriteFail, err)
+		return
+	}
+
+	utils.Success(ctx, w, r, "success")
 }
 
 func ensureReplayUserContext(ctx context.Context, userID string) (context.Context, error) {

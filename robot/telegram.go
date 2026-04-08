@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/disintegration/imaging"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/db"
 	"github.com/LittleSongxx/TinyClaw/i18n"
@@ -19,6 +17,8 @@ import (
 	"github.com/LittleSongxx/TinyClaw/metrics"
 	"github.com/LittleSongxx/TinyClaw/param"
 	"github.com/LittleSongxx/TinyClaw/utils"
+	"github.com/disintegration/imaging"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 var TelegramBot *tgbotapi.BotAPI
@@ -186,6 +186,10 @@ func CreateBot(ctx context.Context) *tgbotapi.BotAPI {
 		tgbotapi.BotCommand{
 			Command:     param.Mcp,
 			Description: i18n.GetMessage("commands.mcp.description", nil),
+		},
+		tgbotapi.BotCommand{
+			Command:     param.Skill,
+			Description: i18n.GetMessage("commands.skill.description", nil),
 		},
 		tgbotapi.BotCommand{
 			Command:     param.CronList,
@@ -979,7 +983,9 @@ func (t *TelegramRobot) ExecuteForceReply() {
 	case i18n.GetMessage("task_empty_content", nil):
 		t.Robot.sendMultiAgent("task_empty_content", t.sendForceReply("task_empty_content"))
 	case i18n.GetMessage("mcp_empty_content", nil):
-		t.Robot.sendMultiAgent("task_empty_content", t.sendForceReply("mcp_empty_content"))
+		t.Robot.sendMultiAgent("mcp_empty_content", t.sendForceReply("mcp_empty_content"))
+	case i18n.GetMessage("skill_empty_content", nil):
+		t.Robot.sendSkill(t.sendForceReply("skill_empty_content"))
 	}
 }
 

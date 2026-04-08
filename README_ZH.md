@@ -19,8 +19,8 @@ TinyClaw 是一个基于 Go 的多平台 AI 机器人项目，用来把聊天平
 - 文本对话、上下文记忆、基础命令体系
 - 图片、音频、视频相关能力
 - Web API 调用入口
-- RAG、MCP / Function Call、Cron、指标监控
-- 独立 Admin 后台，支持配置、记录、用户和日志查看
+- RAG、MCP / Function Call、Skills、Cron、指标监控
+- 独立 Admin 后台，支持配置、运行轨迹、Skills、记录、用户和日志查看
 
 ## 当前推荐方案
 
@@ -41,6 +41,9 @@ TinyClaw/
 ├─ admin/                 管理后台服务与前端
 ├─ robot/                 平台适配层
 ├─ llm/                   模型调用层
+├─ http/                  Bot HTTP API 与运行控制接口
+├─ skill/                 技能目录加载、校验与组装逻辑
+├─ skills/                当前仓库自带的本地 SKILL.md 技能定义
 ├─ conf/                  配置定义与默认配置
 ├─ deploy/docker/         Docker 部署文件
 ├─ scripts/               启动、停止、发布、构建脚本
@@ -66,6 +69,14 @@ cp deploy/docker/.env.example deploy/docker/.env
 ```
 
 然后按你的实际平台和模型修改 `deploy/docker/.env`。
+
+如果你要启用仓库默认带的地图、联网搜索或 GitHub MCP 服务，还需要补这几个密钥：
+
+```env
+AMAP_MAPS_API_KEY=
+BOCHA_API_KEY=
+GITHUB_PERSONAL_ACCESS_TOKEN=
+```
 
 飞书 + Qwen 的最小配置示例：
 
@@ -129,9 +140,33 @@ ALIYUN_TOKEN=your_qwen_api_key
 - 健康检查：`/pong`
 - 指标：`/metrics`
 - Agent 运行轨迹页：Admin `#/runs`
+- Skills 管理页：Admin `#/skills`
 - RAG 工作台：Admin `#/rag`
 
 实际使用端口以 `./scripts/status.sh` 输出为准。
+
+## 默认 MCP 与 Skills 结构
+
+默认情况下，TinyClaw 会从 `conf/mcp/mcp.json` 读取 MCP 配置。当前仓库已经预置这些服务：
+
+- `playwright`
+- `filesystem`
+- `fetch`
+- `time`
+- `memory`
+- `arxiv`
+- `amap`
+- `bocha-search`
+- `github`
+
+当前仓库自带的本地技能目录在 `skills/`，默认包含：
+
+- `general_research`
+- `browser_operator`
+- `workspace_operator`
+- `github_operator`
+
+运行时还会基于已注册的 MCP 工具自动补出 builtin / legacy 兜底技能。后台里可以分别通过 `#/mcp` 和 `#/skills` 查看配置、检查可用性、校验技能目录并执行 reload。
 
 ## 容器自启动
 
@@ -178,6 +213,7 @@ make test
 - 飞书接入说明：[static/doc/lark_ZH.md](static/doc/lark_ZH.md)
 - Web API 说明：[static/doc/web_api_ZH.md](static/doc/web_api_ZH.md)
 - Admin 说明：[static/doc/admin_ZH.md](static/doc/admin_ZH.md)
+- MCP / Skills 说明：[static/doc/functioncall_ZH.md](static/doc/functioncall_ZH.md)
 - RAG 说明：[static/doc/rag_ZH.md](static/doc/rag_ZH.md)
 - 参数说明：[static/doc/param_conf_ZH.md](static/doc/param_conf_ZH.md)
 

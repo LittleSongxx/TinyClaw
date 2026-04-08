@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"regexp"
 	"strings"
@@ -66,6 +67,7 @@ type LLM struct {
 	LoopNum      int
 
 	ToolObserver func(tooling.Observation)
+	AllowedTools map[string]bool
 }
 
 type LLMClient interface {
@@ -369,6 +371,24 @@ func WithContext(ctx context.Context) Option {
 	}
 }
 
+func WithAllowedToolNames(toolNames []string) Option {
+	return func(p *LLM) {
+		if len(toolNames) == 0 {
+			p.AllowedTools = nil
+			return
+		}
+
+		p.AllowedTools = make(map[string]bool, len(toolNames))
+		for _, name := range toolNames {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			p.AllowedTools[name] = true
+		}
+	}
+}
+
 func WithToolObserver(observer func(tooling.Observation)) Option {
 	return func(p *LLM) {
 		p.ToolObserver = observer
@@ -382,6 +402,12 @@ func WithContentParameter(contentParameter map[string]string) Option {
 }
 
 func (l *LLM) ExecMcpReq(ctx context.Context, funcName string, property map[string]interface{}) (string, error) {
+	if l != nil && len(l.AllowedTools) > 0 && !l.AllowedTools[funcName] {
+		err := fmt.Errorf("tool %s is not allowed in the current skill", funcName)
+		l.observeTool(funcName, property, "", err)
+		return "", err
+	}
+
 	mc, err := clients.GetMCPClientByToolName(funcName)
 	if err != nil {
 		logger.ErrorCtx(ctx, "get mcp fail", "err", err, "function", funcName, "argument", property)

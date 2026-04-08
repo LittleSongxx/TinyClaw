@@ -12,10 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bwmarrin/discordgo"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/db"
 	"github.com/LittleSongxx/TinyClaw/i18n"
@@ -23,6 +19,10 @@ import (
 	"github.com/LittleSongxx/TinyClaw/metrics"
 	"github.com/LittleSongxx/TinyClaw/param"
 	"github.com/LittleSongxx/TinyClaw/utils"
+	"github.com/bwmarrin/discordgo"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 	"layeh.com/gopus"
 )
 
@@ -395,6 +395,9 @@ func registerSlashCommands(s *discordgo.Session) {
 			{Type: discordgo.ApplicationCommandOptionString, Name: "prompt", Description: "Prompt", Required: true},
 		}},
 		{Name: param.Mcp, Description: i18n.GetMessage("commands.mcp.description", nil), Options: []*discordgo.ApplicationCommandOption{
+			{Type: discordgo.ApplicationCommandOptionString, Name: "prompt", Description: "Prompt", Required: true},
+		}},
+		{Name: param.Skill, Description: i18n.GetMessage("commands.skill.description", nil), Options: []*discordgo.ApplicationCommandOption{
 			{Type: discordgo.ApplicationCommandOptionString, Name: "prompt", Description: "Prompt", Required: true},
 		}},
 		{Name: param.CronDel, Description: i18n.GetMessage("commands.cron.description", nil), Options: []*discordgo.ApplicationCommandOption{

@@ -133,6 +133,7 @@ const (
 	Help       = "help"
 	Task       = "task"
 	Mcp        = "mcp"
+	Skill      = "skill"
 	Mode       = "mode"
 	TxtType    = "txt_type"
 	TxtModel   = "txt_model"

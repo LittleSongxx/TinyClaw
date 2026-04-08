@@ -3,6 +3,7 @@ import Toast from "../components/Toast";
 import Modal from "../components/Modal";
 import BotSelector from "../components/BotSelector";
 import ConfirmModal from "../components/ConfirmModal.jsx";
+import BulkActionToolbar from "../components/BulkActionToolbar.jsx";
 import Editor from "@monaco-editor/react";
 import {useTranslation} from "react-i18next";
 import {getMcpDescription} from "../utils/mcpDescriptions";
@@ -32,6 +33,9 @@ function BotMcpListPage() {
     const [MCPToDelete, setMCPToDelete] = useState(null);
     const [confirmVisible, setConfirmVisible] = useState(false);
     const [toast, setToast] = useState({ show: false, message: "", type: "error" });
+    const [selectionMode, setSelectionMode] = useState(false);
+    const [selectedServiceNames, setSelectedServiceNames] = useState([]);
+    const [batchAction, setBatchAction] = useState(null);
 
     const [confirmSyncVisible, setConfirmSyncVisible] = useState(false);
 
@@ -70,6 +74,10 @@ function BotMcpListPage() {
             fetchMcpServices();
         }
     }, [botId]);
+
+    useEffect(() => {
+        setSelectedServiceNames((prev) => prev.filter((name) => mcpServices.some((svc) => svc.name === name)));
+    }, [mcpServices]);
 
     const normalizeMcpServices = (inspectData) => {
         const mcpObj = inspectData?.mcpServers || {};
@@ -358,8 +366,109 @@ function BotMcpListPage() {
         );
     };
 
+    const toggleSelectionMode = () => {
+        setSelectionMode((prev) => !prev);
+        setSelectedServiceNames([]);
+    };
+
+    const toggleServiceSelection = (name) => {
+        setSelectedServiceNames((prev) =>
+            prev.includes(name) ? prev.filter((item) => item !== name) : [...prev, name]
+        );
+    };
+
+    const visibleServiceNames = filteredMcpServices.map((svc) => svc.name);
+    const allVisibleSelected =
+        visibleServiceNames.length > 0 && visibleServiceNames.every((name) => selectedServiceNames.includes(name));
+
+    const handleSelectAllVisible = () => {
+        setSelectedServiceNames((prev) => {
+            if (allVisibleSelected) {
+                return prev.filter((name) => !visibleServiceNames.includes(name));
+            }
+            return Array.from(new Set([...prev, ...visibleServiceNames]));
+        });
+    };
+
+    const clearSelection = () => {
+        setSelectedServiceNames([]);
+    };
+
+    const openBatchAction = (action) => {
+        if (selectedServiceNames.length === 0) {
+            showToast(t("no_selection"));
+            return;
+        }
+        setBatchAction(action);
+    };
+
+    const runBatchAction = async () => {
+        let targets = [...selectedServiceNames];
+
+        if (batchAction === "enable") {
+            targets = mcpServices
+                .filter((svc) => selectedServiceNames.includes(svc.name) && svc.config.disabled)
+                .map((svc) => svc.name);
+        } else if (batchAction === "disable") {
+            targets = mcpServices
+                .filter((svc) => selectedServiceNames.includes(svc.name) && !svc.config.disabled)
+                .map((svc) => svc.name);
+        }
+
+        if (targets.length === 0) {
+            showToast(t("no_matching_batch_targets"));
+            setBatchAction(null);
+            return;
+        }
+
+        let success = 0;
+        let failed = 0;
+
+        for (const name of targets) {
+            try {
+                let res;
+                if (batchAction === "delete") {
+                    res = await fetch(`/bot/mcp/delete?id=${botId}&name=${name}`, { method: "DELETE" });
+                } else {
+                    const disable = batchAction === "disable" ? "1" : "0";
+                    res = await fetch(`/bot/mcp/disable?id=${botId}&name=${name}&disable=${disable}`);
+                }
+
+                const data = await res.json();
+                if (data.code === 0) {
+                    success += 1;
+                } else {
+                    failed += 1;
+                }
+            } catch (error) {
+                failed += 1;
+            }
+        }
+
+        setBatchAction(null);
+        clearSelection();
+
+        if (failed > 0) {
+            showToast(t("batch_operation_partial_failed", { success, failed }));
+        } else {
+            showToast(t("batch_operation_completed", { count: success }), "success");
+        }
+
+        await fetchMcpServices();
+    };
+
+    const getBatchConfirmMessage = () => {
+        if (batchAction === "enable") {
+            return t("batch_enable_confirm");
+        }
+        if (batchAction === "disable") {
+            return t("batch_disable_confirm");
+        }
+        return t("batch_delete_confirm");
+    };
+
     return (
-        <div className="p-6 bg-gray-100 min-h-screen">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-100 p-6">
             {toast.show && (
                 <Toast message={toast.message} type={toast.type} onClose={() => setToast({ ...toast, show: false })} />
             )}
@@ -398,35 +507,95 @@ function BotMcpListPage() {
                 {renderAvailabilityLegend(mcpServices, availabilityFilter, setAvailabilityFilter)}
             </div>
 
-            <div className="overflow-x-auto rounded-lg shadow">
-                <table className="min-w-full bg-white divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                    <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("name")}</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("description")}</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("status")}</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("action")}</th>
-                    </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                    {filteredMcpServices.map((svc) => (
-                        <tr key={svc.name} className="hover:bg-gray-50">
-                            <td className="px-6 py-4 text-sm text-gray-800">{svc.name}</td>
-                            <td className="px-6 py-4 text-sm text-gray-800 whitespace-pre-line">{renderAvailabilityInfo(svc, descriptionLanguage)}</td>
-                            <td className="px-6 py-4 text-sm text-gray-800">{svc.config.disabled ? t("disable") : t("enable")}</td>
-                            <td className="px-6 py-4 text-sm space-x-3">
-                                <button onClick={() => openEditModal(svc)} className="text-claw-600 hover:underline">{t("edit")}</button>
-                                {svc.config.disabled ? (
-                                    <button onClick={() => toggleDisableService(svc.name, false)} className="text-green-600 hover:underline">{t("enable")}</button>
-                                ) : (
-                                    <button onClick={() => toggleDisableService(svc.name, true)} className="text-yellow-600 hover:underline">{t("disable")}</button>
-                                )}
-                                <button onClick={() => handleDeleteClick(svc.name)} className="text-red-600 hover:underline">{t("delete")}</button>
-                            </td>
+            <div className="mb-4">
+                <BulkActionToolbar
+                    selectionMode={selectionMode}
+                    onToggleMode={toggleSelectionMode}
+                    selectedCount={selectedServiceNames.length}
+                    onSelectAllVisible={handleSelectAllVisible}
+                    onClearSelection={clearSelection}
+                    actions={
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => openBatchAction("enable")}
+                                disabled={selectedServiceNames.length === 0}
+                                className="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {t("batch_enable")}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => openBatchAction("disable")}
+                                disabled={selectedServiceNames.length === 0}
+                                className="rounded-lg bg-yellow-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-yellow-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {t("batch_disable")}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => openBatchAction("delete")}
+                                disabled={selectedServiceNames.length === 0}
+                                className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {t("batch_delete")}
+                            </button>
+                        </>
+                    }
+                />
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-hidden rounded-lg shadow">
+                <div className="h-full overflow-auto">
+                    <table className="min-w-full bg-white divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                        <tr>
+                            {selectionMode && (
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                    <input
+                                        type="checkbox"
+                                        checked={allVisibleSelected}
+                                        onChange={handleSelectAllVisible}
+                                        className="h-4 w-4 rounded border-gray-300 text-claw-600 focus:ring-claw-500"
+                                    />
+                                </th>
+                            )}
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("name")}</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("description")}</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("status")}</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("action")}</th>
                         </tr>
-                    ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                        {filteredMcpServices.map((svc) => (
+                            <tr key={svc.name} className="hover:bg-gray-50">
+                                {selectionMode && (
+                                    <td className="px-4 py-4 text-sm text-gray-800">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedServiceNames.includes(svc.name)}
+                                            onChange={() => toggleServiceSelection(svc.name)}
+                                            className="h-4 w-4 rounded border-gray-300 text-claw-600 focus:ring-claw-500"
+                                        />
+                                    </td>
+                                )}
+                                <td className="px-6 py-4 text-sm text-gray-800">{svc.name}</td>
+                                <td className="px-6 py-4 text-sm text-gray-800 whitespace-pre-line">{renderAvailabilityInfo(svc, descriptionLanguage)}</td>
+                                <td className="px-6 py-4 text-sm text-gray-800">{svc.config.disabled ? t("disable") : t("enable")}</td>
+                                <td className="px-6 py-4 text-sm space-x-3">
+                                    <button onClick={() => openEditModal(svc)} className="text-claw-600 hover:underline">{t("edit")}</button>
+                                    {svc.config.disabled ? (
+                                        <button onClick={() => toggleDisableService(svc.name, false)} className="text-green-600 hover:underline">{t("enable")}</button>
+                                    ) : (
+                                        <button onClick={() => toggleDisableService(svc.name, true)} className="text-yellow-600 hover:underline">{t("disable")}</button>
+                                    )}
+                                    <button onClick={() => handleDeleteClick(svc.name)} className="text-red-600 hover:underline">{t("delete")}</button>
+                                </td>
+                            </tr>
+                        ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <Modal
@@ -572,6 +741,13 @@ function BotMcpListPage() {
                 message={t("delete_mcp_confirm")}
                 onConfirm={confirmDelete}
                 onCancel={cancelDelete}
+            />
+            <ConfirmModal
+                visible={batchAction !== null}
+                title={batchAction ? t(`batch_${batchAction}`) : t("confirm")}
+                message={getBatchConfirmMessage()}
+                onConfirm={runBatchAction}
+                onCancel={() => setBatchAction(null)}
             />
             <ConfirmModal
                 visible={confirmSyncVisible}

@@ -175,7 +175,7 @@ function BotRecordsPage() {
     }
 
     return (
-        <div className="p-6 bg-gray-100 min-h-screen">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-100 p-6">
             {toast.show && (
                 <Toast
                     message={toast.message}
@@ -217,7 +217,8 @@ function BotRecordsPage() {
                 </div>
             </div>
 
-            <div className="overflow-x-auto rounded-lg shadow">
+            <div className="min-h-0 flex-1 overflow-hidden rounded-lg shadow">
+                <div className="h-full overflow-auto">
                 <table className="min-w-full bg-white divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                     <tr>
@@ -273,6 +274,7 @@ function BotRecordsPage() {
                     )}
                     </tbody>
                 </table>
+                </div>
             </div>
 
             <Pagination page={page} pageSize={pageSize} total={total} onPageChange={handlePageChange} />

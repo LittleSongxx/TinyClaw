@@ -60,7 +60,7 @@ function ConfirmModal({ visible, title = "Confirm", message, onCancel, onConfirm
                                 <span>Loading</span>
                             </div>
                         ) : (
-                            t("save")
+                            t("confirm")
                         )}
                     </button>
                 </div>

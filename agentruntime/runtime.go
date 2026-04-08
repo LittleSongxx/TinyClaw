@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/LittleSongxx/TinyClaw/db"
@@ -33,6 +34,8 @@ func (r *Runner) RunTask(ctx context.Context, meta RunMeta) (*db.AgentRun, error
 	}
 	plannerStep.Status = string(StepStatusSucceeded)
 	r.finishStep(run, plannerStep, rawPlan)
+	run.SelectorReason = rawPlan
+	r.updateRun(run)
 
 	if len(plans) == 0 {
 		return r.finishDirectRun(ctx, run, meta.Input)
@@ -50,6 +53,7 @@ func (r *Runner) RunTask(ctx context.Context, meta RunMeta) (*db.AgentRun, error
 			}
 
 			execStep := r.startStep(run, stepIndex, StepKindExecutor, plan.Name, plan.Description, entry.Spec.Name)
+			r.annotateStep(execStep, entry, string(meta.Mode))
 			stepIndex++
 
 			result, stepToken, execErr := r.Executor.ExecuteStep(ctx, plan.Description, entry)
@@ -107,6 +111,36 @@ func (r *Runner) RunMCP(ctx context.Context, meta RunMeta) (*db.AgentRun, error)
 	run := r.startRun(meta)
 	tools := r.Registry.List()
 
+	if strings.TrimSpace(meta.SkillID) != "" {
+		entry, ok := r.Registry.Get(meta.SkillID)
+		if !ok {
+			return r.failRun(run, fmt.Errorf("skill %s not found", meta.SkillID))
+		}
+		r.annotateRun(run, entry, "replayed selected skill")
+
+		execStep := r.startStep(run, 1, StepKindExecutor, meta.SkillID, meta.Input, entry.Spec.Name)
+		r.annotateStep(execStep, entry, string(meta.Mode))
+		result, stepToken, execErr := r.Executor.ExecuteDirect(ctx, meta.Input, entry)
+		execStep.Token = stepToken
+		if execErr != nil {
+			execStep.Status = string(StepStatusFailed)
+			execStep.Error = execErr.Error()
+			if result != nil {
+				execStep.Observations = result.Observations
+			}
+			r.finishStep(run, execStep, toolOutput(result))
+			return r.failRun(run, execErr)
+		}
+
+		execStep.Status = string(StepStatusSucceeded)
+		execStep.Observations = result.Observations
+		r.finishStep(run, execStep, toolOutput(result))
+		run.Status = string(RunStatusSucceeded)
+		run.FinalOutput = result.Output
+		r.updateRun(run)
+		return run, nil
+	}
+
 	toolName, rawSelection, token, err := r.Planner.SelectTool(ctx, meta.Input, tools)
 	plannerStep := r.startStep(run, 1, StepKindPlanner, "select_tool", meta.Input, "")
 	plannerStep.Token = token
@@ -118,6 +152,8 @@ func (r *Runner) RunMCP(ctx context.Context, meta RunMeta) (*db.AgentRun, error)
 	}
 	plannerStep.Status = string(StepStatusSucceeded)
 	r.finishStep(run, plannerStep, rawSelection)
+	run.SelectorReason = rawSelection
+	r.updateRun(run)
 
 	if toolName == "" {
 		return r.finishDirectRun(ctx, run, meta.Input)
@@ -127,8 +163,46 @@ func (r *Runner) RunMCP(ctx context.Context, meta RunMeta) (*db.AgentRun, error)
 	if !ok {
 		return r.failRun(run, fmt.Errorf("tool %s not found", toolName))
 	}
+	r.annotateRun(run, entry, rawSelection)
 
 	execStep := r.startStep(run, 2, StepKindExecutor, toolName, meta.Input, entry.Spec.Name)
+	r.annotateStep(execStep, entry, string(meta.Mode))
+	result, stepToken, execErr := r.Executor.ExecuteDirect(ctx, meta.Input, entry)
+	execStep.Token = stepToken
+	if execErr != nil {
+		execStep.Status = string(StepStatusFailed)
+		execStep.Error = execErr.Error()
+		if result != nil {
+			execStep.Observations = result.Observations
+		}
+		r.finishStep(run, execStep, toolOutput(result))
+		return r.failRun(run, execErr)
+	}
+
+	execStep.Status = string(StepStatusSucceeded)
+	execStep.Observations = result.Observations
+	r.finishStep(run, execStep, toolOutput(result))
+
+	run.Status = string(RunStatusSucceeded)
+	run.FinalOutput = result.Output
+	r.updateRun(run)
+	return run, nil
+}
+
+func (r *Runner) RunSkill(ctx context.Context, meta RunMeta) (*db.AgentRun, error) {
+	run := r.startRun(meta)
+	if strings.TrimSpace(meta.SkillID) == "" {
+		return r.failRun(run, fmt.Errorf("skill id is required"))
+	}
+
+	entry, ok := r.Registry.Get(meta.SkillID)
+	if !ok {
+		return r.failRun(run, fmt.Errorf("skill %s not found", meta.SkillID))
+	}
+	r.annotateRun(run, entry, "explicit skill execution")
+
+	execStep := r.startStep(run, 1, StepKindExecutor, meta.SkillID, meta.Input, entry.Spec.Name)
+	r.annotateStep(execStep, entry, string(meta.Mode))
 	result, stepToken, execErr := r.Executor.ExecuteDirect(ctx, meta.Input, entry)
 	execStep.Token = stepToken
 	if execErr != nil {
@@ -206,6 +280,7 @@ func (r *Runner) startRun(meta RunMeta) *db.AgentRun {
 		Mode:     string(meta.Mode),
 		Input:    meta.Input,
 		ReplayOf: meta.ReplayOf,
+		SkillID:  meta.SkillID,
 		Status:   string(RunStatusRunning),
 	}
 
@@ -285,6 +360,43 @@ func toolOutput(result *tooling.ToolResult) string {
 		return ""
 	}
 	return result.Output
+}
+
+func (r *Runner) annotateRun(run *db.AgentRun, entry *tooling.Entry, selectorReason string) {
+	if run == nil || entry == nil || entry.Skill == nil {
+		return
+	}
+
+	run.SkillID = entry.Skill.ID
+	run.SkillName = entry.Skill.Name
+	run.SkillVersion = entry.Skill.Version
+	run.SelectorReason = selectorReason
+	r.updateRun(run)
+}
+
+func (r *Runner) annotateStep(step *db.AgentStep, entry *tooling.Entry, mode string) {
+	if step == nil || entry == nil || entry.Skill == nil {
+		return
+	}
+
+	step.SkillID = entry.Skill.ID
+	step.SkillName = entry.Skill.Name
+	step.SkillVersion = entry.Skill.Version
+	step.AllowedTools = append([]string(nil), entry.Skill.AllowedTools...)
+
+	body, err := json.Marshal(map[string]interface{}{
+		"mode":          mode,
+		"skill_id":      entry.Skill.ID,
+		"skill_name":    entry.Skill.Name,
+		"skill_version": entry.Skill.Version,
+		"skill_path":    entry.Skill.Path,
+		"memory":        entry.Skill.Memory,
+		"allowed_tools": entry.Skill.AllowedTools,
+		"legacy":        entry.Skill.Legacy,
+	})
+	if err == nil {
+		step.StepContext = string(body)
+	}
 }
 
 func MarshalPlans(plans []TaskPlan) string {

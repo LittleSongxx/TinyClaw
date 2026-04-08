@@ -15,16 +15,16 @@ export default function Layout() {
     }, [user]);
 
     return (
-        <div className="flex flex-col h-screen">
-            <div className="h-24">
+        <div className="flex h-screen flex-col overflow-hidden">
+            <div className="shrink-0">
                 <Header username={userInfo.username} />
             </div>
 
-            <div className="flex flex-1">
+            <div className="flex min-h-0 flex-1 overflow-hidden">
                 <Sidebar />
 
-                <div className="flex-1 overflow-auto">
-                    <div className="overflow-x-auto">
+                <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+                    <div className="h-full min-h-0 w-full overflow-hidden">
                         <Outlet />
                     </div>
                 </div>

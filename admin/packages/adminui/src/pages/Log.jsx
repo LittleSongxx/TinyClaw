@@ -118,7 +118,7 @@ function BotLogPage() {
     };
 
     return (
-        <div className="p-6 bg-gray-100 min-h-screen">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-100 p-6">
             {/* Toast */}
             {toast.show && (
                 <Toast
@@ -168,12 +168,14 @@ function BotLogPage() {
             </div>
 
 
-            <div
-                ref={logRef}
-                onScroll={handleScroll}
-                className="rounded-lg shadow border border-gray-700 overflow-y-auto h-[70vh] p-2 bg-gray-900"
-            >
-                {logs.map(renderLogLine)}
+            <div className="min-h-0 flex-1 overflow-hidden rounded-lg shadow border border-gray-700 bg-gray-900 p-2">
+                <div
+                    ref={logRef}
+                    onScroll={handleScroll}
+                    className="h-full overflow-y-auto"
+                >
+                    {logs.map(renderLogLine)}
+                </div>
             </div>
         </div>
     );

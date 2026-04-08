@@ -12,6 +12,6 @@ func (d *LLMTaskReq) ExecuteMcp() error {
 }
 
 func (d *LLMTaskReq) ExecuteMcpRun() (*db.AgentRun, error) {
-	runner := d.newRunner()
+	runner := d.newRunner(agentruntime.ModeMCP)
 	return runner.RunMCP(d.runtimeContext(), d.runMeta(agentruntime.ModeMCP))
 }

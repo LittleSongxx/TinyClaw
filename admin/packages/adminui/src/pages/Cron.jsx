@@ -7,6 +7,7 @@ import {useTranslation} from "react-i18next";
 import Pagination from "../components/Pagination.jsx";
 import InputField from "../components/InputField.jsx";
 import TextareaField from "../components/TextAreaField.jsx";
+import BulkActionToolbar from "../components/BulkActionToolbar.jsx";
 import {useUser} from "../context/UserContext.jsx";
 
 // 对应后端的 db.Cron 结构体（简化版用于前端）
@@ -41,6 +42,9 @@ function Cron() {
     const [CRONToDelete, setCRONToDelete] = useState(null);
     const [confirmVisible, setConfirmVisible] = useState(false);
     const [toast, setToast] = useState({show: false, message: "", type: "error"});
+    const [selectionMode, setSelectionMode] = useState(false);
+    const [selectedCronIds, setSelectedCronIds] = useState([]);
+    const [batchAction, setBatchAction] = useState(null);
 
     const {t} = useTranslation();
 
@@ -54,6 +58,10 @@ function Cron() {
             fetchCronTasks();
         }
     }, [botId, page, pageSize, searchName]);
+
+    useEffect(() => {
+        setSelectedCronIds((prev) => prev.filter((id) => cronTasks.some((task) => task.id === id)));
+    }, [cronTasks]);
 
     // ----------------------------------------------------
     // --- API 调用函数 ---
@@ -232,8 +240,110 @@ function Cron() {
         setEditingTask(prev => ({...prev, [name]: value}));
     };
 
+    const toggleSelectionMode = () => {
+        setSelectionMode((prev) => !prev);
+        setSelectedCronIds([]);
+    };
+
+    const toggleCronSelection = (cronId) => {
+        setSelectedCronIds((prev) =>
+            prev.includes(cronId) ? prev.filter((id) => id !== cronId) : [...prev, cronId]
+        );
+    };
+
+    const visibleCronIds = cronTasks.map((task) => task.id);
+    const allVisibleSelected =
+        visibleCronIds.length > 0 && visibleCronIds.every((id) => selectedCronIds.includes(id));
+
+    const handleSelectAllVisible = () => {
+        setSelectedCronIds((prev) => {
+            if (allVisibleSelected) {
+                return prev.filter((id) => !visibleCronIds.includes(id));
+            }
+            return Array.from(new Set([...prev, ...visibleCronIds]));
+        });
+    };
+
+    const clearSelection = () => {
+        setSelectedCronIds([]);
+    };
+
+    const openBatchAction = (action) => {
+        if (selectedCronIds.length === 0) {
+            showToast(t("no_selection"));
+            return;
+        }
+        setBatchAction(action);
+    };
+
+    const runBatchAction = async () => {
+        const ids = [...selectedCronIds];
+        let targets = ids;
+
+        if (batchAction === "enable") {
+            targets = cronTasks.filter((task) => ids.includes(task.id) && task.status !== 1).map((task) => task.id);
+        } else if (batchAction === "disable") {
+            targets = cronTasks.filter((task) => ids.includes(task.id) && task.status === 1).map((task) => task.id);
+        }
+
+        if (targets.length === 0) {
+            showToast(t("no_matching_batch_targets"));
+            setBatchAction(null);
+            return;
+        }
+
+        let success = 0;
+        let failed = 0;
+
+        for (const id of targets) {
+            try {
+                let res;
+                if (batchAction === "delete") {
+                    res = await fetch(`/bot/cron/delete?id=${botId}&cron_id=${id}`, {method: "GET"});
+                } else {
+                    const status = batchAction === "enable" ? 1 : 0;
+                    res = await fetch(`/bot/cron/update/status?id=${botId}`, {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({id, status}),
+                    });
+                }
+
+                const data = await res.json();
+                if (data.code === 0) {
+                    success += 1;
+                } else {
+                    failed += 1;
+                }
+            } catch (error) {
+                failed += 1;
+            }
+        }
+
+        setBatchAction(null);
+        clearSelection();
+
+        if (failed > 0) {
+            showToast(t("batch_operation_partial_failed", {success, failed}));
+        } else {
+            showToast(t("batch_operation_completed", {count: success}), "success");
+        }
+
+        await fetchCronTasks();
+    };
+
+    const getBatchConfirmMessage = () => {
+        if (batchAction === "enable") {
+            return t("batch_enable_confirm");
+        }
+        if (batchAction === "disable") {
+            return t("batch_disable_confirm");
+        }
+        return t("batch_delete_confirm");
+    };
+
     return (
-        <div className="p-6 bg-gray-100 min-h-screen">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-100 p-6">
             {toast.show && (
                 <Toast message={toast.message} type={toast.type} onClose={() => setToast({...toast, show: false})}/>
             )}
@@ -274,57 +384,119 @@ function Cron() {
                 </div>
             </div>
 
-            <div className="overflow-x-auto rounded-lg shadow mb-4">
-                <table className="min-w-full bg-white divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                    <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("name")}</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("type")}</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("cron_spec")}</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("target_id")}</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("group_id")}</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("status")}</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("action")}</th>
-                    </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                    {cronTasks.length > 0 ? (
-                        cronTasks.map((task) => (
-                            <tr key={task.id} className="hover:bg-gray-50">
-                                <td className="px-6 py-4 text-sm text-gray-800">{task.id}</td>
-                                <td className="px-6 py-4 text-sm text-gray-800">{task.cron_name}</td>
-                                <td className="px-6 py-4 text-sm text-gray-800">{task.type}</td>
-                                <td className="px-6 py-4 text-sm text-gray-800">{task.cron_spec}</td>
-                                <td className="px-6 py-4 text-sm text-gray-800">{task.target_id}</td>
-                                <td className="px-6 py-4 text-sm text-gray-800">{task.group_id}</td>
-                                <td className="px-6 py-4 text-sm text-gray-800">{renderStatus(task.status)}</td>
-                                <td className="px-6 py-4 text-sm space-x-3">
-                                    <button onClick={() => openEditModal(task)}
-                                            className="text-claw-600 hover:underline">{t("edit")}</button>
-                                    {task.status === 1 ? (
-                                        <button onClick={() => toggleDisableService(task.id, 1)}
-                                                className="text-yellow-600 hover:underline">{t("disable")}</button>
-                                    ) : (
-                                        <button onClick={() => toggleDisableService(task.id, 0)}
-                                                className="text-green-600 hover:underline">{t("enable")}</button>
-                                    )}
-                                    <button onClick={() => handleDeleteClick(task.id)}
-                                            className="text-red-600 hover:underline">{t("delete")}</button>
-                                </td>
-                            </tr>
-                        ))
-                    ) : (
-                        <tr>
-                            <td colSpan="6"
-                                className="px-6 py-4 text-center text-sm text-gray-500">{t("no_cron_tasks")}</td>
-                        </tr>
-                    )}
-                    </tbody>
-                </table>
+            <div className="mb-4">
+                <BulkActionToolbar
+                    selectionMode={selectionMode}
+                    onToggleMode={toggleSelectionMode}
+                    selectedCount={selectedCronIds.length}
+                    onSelectAllVisible={handleSelectAllVisible}
+                    onClearSelection={clearSelection}
+                    actions={
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => openBatchAction("enable")}
+                                disabled={selectedCronIds.length === 0}
+                                className="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {t("batch_enable")}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => openBatchAction("disable")}
+                                disabled={selectedCronIds.length === 0}
+                                className="rounded-lg bg-yellow-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-yellow-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {t("batch_disable")}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => openBatchAction("delete")}
+                                disabled={selectedCronIds.length === 0}
+                                className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {t("batch_delete")}
+                            </button>
+                        </>
+                    }
+                />
             </div>
 
-            <Pagination page={page} pageSize={pageSize} total={total} onPageChange={handlePageChange}/>
+            <div className="mb-4 min-h-0 flex-1 overflow-hidden rounded-lg shadow">
+                <div className="h-full overflow-auto">
+                    <table className="min-w-full bg-white divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                        <tr>
+                            {selectionMode && (
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                    <input
+                                        type="checkbox"
+                                        checked={allVisibleSelected}
+                                        onChange={handleSelectAllVisible}
+                                        className="h-4 w-4 rounded border-gray-300 text-claw-600 focus:ring-claw-500"
+                                    />
+                                </th>
+                            )}
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("name")}</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("type")}</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("cron_spec")}</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("target_id")}</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("group_id")}</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("status")}</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("action")}</th>
+                        </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                        {cronTasks.length > 0 ? (
+                            cronTasks.map((task) => (
+                                <tr key={task.id} className="hover:bg-gray-50">
+                                    {selectionMode && (
+                                        <td className="px-4 py-4 text-sm text-gray-800">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedCronIds.includes(task.id)}
+                                                onChange={() => toggleCronSelection(task.id)}
+                                                className="h-4 w-4 rounded border-gray-300 text-claw-600 focus:ring-claw-500"
+                                            />
+                                        </td>
+                                    )}
+                                    <td className="px-6 py-4 text-sm text-gray-800">{task.id}</td>
+                                    <td className="px-6 py-4 text-sm text-gray-800">{task.cron_name}</td>
+                                    <td className="px-6 py-4 text-sm text-gray-800">{task.type}</td>
+                                    <td className="px-6 py-4 text-sm text-gray-800">{task.cron_spec}</td>
+                                    <td className="px-6 py-4 text-sm text-gray-800">{task.target_id}</td>
+                                    <td className="px-6 py-4 text-sm text-gray-800">{task.group_id}</td>
+                                    <td className="px-6 py-4 text-sm text-gray-800">{renderStatus(task.status)}</td>
+                                    <td className="px-6 py-4 text-sm space-x-3">
+                                        <button onClick={() => openEditModal(task)}
+                                                className="text-claw-600 hover:underline">{t("edit")}</button>
+                                        {task.status === 1 ? (
+                                            <button onClick={() => toggleDisableService(task.id, 1)}
+                                                    className="text-yellow-600 hover:underline">{t("disable")}</button>
+                                        ) : (
+                                            <button onClick={() => toggleDisableService(task.id, 0)}
+                                                    className="text-green-600 hover:underline">{t("enable")}</button>
+                                        )}
+                                        <button onClick={() => handleDeleteClick(task.id)}
+                                                className="text-red-600 hover:underline">{t("delete")}</button>
+                                    </td>
+                                </tr>
+                            ))
+                        ) : (
+                            <tr>
+                                <td colSpan={selectionMode ? 9 : 8}
+                                    className="px-6 py-4 text-center text-sm text-gray-500">{t("no_cron_tasks")}</td>
+                            </tr>
+                        )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div className="shrink-0">
+                <Pagination page={page} pageSize={pageSize} total={total} onPageChange={handlePageChange}/>
+            </div>
 
             {/* 编辑/新增任务模态框 (统一使用一个结构，通过 showEditModal/showCreateModal 控制显示) */}
             <Modal
@@ -377,6 +549,13 @@ function Cron() {
                 message={t("delete")}
                 onConfirm={confirmDelete}
                 onCancel={cancelDelete}
+            />
+            <ConfirmModal
+                visible={batchAction !== null}
+                title={batchAction ? t(`batch_${batchAction}`) : t("confirm")}
+                message={getBatchConfirmMessage()}
+                onConfirm={runBatchAction}
+                onCancel={() => setBatchAction(null)}
             />
         </div>
     );

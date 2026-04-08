@@ -32,6 +32,10 @@ func InitFeatureDB() error {
 		return err
 	}
 
+	if err = migrateFeatureAgentTables(db); err != nil {
+		return err
+	}
+
 	FeatureDB = db
 	logger.Info("feature db initialize successfully")
 	return nil
@@ -67,6 +71,10 @@ func initializeFeatureTables(db *sql.DB) error {
 			token_total INTEGER NOT NULL DEFAULT 0,
 			step_count INTEGER NOT NULL DEFAULT 0,
 			replay_of BIGINT NOT NULL DEFAULT 0,
+			skill_id VARCHAR(255) NOT NULL DEFAULT '',
+			skill_name VARCHAR(255) NOT NULL DEFAULT '',
+			skill_version VARCHAR(100) NOT NULL DEFAULT '',
+			selector_reason TEXT NOT NULL DEFAULT '',
 			create_time BIGINT NOT NULL DEFAULT 0,
 			update_time BIGINT NOT NULL DEFAULT 0,
 			from_bot VARCHAR(255) NOT NULL DEFAULT ''
@@ -85,9 +93,14 @@ func initializeFeatureTables(db *sql.DB) error {
 			kind VARCHAR(50) NOT NULL DEFAULT '',
 			name VARCHAR(255) NOT NULL DEFAULT '',
 			tool_name VARCHAR(255) NOT NULL DEFAULT '',
+			skill_id VARCHAR(255) NOT NULL DEFAULT '',
+			skill_name VARCHAR(255) NOT NULL DEFAULT '',
+			skill_version VARCHAR(100) NOT NULL DEFAULT '',
 			input TEXT NOT NULL DEFAULT '',
 			raw_output TEXT NOT NULL DEFAULT '',
 			observations JSONB NOT NULL DEFAULT '[]'::jsonb,
+			allowed_tools JSONB NOT NULL DEFAULT '[]'::jsonb,
+			step_context TEXT NOT NULL DEFAULT '',
 			token INTEGER NOT NULL DEFAULT 0,
 			status VARCHAR(50) NOT NULL DEFAULT '',
 			error TEXT NOT NULL DEFAULT '',
@@ -269,4 +282,50 @@ func initializeFeatureTables(db *sql.DB) error {
 	}
 
 	return nil
+}
+
+func migrateFeatureAgentTables(db *sql.DB) error {
+	if db == nil {
+		return nil
+	}
+
+	definitions := map[string]map[string]string{
+		"agent_runs": {
+			"skill_id":        "VARCHAR(255) NOT NULL DEFAULT ''",
+			"skill_name":      "VARCHAR(255) NOT NULL DEFAULT ''",
+			"skill_version":   "VARCHAR(100) NOT NULL DEFAULT ''",
+			"selector_reason": "TEXT NOT NULL DEFAULT ''",
+		},
+		"agent_steps": {
+			"skill_id":      "VARCHAR(255) NOT NULL DEFAULT ''",
+			"skill_name":    "VARCHAR(255) NOT NULL DEFAULT ''",
+			"skill_version": "VARCHAR(100) NOT NULL DEFAULT ''",
+			"allowed_tools": "JSONB NOT NULL DEFAULT '[]'::jsonb",
+			"step_context":  "TEXT NOT NULL DEFAULT ''",
+		},
+	}
+
+	for tableName, columns := range definitions {
+		for columnName, definition := range columns {
+			if err := ensurePostgresColumn(db, tableName, columnName, definition); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func ensurePostgresColumn(db *sql.DB, tableName, columnName, definition string) error {
+	var count int
+	query := `SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2`
+	if err := db.QueryRow(query, tableName, columnName).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+
+	_, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", tableName, columnName, definition))
+	return err
 }

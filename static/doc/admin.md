@@ -1,6 +1,6 @@
 # TinyClaw Admin
 
-`TinyClaw Admin` is the built-in management panel for TinyClaw. It is used to inspect runtime status, manage bot configuration, review chat records, and operate RAG, MCP, users, and cron jobs.
+`TinyClaw Admin` is the built-in management panel for TinyClaw. It is used to inspect runtime status, manage bot configuration, review chat records, inspect agent runs, and operate Skills, RAG, MCP, users, and cron jobs.
 
 This document now describes the current TinyClaw admin usage instead of the old single-platform bot wording.
 
@@ -36,7 +36,7 @@ The admin panel is most useful for these areas:
 - `Dashboard`
   runtime overview and basic metrics
 - `Runs`
-  agent run traces, step details, tool observations, and replay
+  agent run traces, step details, tool observations, replay, single delete, and batch delete
 - `Bots`
   bot configuration management
 - `BotUsers`
@@ -50,7 +50,9 @@ The admin panel is most useful for these areas:
 - `RAG`
   knowledge management through `Documents / Ingestion Jobs / Retrieval Debug`
 - `MCP`
-  MCP service configuration
+  MCP service configuration, prepared templates, and availability inspection
+- `Skills`
+  skill catalog management with local / builtin / legacy grouping, validation, reload, and detail view
 - `Cron`
   scheduled task management
 
@@ -119,6 +121,8 @@ The most relevant files are:
 - main database: `data/tiny_claw.db`
 - admin database: `data/tiny_claw_admin.db`
 - Agent / RAG v2 services: `postgres + redis + minio`
+- default MCP config: `conf/mcp/mcp.json`
+- local skills directory: `skills/`
 - main log: `log/tiny_claw.log`
 - runtime config: `deploy/docker/.env`
 
@@ -150,3 +154,12 @@ Check:
 - TinyClaw main service is running
 - main service is writing to `data/tiny_claw.db`
 - runtime config points to the expected data directory
+
+### MCP or Skills pages show warnings
+
+Check:
+
+- `conf/mcp/mcp.json` is readable and valid JSON
+- required secrets such as `AMAP_MAPS_API_KEY`, `BOCHA_API_KEY`, and `GITHUB_PERSONAL_ACCESS_TOKEN` are set when those servers are enabled
+- the underlying MCP commands or URLs are actually reachable from the `app` container
+- local skill files under `skills/` still contain valid `SKILL.md` frontmatter and required sections

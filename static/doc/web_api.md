@@ -1,515 +1,262 @@
-## 📌 1. Add User Token
+# TinyClaw Web API
 
-* **Endpoint**: `POST /user/token/add`
-* **Description**: Add available tokens for a user.
-* **Request Body** (JSON):
+This document describes the current bot-side HTTP endpoints exposed by `http/http.go`.
+
+The base URL is the bot HTTP address, for example:
+
+```text
+http://127.0.0.1:36060
+```
+
+## Response Envelope
+
+Successful responses use:
 
 ```json
 {
-  "user_id": "string",
+  "code": 0,
+  "msg": "success",
+  "data": {}
+}
+```
+
+Failed responses use a non-zero `code` and an error message in `msg`.
+
+## Core Runtime Endpoints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/pong` | health check |
+| `GET` | `/metrics` | Prometheus metrics |
+| `GET` | `/dashboard` | runtime counters and start time |
+| `GET` | `/command/get` | current effective CLI-style overrides |
+| `GET` | `/conf/get` | current runtime config snapshot |
+| `POST` | `/conf/update` | update one config field |
+| `POST` | `/restart` | restart process with provided params |
+| `POST` | `/stop` | stop current process |
+| `GET` | `/log` | stream `log/tiny_claw.log` |
+
+## Real-Time Chat Endpoint
+
+### `POST /communicate`
+
+This is the main SSE endpoint for text chat, image/video flows, `/task`, and `/mcp`.
+
+Query parameters:
+
+| Parameter | Required | Notes |
+|---|---|---|
+| `prompt` | yes | plain text or slash command |
+| `user_id` | yes | runtime user identifier |
+
+Request body:
+
+- optional binary payload for image, audio, or other command-specific inputs
+
+Response:
+
+- `text/event-stream`
+
+Common commands:
+
+- `/help`
+- `/clear`
+- `/retry`
+- `/mode`
+- `/state`
+- `/photo`
+- `/video`
+- `/task`
+- `/mcp`
+
+## User and Record Endpoints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/user/token/add` | add available token quota for a user |
+| `GET` | `/user/list` | paginated user list |
+| `DELETE` | `/user/delete?user_id=...` | delete one user |
+| `POST` | `/user/insert/record` | insert user records in bulk |
+| `GET` | `/record/list` | paginated conversation records |
+| `DELETE` | `/record/delete?record_id=...` | delete one record |
+
+### `POST /user/token/add`
+
+Request body:
+
+```json
+{
+  "user_id": "user123",
   "token": 100
 }
 ```
 
-| Parameter | Type   | Required | Description                    |
-|-----------|--------|----------|--------------------------------|
-| user\_id  | string | Yes      | Unique identifier for the user |
-| token     | int    | Yes      | Number of tokens to add        |
+### `GET /user/list`
 
-* **Response Example**:
+Query parameters:
+
+| Parameter | Required | Notes |
+|---|---|---|
+| `page` | no | default handled by server/db |
+| `page_size` | no | default handled by server/db |
+| `user_id` | no | optional filter |
+
+### `GET /record/list`
+
+Query parameters:
+
+| Parameter | Required | Notes |
+|---|---|---|
+| `page` | no | default `1` |
+| `page_size` | no | default `10` |
+| `is_deleted` | no | `0`, `1`, or omitted |
+| `user_id` | no | optional filter |
+| `record_type` | no | optional filter |
+
+## Agent Run Endpoints
+
+These power the Admin `#/runs` page.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/run/list` | paginated run list |
+| `GET` | `/run/get?id=...` | get one run with step detail |
+| `POST` | `/run/replay` | replay one historical run |
+| `DELETE` | `/run/delete` | delete one run and its steps |
+
+### `GET /run/list`
+
+Query parameters:
+
+| Parameter | Required | Notes |
+|---|---|---|
+| `page` | no | default `1` |
+| `page_size` | no | default `10`; `pageSize` is also accepted |
+| `mode` | no | `task`, `mcp`, or `skill` |
+| `status` | no | `running`, `succeeded`, `failed` |
+| `user_id` | no | optional filter; `userId` is also accepted |
+
+### `POST /run/replay`
+
+Accepted form/query parameter:
+
+| Parameter | Required | Notes |
+|---|---|---|
+| `id` | yes | run ID to replay |
+
+### `DELETE /run/delete`
+
+Accepted form/query parameter:
+
+| Parameter | Required | Notes |
+|---|---|---|
+| `id` | yes | preferred run ID field |
+| `run_id` | no | also accepted for admin compatibility |
+
+## Skills Endpoints
+
+These power the Admin `#/skills` page.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/skills/list` | list current skill catalog |
+| `GET` | `/skills/detail?id=...` | get one skill detail |
+| `POST` | `/skills/reload` | reload the skill catalog |
+| `GET` | `/skills/validate` | validate current catalog and summarize warnings |
+
+Notes:
+
+- the catalog contains `local`, `builtin`, and `legacy` sources
+- local skills come from `skills/*/SKILL.md`
+- validation includes source counts and warning messages
+
+## MCP Endpoints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/mcp/get` | read current MCP config file |
+| `GET` or `POST` | `/mcp/inspect` | inspect MCP config availability and setup warnings |
+| `POST` | `/mcp/update?name=...` | upsert one MCP server entry |
+| `DELETE` | `/mcp/delete?name=...` | delete one MCP server entry |
+| `POST` | `/mcp/disable?name=...&disable=0|1` | enable or disable one MCP server |
+| `POST` | `/mcp/sync` | clear clients and reinitialize MCP registrations |
+
+### `POST /mcp/update?name=...`
+
+Request body is one `mcpParam.MCPConfig` object, for example:
 
 ```json
 {
-  "code": 0,
-  "msg": "success",
-  "data": null
+  "url": "http://playwright-mcp:8931/mcp",
+  "description": "Browser automation and inspection."
 }
 ```
 
----
-
-## 📌 2. Get User List
-
-* **Endpoint**: `GET /user/list`
-* **Description**: Get a paginated list of users, optionally filtered by `user_id`.
-* **Query Parameters**:
-
-| Parameter  | Type   | Required | Description                           |
-|------------|--------|----------|---------------------------------------|
-| page       | int    | No       | Page number (default 1)               |
-| page\_size | int    | No       | Number of items per page (default 10) |
-| user\_id   | string | No       | Filter by user ID                     |
-
-* **Response Example**:
-
-```json
-{
-  "code": 0,
-  "msg": "success",
-  "data": {
-    "list": [
-      {
-        "id": 1,
-        "user_id": "user123",
-        "mode": "default",
-        "token": 100,
-        "updatetime": 1623456789,
-        "avail_token": 50
-      }
-    ],
-    "total": 1
-  }
-}
-```
-
----
-
-## 📌 3. Update User Mode
-
-* **Endpoint**: `POST /user/update/mode`
-* **Description**: Update the mode (model) for a user.
-* **Request Parameters** (Form):
-
-| Parameter | Type   | Required | Description            |
-|-----------|--------|----------|------------------------|
-| user\_id  | string | Yes      | Unique user identifier |
-| mode      | string | Yes      | New mode to set        |
-
-* **Response Example**:
-
-```json
-{
-  "code": 0,
-  "msg": "success",
-  "data": null
-}
-```
-
----
-
-## 📌 4. Get User Records
-
-* **Endpoint**: `GET /record/list`
-* **Description**: Retrieve paginated user conversation records, with optional filters for deletion status and user ID.
-* **Query Parameters**:
-
-| Parameter | Type   | Required | Description                                                           |
-|-----------|--------|----------|-----------------------------------------------------------------------|
-| page      | int    | No       | Page number (default 1)                                               |
-| pageSize  | int    | No       | Items per page (default 10)                                           |
-| isDeleted | int    | No       | Filter by deletion status (0 = not deleted, 1 = deleted, default all) |
-| user\_id  | string | No       | User ID filter                                                        |
-
-* **Response Example**:
-
-```json
-{
-  "code": 0,
-  "msg": "success",
-  "data": {
-    "list": [
-      {
-        "id": 1,
-        "user_id": "user123",
-        "question": "What's AI?",
-        "answer": "Artificial Intelligence...",
-        "content": "conversation content",
-        "token": 50,
-        "is_deleted": 0,
-        "create_time": 1623456789,
-        "record_type": 1
-      }
-    ],
-    "total": 1
-  }
-}
-```
-
----
-
-## 📄 Data Structure Definitions
-
-### ✅ User Object Fields
-
-| Field        | Type   | Description            |
-|--------------|--------|------------------------|
-| id           | int64  | User primary key ID    |
-| user\_id     | string | Unique user identifier |
-| mode         | string | Current mode           |
-| token        | int    | Total tokens           |
-| updatetime   | int64  | Update timestamp       |
-| avail\_token | int    | Available tokens       |
-
----
-
-### ✅ Record Object Fields
-
-| Field        | Type   | Description                                   |
-|--------------|--------|-----------------------------------------------|
-| id           | int    | Record ID                                     |
-| user\_id     | string | Associated user ID                            |
-| question     | string | User question content                         |
-| answer       | string | System response                               |
-| content      | string | Uploaded special content (e.g., image, audio) |
-| token        | int    | Tokens consumed                               |
-| is\_deleted  | int    | Deletion status (0 = no, 1 = yes)             |
-| create\_time | int64  | Creation timestamp                            |
-| record\_type | int    | Record type (e.g., WEB or other)              |
-
----
-
-## 5. Real-time Communication API — `Communicate`
-
-* **Endpoint**: `POST /communicate`
-
-* **Description**: Real-time client request handling via Server-Sent Events (SSE), supporting text chat, image/video
-  generation, multi-agent tasks, and various commands.
-
-* **Request Method**: `POST`
-
-* **Request Headers**:
-
-    * `Content-Type`: Usually `application/octet-stream` (binary image/video data)
-
-* **Query Parameters**:
-
-| Parameter | Type   | Required | Description                                                           |
-|-----------|--------|----------|-----------------------------------------------------------------------|
-| prompt    | string | Yes      | Request content, can include commands starting with `/` or plain text |
-| user_id   | string | Yes      | User unique identifier (numeric string)                               |
-
-* **Request Body**:
-
-    * Binary data such as image or audio, depending on command.
-
----
-
-### Supported Commands
-
-| Command  | Description                                             |
-|----------|---------------------------------------------------------|
-| `/chat`  | Start a normal chat session                             |
-| `/mode`  | Set the LLM mode                                        |
-| `/state` | View current session state and settings                 |
-| `/clear` | Clear all conversation history                          |
-| `/retry` | Retry last question                                     |
-| `/photo` | Generate image based on prompt or uploaded image        |
-| `/video` | Generate video based on prompt                          |
-| `/task`  | Let multiple agents collaborate on a task               |
-| `/mcp`   | Use multi-agent control panel for complex task planning |
-| `/help`  | Show this help message (list of commands)               |
-
-#### /chat
-
-<img width="374" alt="aa92b3c9580da6926a48fc1fc5c37c03" src="https://github.com/user-attachments/assets/be9043ff-513b-4cb3-a8c5-53678ada3fc7" />
-
-#### /mode
-
-<img width="374" alt="aa92b3c9580da6926a48fc1fc5c37c03" src="https://github.com/user-attachments/assets/5a2cead9-5064-41f9-bfab-335efc83e360" />
-<img width="374" alt="aa92b3c9580da6926a48fc1fc5c37c03" src="https://github.com/user-attachments/assets/1a135dbb-2367-4ce0-836e-fe367c0e0ea5" />
-
-#### /state
-
-<img width="374" alt="aa92b3c9580da6926a48fc1fc5c37c03" src="https://github.com/user-attachments/assets/c85224b9-ed70-4c24-bc30-1c3c57174670" />
-
-#### /clear
-
-<img width="374" alt="aa92b3c9580da6926a48fc1fc5c37c03" src="https://github.com/user-attachments/assets/40b7ce66-6a58-4367-800e-9c909658f4ea" />
-
-#### /retry
-
-<img width="374" alt="aa92b3c9580da6926a48fc1fc5c37c03" src="https://github.com/user-attachments/assets/71c3611f-9087-4e76-9502-b928e4af3137" />
-
-#### /photo
-
-<img width="374" alt="aa92b3c9580da6926a48fc1fc5c37c03" src="https://github.com/user-attachments/assets/14424e36-169c-41c6-a58c-63f3625fd0a3" />
-
-#### /video
-
-<img width="374" alt="aa92b3c9580da6926a48fc1fc5c37c03" src="https://github.com/user-attachments/assets/e07a1ce3-2dae-44a9-b7ba-804649f24f05" />
-
-#### /task
-
-<img width="374" alt="aa92b3c9580da6926a48fc1fc5c37c03" src="https://github.com/user-attachments/assets/f58adc7c-4436-4908-baf9-0a7aed8b140c" />
-
-#### /mcp
-
-<img width="374" alt="aa92b3c9580da6926a48fc1fc5c37c03" src="https://github.com/user-attachments/assets/9c5db063-23b5-41c2-989c-4eda48b7440c" />
-
-#### /help
-
-<img width="374" alt="aa92b3c9580da6926a48fc1fc5c37c03" src="https://github.com/user-attachments/assets/f2734a79-9d82-4716-8916-86a01865ed97" />
-
-
-
----
-
-### Response
-
-* **Content-Type**: `text/event-stream`
-
-* **Headers**:
-
-    * `Cache-Control: no-cache`
-    * `Connection: keep-alive`
-
-* **Body**: Server-sent event stream data pushed in real-time.
-
-* **Error Responses**:
-
-| Status Code | Description                                        | Response Text                                        |
-|-------------|----------------------------------------------------|------------------------------------------------------|
-| 400         | Missing required `prompt` param                    | Missing prompt parameter                             |
-| 500         | Request body read failure or unsupported streaming | Error reading request body or Streaming unsupported! |
-
----
-
-### Example Request
-
-```http
-POST /api/communicate?prompt=/photo sunset&user_id=12345 HTTP/1.1
-Content-Type: application/octet-stream
-
-<binary image data>
-```
-
----
-
-## 6. Get Current Startup Command Line Arguments
-
-* **Endpoint**: `GET /command/get`
-* **Description**: Return the current command-line parameters that differ from the config struct defaults, formatted as
-  CLI flags.
-* **Request Parameters**: None
-* **Response Example**:
-
-```json
-{
-  "code": 0,
-  "msg": "success",
-  "data": "-mcp_conf_path=/path/to/mcp_conf.json -some_flag=value "
-}
-```
-
----
-
-## 7. Get Full Current Configuration
-
-* **Endpoint**: `GET /conf/get`
-* **Description**: Return the full current configuration from all modules (base, audio, llm, photo, rag, video).
-* **Request Parameters**: None
-* **Response Example**:
-
-```json
-{
-  "code": 0,
-  "msg": "success",
-  "data": {
-    "base": {
-      ...
-    },
-    "audio": {
-      ...
-    },
-    "llm": {
-      ...
-    },
-    "photo": {
-      ...
-    },
-    "rag": {
-      ...
-    },
-    "video": {
-      ...
-    }
-  }
-}
-```
-
----
-
-## 8. Update Configuration Field
-
-* **Endpoint**: `POST /conf/update`
-* **Description**: Dynamically update a specified field in a specific config struct.
-* **Request Body** (JSON):
-
-```json
-{
-  "type": "base|audio|llm|photo|rag|video",
-  "key": "json_tag_field",
-  "value": "new_value"
-}
-```
-
-| Parameter | Type   | Required | Description                 |
-|-----------|--------|----------|-----------------------------|
-| type      | string | Yes      | Config type, e.g., `"base"` |
-| key       | string | Yes      | Struct field's JSON tag     |
-| value     | any    | Yes      | New value for the field     |
-
-* **Response Example**:
-
-```json
-{
-  "code": 0,
-  "msg": "success",
-  "data": ""
-}
-```
-
-* **Note**:
-
-    * Special fields (e.g., `allowed_user_ids`, `admin_user_ids`) are processed specially.
-    * Unsupported types return parameter error.
-
----
-
-## 9. Get MCP Configuration
-
-* **Endpoint**: `GET /mcp/get`
-* **Description**: Read and return the MCP configuration file content.
-* **Request Parameters**: None
-* **Response Example**:
-
-```json
-{
-  "code": 0,
-  "msg": "success",
-  "data": {
-    "McpServers": {
-      "server1": {
-        ...
-      },
-      "server2": {
-        ...
-      }
-    },
-    ...
-  }
-}
-```
-
----
-
-## 10. Update MCP Configuration
-
-* **Endpoint**: `POST /mcp/update?name={name}`
-
-* **Description**: Update MCP config for a given server name.
-
-* **Request Parameters**:
-
-    * Query:
-
-        * `name` (string, required): MCP server name
-
-    * JSON Body: MCP configuration object (`mcpParam.MCPConfig` struct)
-
-* **Response Example**:
-
-```json
-{
-  "code": 0,
-  "msg": "success",
-  "data": ""
-}
-```
-
----
-
-## 11. Delete MCP Configuration
-
-* **Endpoint**: `DELETE /mcp/delete?name={name}`
-
-* **Description**: Delete MCP config by server name, close the client and remove from task tools.
-
-* **Request Parameters**:
-
-    * Query:
-
-        * `name` (string, required): MCP server name
-
-* **Response Example**:
-
-```json
-{
-  "code": 0,
-  "msg": "success",
-  "data": ""
-}
-```
-
----
-
-## 12. Enable or Disable MCP Configuration
-
-* **Endpoint**: `POST /mcp/disable?name={name}&disable={0|1}`
-
-* **Description**: Enable or disable MCP config for the specified server.
-
-* **Request Parameters**:
-
-    * Query:
-
-        * `name` (string, required): MCP server name
-        * `disable` (string, required): `"1"` to disable, `"0"` to enable
-
-* **Response Example**:
-
-```json
-{
-  "code": 0,
-  "msg": "success",
-  "data": ""
-}
-```
-
----
-
-## 13. Synchronize MCP Configuration
-
-* **Endpoint**: `POST /mcp/sync`
-* **Description**: Clear all MCP clients and task tools, then reinitialize.
-* **Request Parameters**: None
-* **Response Example**:
-
-```json
-{
-  "code": 0,
-  "msg": "success",
-  "data": ""
-}
-```
-
----
-
-# Notes
-
-* Successful responses all follow the format:
-
-```json
-{
-  "code": 0,
-  "msg": "success",
-  "data": <response
-  data
-  or
-  empty
-  string>
-}
-```
-
-* Failure responses include a non-zero code and an error message:
-
-```json
-{
-  "code": <error
-  code>,
-  "msg": <error
-  message>,
-  "data": null
-}
-```
-
+### `GET|POST /mcp/inspect`
+
+- `GET` inspects the currently saved config
+- `POST` inspects the provided config body without requiring you to save it first
+
+The response includes:
+
+- raw `mcpServers`
+- per-server availability status
+- setup, runtime, or secret warnings
+
+## RAG Endpoints
+
+The current RAG v2 HTTP endpoints are:
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/rag/list` | legacy file list |
+| `POST` | `/rag/create` | legacy file create |
+| `GET` | `/rag/get` | legacy file get |
+| `DELETE` | `/rag/delete` | legacy file delete |
+| `POST` | `/rag/clear` | clear vector data |
+| `GET` | `/rag/collections/list` | list collections |
+| `POST` | `/rag/collections/create` | create collection |
+| `GET` | `/rag/documents/list` | list documents |
+| `GET` | `/rag/documents/get` | get one document |
+| `POST` | `/rag/documents/create` | create one text or binary document |
+| `DELETE` | `/rag/documents/delete` | delete one document |
+| `GET` | `/rag/jobs/list` | list ingestion jobs |
+| `POST` | `/rag/retrieval/debug` | run retrieval debug |
+| `GET` | `/rag/retrieval/runs/list` | list retrieval runs |
+| `GET` | `/rag/retrieval/runs/get` | get one retrieval run |
+
+The endpoints most commonly used by the current verification flow are:
+
+- `/rag/collections/list`
+- `/rag/documents/create`
+- `/rag/jobs/list`
+- `/rag/retrieval/debug`
+
+## Cron Endpoints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/cron/list` | paginated cron list |
+| `POST` | `/cron/create` | create cron task |
+| `POST` | `/cron/update` | update cron task |
+| `POST` | `/cron/update_status` | enable or disable cron task |
+| `DELETE` | `/cron/delete` | delete cron task |
+
+## Platform / Misc Endpoints
+
+The runtime also exposes:
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/image` | image serving helper |
+| `POST` | `/com/wechat` | WeChat communication entry |
+| `POST` | `/wechat` | WeChat bot entry |
+| `POST` | `/qq` | QQ bot entry |
+| `POST` | `/onebot` | OneBot entry |
+
+## Practical Notes
+
+- Admin uses its own `/bot/...` proxy routes, but those proxy to the bot-side endpoints documented here
+- the current `scripts/verify.sh` flow directly checks `/pong`, `/metrics`, `/run/list`, and the RAG endpoints
+- the current `#/runs` page depends on `/run/list`, `/run/get`, `/run/replay`, and `/run/delete`
+- the current `#/skills` page depends on `/skills/list`, `/skills/detail`, `/skills/reload`, and `/skills/validate`

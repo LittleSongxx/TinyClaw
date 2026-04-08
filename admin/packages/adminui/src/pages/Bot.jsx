@@ -3,6 +3,7 @@ import Modal from "../components/Modal";
 import Pagination from "../components/Pagination";
 import Toast from "../components/Toast";
 import ConfirmModal from "../components/ConfirmModal";
+import BulkActionToolbar from "../components/BulkActionToolbar.jsx";
 import Editor from "@monaco-editor/react";
 import { useTranslation } from "react-i18next";
 
@@ -38,6 +39,10 @@ function Bots() {
     const [botToDelete, setBotToDelete] = useState(null);
     const [botToStop, setBotToStop] = useState(null);
     const [botToRestart, setBotToRestart] = useState(null);
+    const [selectionMode, setSelectionMode] = useState(false);
+    const [selectedBotIds, setSelectedBotIds] = useState([]);
+    const [batchDeleteVisible, setBatchDeleteVisible] = useState(false);
+    const [batchStopVisible, setBatchStopVisible] = useState(false);
 
     const [httpsExpanded, setHttpsExpanded] = useState(false);
 
@@ -52,6 +57,10 @@ function Bots() {
     useEffect(() => {
         fetchBots();
     }, [page]);
+
+    useEffect(() => {
+        setSelectedBotIds((prev) => prev.filter((id) => bots.some((bot) => bot.id === id)));
+    }, [bots]);
 
     const fetchBots = async () => {
         try {
@@ -239,8 +248,110 @@ function Bots() {
         setPage(newPage);
     };
 
+    const toggleSelectionMode = () => {
+        setSelectionMode((prev) => !prev);
+        setSelectedBotIds([]);
+    };
+
+    const toggleBotSelection = (botId) => {
+        setSelectedBotIds((prev) =>
+            prev.includes(botId) ? prev.filter((id) => id !== botId) : [...prev, botId]
+        );
+    };
+
+    const visibleBotIds = bots.map((bot) => bot.id);
+    const allVisibleSelected =
+        visibleBotIds.length > 0 && visibleBotIds.every((id) => selectedBotIds.includes(id));
+
+    const handleSelectAllVisible = () => {
+        setSelectedBotIds((prev) => {
+            if (allVisibleSelected) {
+                return prev.filter((id) => !visibleBotIds.includes(id));
+            }
+            return Array.from(new Set([...prev, ...visibleBotIds]));
+        });
+    };
+
+    const clearSelection = () => {
+        setSelectedBotIds([]);
+    };
+
+    const openBatchConfirm = (type) => {
+        if (selectedBotIds.length === 0) {
+            showToast(t("no_selection"));
+            return;
+        }
+        if (type === "delete") {
+            setBatchDeleteVisible(true);
+        } else {
+            setBatchStopVisible(true);
+        }
+    };
+
+    const runBatchDelete = async () => {
+        const ids = [...selectedBotIds];
+        let success = 0;
+        let failed = 0;
+
+        for (const id of ids) {
+            try {
+                const res = await fetch(`/bot/delete?id=${id}`, { method: "DELETE" });
+                const data = await res.json();
+                if (data.code === 0) {
+                    success += 1;
+                } else {
+                    failed += 1;
+                }
+            } catch (error) {
+                failed += 1;
+            }
+        }
+
+        setBatchDeleteVisible(false);
+        clearSelection();
+
+        if (failed > 0) {
+            showToast(t("batch_operation_partial_failed", { success, failed }));
+        } else {
+            showToast(t("batch_operation_completed", { count: success }), "success");
+        }
+
+        await fetchBots();
+    };
+
+    const runBatchStop = async () => {
+        const ids = [...selectedBotIds];
+        let success = 0;
+        let failed = 0;
+
+        for (const id of ids) {
+            try {
+                const res = await fetch(`/bot/stop?id=${id}`, { method: "DELETE" });
+                const data = await res.json();
+                if (data.code === 0) {
+                    success += 1;
+                } else {
+                    failed += 1;
+                }
+            } catch (error) {
+                failed += 1;
+            }
+        }
+
+        setBatchStopVisible(false);
+        clearSelection();
+
+        if (failed > 0) {
+            showToast(t("batch_operation_partial_failed", { success, failed }));
+        } else {
+            showToast(t("batch_operation_completed", { count: success }), "success");
+        }
+
+        await fetchBots();
+    };
+
     return (
-        <div className="p-6 bg-gray-100 min-h-screen">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-100 p-6">
             {toast.show && (
                 <Toast
                     message={toast.message}
@@ -277,71 +388,127 @@ function Bots() {
                 </button>
             </div>
 
-            <div className="overflow-x-auto rounded-lg shadow">
-                <table className="min-w-full bg-white divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                    <tr>
-                        {[t("name"), t("address"), t("status"), t("create_time"), t("update_time"), t("action")].map(
-                            (title) => (
-                                <th
-                                    key={title}
-                                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                                >
-                                    {title}
-                                </th>
-                            )
-                        )}
-                    </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                    {bots.map((bot) => (
-                        <tr key={bot.id} className="hover:bg-gray-50">
-                            <td className="px-6 py-4 text-sm text-gray-800">{bot.name}</td>
-                            <td className="px-6 py-4 text-sm text-gray-800">{bot.address}</td>
-                            <td className="px-6 py-4 text-sm text-gray-800">{bot.status}</td>
-                            <td className="px-6 py-4 text-sm text-gray-600">
-                                {new Date(bot.create_time * 1000).toLocaleString()}
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-600">
-                                {new Date(bot.update_time * 1000).toLocaleString()}
-                            </td>
-                            <td className="px-6 py-4 space-x-2 text-sm">
-                                {!isRegister && (
-                                    <>
-                                        <button
-                                            onClick={() => handleEditClick(bot.id)}
-                                            className="text-claw-600 hover:underline"
-                                        >
-                                            {t("edit")}
-                                        </button>
-                                        <button
-                                            onClick={() => handleDeleteClick(bot.id)}
-                                            className="text-red-600 hover:underline"
-                                        >
-                                            {t("delete")}
-                                        </button>
-                                        <button
-                                            onClick={() => handleStopClick(bot.id)}
-                                            className="text-claw-700 hover:underline"
-                                        >
-                                            {t("stop")}
-                                        </button>
-                                    </>
-                                )}
+            {!isRegister && (
+                <div className="mb-4">
+                    <BulkActionToolbar
+                        selectionMode={selectionMode}
+                        onToggleMode={toggleSelectionMode}
+                        selectedCount={selectedBotIds.length}
+                        onSelectAllVisible={handleSelectAllVisible}
+                        onClearSelection={clearSelection}
+                        actions={
+                            <>
                                 <button
-                                    onClick={() => handleShowRawConfig(bot.id)}
-                                    className="text-green-600 hover:underline"
+                                    type="button"
+                                    onClick={() => openBatchConfirm("stop")}
+                                    disabled={selectedBotIds.length === 0}
+                                    className="rounded-lg bg-claw-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-claw-800 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
-                                    {t("command")}
+                                    {t("batch_stop")}
                                 </button>
-                            </td>
+                                <button
+                                    type="button"
+                                    onClick={() => openBatchConfirm("delete")}
+                                    disabled={selectedBotIds.length === 0}
+                                    className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {t("batch_delete")}
+                                </button>
+                            </>
+                        }
+                    />
+                </div>
+            )}
+
+            <div className="min-h-0 flex-1 overflow-hidden rounded-lg shadow">
+                <div className="h-full overflow-auto">
+                    <table className="min-w-full bg-white divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                        <tr>
+                            {selectionMode && !isRegister && (
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <input
+                                        type="checkbox"
+                                        checked={allVisibleSelected}
+                                        onChange={handleSelectAllVisible}
+                                        className="h-4 w-4 rounded border-gray-300 text-claw-600 focus:ring-claw-500"
+                                    />
+                                </th>
+                            )}
+                            {[t("name"), t("address"), t("status"), t("create_time"), t("update_time"), t("action")].map(
+                                (title) => (
+                                    <th
+                                        key={title}
+                                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        {title}
+                                    </th>
+                                )
+                            )}
                         </tr>
-                    ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                        {bots.map((bot) => (
+                            <tr key={bot.id} className="hover:bg-gray-50">
+                                {selectionMode && !isRegister && (
+                                    <td className="px-4 py-4 text-sm text-gray-800">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedBotIds.includes(bot.id)}
+                                            onChange={() => toggleBotSelection(bot.id)}
+                                            className="h-4 w-4 rounded border-gray-300 text-claw-600 focus:ring-claw-500"
+                                        />
+                                    </td>
+                                )}
+                                <td className="px-6 py-4 text-sm text-gray-800">{bot.name}</td>
+                                <td className="px-6 py-4 text-sm text-gray-800">{bot.address}</td>
+                                <td className="px-6 py-4 text-sm text-gray-800">{bot.status}</td>
+                                <td className="px-6 py-4 text-sm text-gray-600">
+                                    {new Date(bot.create_time * 1000).toLocaleString()}
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-600">
+                                    {new Date(bot.update_time * 1000).toLocaleString()}
+                                </td>
+                                <td className="px-6 py-4 space-x-2 text-sm">
+                                    {!isRegister && (
+                                        <>
+                                            <button
+                                                onClick={() => handleEditClick(bot.id)}
+                                                className="text-claw-600 hover:underline"
+                                            >
+                                                {t("edit")}
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteClick(bot.id)}
+                                                className="text-red-600 hover:underline"
+                                            >
+                                                {t("delete")}
+                                            </button>
+                                            <button
+                                                onClick={() => handleStopClick(bot.id)}
+                                                className="text-claw-700 hover:underline"
+                                            >
+                                                {t("stop")}
+                                            </button>
+                                        </>
+                                    )}
+                                    <button
+                                        onClick={() => handleShowRawConfig(bot.id)}
+                                        className="text-green-600 hover:underline"
+                                    >
+                                        {t("command")}
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
-            <Pagination page={page} pageSize={pageSize} total={total} onPageChange={handlePageChange} />
+            <div className="shrink-0">
+                <Pagination page={page} pageSize={pageSize} total={total} onPageChange={handlePageChange} />
+            </div>
 
             <Modal
                 visible={modalVisible}
@@ -482,6 +649,20 @@ function Bots() {
                 message="Are you sure you want to stop this bot?"
                 onConfirm={confirmStop}
                 onCancel={cancelStop}
+            />
+            <ConfirmModal
+                visible={batchDeleteVisible}
+                title={t("batch_delete")}
+                message={t("batch_delete_confirm")}
+                onConfirm={runBatchDelete}
+                onCancel={() => setBatchDeleteVisible(false)}
+            />
+            <ConfirmModal
+                visible={batchStopVisible}
+                title={t("batch_stop")}
+                message={t("batch_stop_confirm")}
+                onConfirm={runBatchStop}
+                onCancel={() => setBatchStopVisible(false)}
             />
         </div>
     );

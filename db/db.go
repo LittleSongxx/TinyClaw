@@ -91,6 +91,10 @@ var (
 			token_total INTEGER NOT NULL DEFAULT 0,
 			step_count INTEGER NOT NULL DEFAULT 0,
 			replay_of INTEGER NOT NULL DEFAULT 0,
+			skill_id VARCHAR(255) NOT NULL DEFAULT '',
+			skill_name VARCHAR(255) NOT NULL DEFAULT '',
+			skill_version VARCHAR(100) NOT NULL DEFAULT '',
+			selector_reason TEXT NOT NULL DEFAULT '',
 			create_time INTEGER NOT NULL DEFAULT '0',
 			update_time INTEGER NOT NULL DEFAULT '0',
 			from_bot VARCHAR(255) NOT NULL DEFAULT ''
@@ -108,9 +112,14 @@ var (
 			kind VARCHAR(50) NOT NULL DEFAULT '',
 			name VARCHAR(255) NOT NULL DEFAULT '',
 			tool_name VARCHAR(255) NOT NULL DEFAULT '',
+			skill_id VARCHAR(255) NOT NULL DEFAULT '',
+			skill_name VARCHAR(255) NOT NULL DEFAULT '',
+			skill_version VARCHAR(100) NOT NULL DEFAULT '',
 			input TEXT NOT NULL,
 			raw_output TEXT NOT NULL DEFAULT '',
 			observations TEXT NOT NULL DEFAULT '',
+			allowed_tools TEXT NOT NULL DEFAULT '[]',
+			step_context TEXT NOT NULL DEFAULT '',
 			token INTEGER NOT NULL DEFAULT 0,
 			status VARCHAR(50) NOT NULL DEFAULT '',
 			error TEXT NOT NULL DEFAULT '',
@@ -207,6 +216,10 @@ var (
           token_total INT NOT NULL DEFAULT 0,
           step_count INT NOT NULL DEFAULT 0,
           replay_of BIGINT NOT NULL DEFAULT 0,
+          skill_id VARCHAR(255) NOT NULL DEFAULT '',
+          skill_name VARCHAR(255) NOT NULL DEFAULT '',
+          skill_version VARCHAR(100) NOT NULL DEFAULT '',
+          selector_reason MEDIUMTEXT NOT NULL,
           create_time INT(10) NOT NULL DEFAULT 0,
           update_time INT(10) NOT NULL DEFAULT 0,
           from_bot VARCHAR(255) NOT NULL DEFAULT '',
@@ -224,9 +237,14 @@ var (
           kind VARCHAR(50) NOT NULL DEFAULT '',
           name VARCHAR(255) NOT NULL DEFAULT '',
           tool_name VARCHAR(255) NOT NULL DEFAULT '',
+          skill_id VARCHAR(255) NOT NULL DEFAULT '',
+          skill_name VARCHAR(255) NOT NULL DEFAULT '',
+          skill_version VARCHAR(100) NOT NULL DEFAULT '',
           input MEDIUMTEXT NOT NULL,
           raw_output MEDIUMTEXT NOT NULL,
           observations MEDIUMTEXT NOT NULL,
+          allowed_tools MEDIUMTEXT NOT NULL,
+          step_context MEDIUMTEXT NOT NULL,
           token INT NOT NULL DEFAULT 0,
           status VARCHAR(50) NOT NULL DEFAULT '',
           error MEDIUMTEXT NOT NULL,
@@ -283,6 +301,11 @@ func InitTable() {
 		}
 	}
 
+	err = migratePrimaryAgentTables(DB)
+	if err != nil {
+		logger.Fatal("migrate primary agent tables fail", "err", err)
+	}
+
 	InsertRecord(context.Background())
 
 	err = InitFeatureDB()
@@ -316,4 +339,125 @@ func initializeSqlite3Table(db *sql.DB) error {
 	}
 
 	return nil
+}
+
+func migratePrimaryAgentTables(db *sql.DB) error {
+	if db == nil {
+		return nil
+	}
+
+	switch conf.BaseConfInfo.DBType {
+	case "sqlite3":
+		if err := ensureSQLiteColumn(db, "agent_runs", "skill_id", "VARCHAR(255) NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+		if err := ensureSQLiteColumn(db, "agent_runs", "skill_name", "VARCHAR(255) NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+		if err := ensureSQLiteColumn(db, "agent_runs", "skill_version", "VARCHAR(100) NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+		if err := ensureSQLiteColumn(db, "agent_runs", "selector_reason", "TEXT NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+		if err := ensureSQLiteColumn(db, "agent_steps", "skill_id", "VARCHAR(255) NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+		if err := ensureSQLiteColumn(db, "agent_steps", "skill_name", "VARCHAR(255) NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+		if err := ensureSQLiteColumn(db, "agent_steps", "skill_version", "VARCHAR(100) NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+		if err := ensureSQLiteColumn(db, "agent_steps", "allowed_tools", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
+			return err
+		}
+		if err := ensureSQLiteColumn(db, "agent_steps", "step_context", "TEXT NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+	case "mysql":
+		if err := ensureMySQLColumn(db, "agent_runs", "skill_id", "VARCHAR(255) NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+		if err := ensureMySQLColumn(db, "agent_runs", "skill_name", "VARCHAR(255) NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+		if err := ensureMySQLColumn(db, "agent_runs", "skill_version", "VARCHAR(100) NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+		if err := ensureMySQLColumn(db, "agent_runs", "selector_reason", "MEDIUMTEXT NOT NULL"); err != nil {
+			return err
+		}
+		if err := ensureMySQLColumn(db, "agent_steps", "skill_id", "VARCHAR(255) NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+		if err := ensureMySQLColumn(db, "agent_steps", "skill_name", "VARCHAR(255) NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+		if err := ensureMySQLColumn(db, "agent_steps", "skill_version", "VARCHAR(100) NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+		if err := ensureMySQLColumn(db, "agent_steps", "allowed_tools", "MEDIUMTEXT NOT NULL"); err != nil {
+			return err
+		}
+		if err := ensureMySQLColumn(db, "agent_steps", "step_context", "MEDIUMTEXT NOT NULL"); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func ensureSQLiteColumn(db *sql.DB, tableName, columnName, definition string) error {
+	exists, err := sqliteColumnExists(db, tableName, columnName)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
+	_, err = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", tableName, columnName, definition))
+	return err
+}
+
+func sqliteColumnExists(db *sql.DB, tableName, columnName string) (bool, error) {
+	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", tableName))
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			cid        int
+			name       string
+			columnType string
+			notNull    int
+			defaultVal sql.NullString
+			pk         int
+		)
+		if err = rows.Scan(&cid, &name, &columnType, &notNull, &defaultVal, &pk); err != nil {
+			return false, err
+		}
+		if name == columnName {
+			return true, nil
+		}
+	}
+
+	return false, rows.Err()
+}
+
+func ensureMySQLColumn(db *sql.DB, tableName, columnName, definition string) error {
+	var count int
+	query := `SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`
+	if err := db.QueryRow(query, tableName, columnName).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+
+	_, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", tableName, columnName, definition))
+	return err
 }

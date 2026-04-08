@@ -51,6 +51,7 @@ WORKDIR /app
 COPY --from=node_runtime /usr/local /usr/local
 
 RUN set -eux; \
+    export DEBIAN_FRONTEND=noninteractive; \
     for attempt in 1 2 3; do \
       apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -62,20 +63,42 @@ RUN set -eux; \
       if [ "${attempt}" -eq 3 ]; then exit 1; fi; \
       rm -rf /var/lib/apt/lists/*; \
       sleep 5; \
-    done \
- && python3 -m pip install --no-cache-dir --break-system-packages \
-    mcp==${PYTHON_MCP_VERSION} \
-    uv==${UV_VERSION} \
-    mcp-server-fetch==${MCP_FETCH_VERSION} \
-    mcp-server-time==${MCP_TIME_VERSION} \
-    arxiv-mcp-server==${ARXIV_MCP_VERSION} \
- && npm install -g \
-    @modelcontextprotocol/server-filesystem@${MCP_FILESYSTEM_VERSION} \
-    @modelcontextprotocol/server-memory@${MCP_MEMORY_VERSION} \
-    @amap/amap-maps-mcp-server@${AMAP_MCP_VERSION} \
- && GOBIN=/usr/local/bin go install github.com/github/github-mcp-server/cmd/github-mcp-server@${GITHUB_MCP_SERVER_VERSION} \
- && mkdir -p /app/data/mcp/memory /app/data/mcp/arxiv /workspace \
- && rm -rf /var/lib/apt/lists/*
+    done; \
+    for attempt in 1 2 3; do \
+      python3 -m pip install --break-system-packages --retries 10 --timeout 120 \
+        mcp==${PYTHON_MCP_VERSION} \
+        uv==${UV_VERSION} \
+        mcp-server-fetch==${MCP_FETCH_VERSION} \
+        mcp-server-time==${MCP_TIME_VERSION} \
+      && break; \
+      if [ "${attempt}" -eq 3 ]; then exit 1; fi; \
+      sleep 5; \
+    done; \
+    for attempt in 1 2 3; do \
+      python3 -m pip install --break-system-packages --retries 10 --timeout 120 \
+        sgmllib3k==1.0.0 \
+        arxiv-mcp-server==${ARXIV_MCP_VERSION} \
+      && break; \
+      if [ "${attempt}" -eq 3 ]; then exit 1; fi; \
+      sleep 5; \
+    done; \
+    for attempt in 1 2 3; do \
+      npm install -g \
+        @modelcontextprotocol/server-filesystem@${MCP_FILESYSTEM_VERSION} \
+        @modelcontextprotocol/server-memory@${MCP_MEMORY_VERSION} \
+        @amap/amap-maps-mcp-server@${AMAP_MCP_VERSION} \
+      && break; \
+      if [ "${attempt}" -eq 3 ]; then exit 1; fi; \
+      sleep 5; \
+    done; \
+    for attempt in 1 2 3; do \
+      GOBIN=/usr/local/bin go install github.com/github/github-mcp-server/cmd/github-mcp-server@${GITHUB_MCP_SERVER_VERSION} \
+      && break; \
+      if [ "${attempt}" -eq 3 ]; then exit 1; fi; \
+      sleep 5; \
+    done; \
+    mkdir -p /app/data/mcp/memory /app/data/mcp/arxiv /workspace; \
+    rm -rf /var/lib/apt/lists/* /root/.cache/pip /root/.npm
 
 COPY deploy/docker/start-tinyclaw.sh /app/start-tinyclaw.sh
 COPY deploy/docker/start-services.sh /app/start-services.sh

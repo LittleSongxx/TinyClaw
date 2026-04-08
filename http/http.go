@@ -74,6 +74,11 @@ func (p *HTTPServer) Start() {
 		mux.HandleFunc("/run/list", GetAgentRuns)
 		mux.HandleFunc("/run/get", GetAgentRun)
 		mux.HandleFunc("/run/replay", ReplayAgentRun)
+		mux.HandleFunc("/run/delete", DeleteAgentRun)
+		mux.HandleFunc("/skills/list", ListSkills)
+		mux.HandleFunc("/skills/detail", GetSkillDetail)
+		mux.HandleFunc("/skills/reload", ReloadSkills)
+		mux.HandleFunc("/skills/validate", ValidateSkills)
 
 		mux.HandleFunc("/rag/list", GetRagFile)
 		mux.HandleFunc("/rag/delete", DeleteRagFile)

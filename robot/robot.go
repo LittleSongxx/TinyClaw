@@ -23,6 +23,7 @@ import (
 	"github.com/LittleSongxx/TinyClaw/logger"
 	"github.com/LittleSongxx/TinyClaw/param"
 	"github.com/LittleSongxx/TinyClaw/rag"
+	"github.com/LittleSongxx/TinyClaw/skill"
 	"github.com/LittleSongxx/TinyClaw/utils"
 	"github.com/LittleSongxx/langchaingo/chains"
 	"github.com/LittleSongxx/langchaingo/vectorstores"
@@ -867,6 +868,12 @@ func (r *RobotInfo) ExecCmd(cmd string, defaultFunc func(), modeFunc func(string
 			emptyPromptFunc = t.sendForceReply("mcp_empty_content")
 		}
 		r.sendMultiAgent("mcp_empty_content", emptyPromptFunc)
+	case param.Skill, "/" + param.Skill, "$" + param.Skill:
+		var emptyPromptFunc func()
+		if t, ok := r.Robot.(*TelegramRobot); ok {
+			emptyPromptFunc = t.sendForceReply("skill_empty_content")
+		}
+		r.sendSkill(emptyPromptFunc)
 	case param.Mode, "/" + param.Mode, "$" + param.Mode:
 		r.showMode()
 	case param.CronList, "/" + param.CronList, "$" + param.CronList:
@@ -1484,9 +1491,22 @@ func (r *RobotInfo) sendMultiAgent(agentType string, emptyPromptFunc func()) {
 				emptyPromptFunc()
 			} else {
 				logger.WarnCtx(r.Ctx, "prompt is empty")
-				r.SendMsg(chatId, i18n.GetMessage("photo_empty_content", nil), msgId, tgbotapi.ModeMarkdown, nil)
+				r.SendMsg(chatId, i18n.GetMessage(agentType, nil), msgId, tgbotapi.ModeMarkdown, nil)
 			}
 			return
+		}
+
+		if agentType == "mcp_empty_content" {
+			switch strings.ToLower(prompt) {
+			case "list":
+				catalog, err := skill.LoadDefaultCatalog()
+				if err != nil {
+					r.SendMsg(chatId, err.Error(), msgId, tgbotapi.ModeMarkdown, nil)
+					return
+				}
+				r.SendMsg(chatId, skill.FormatMCPList(catalog), msgId, tgbotapi.ModeMarkdown, nil)
+				return
+			}
 		}
 
 		dpReq := &llm.LLMTaskReq{
@@ -1528,6 +1548,131 @@ func (r *RobotInfo) sendMultiAgent(agentType string, emptyPromptFunc func()) {
 				logger.WarnCtx(r.Ctx, "execute task fail", "err", err)
 				r.SendMsg(chatId, err.Error(), msgId, tgbotapi.ModeMarkdown, nil)
 				return
+			}
+		}()
+
+		msgChan := &MsgChan{
+			NormalMessageChan: dpReq.MessageChan,
+			StrMessageChan:    dpReq.HTTPMsgChan,
+		}
+		if _, ok := r.Robot.(*Web); ok {
+			r.HandleUpdate(msgChan, "")
+		} else {
+			go r.HandleUpdate(msgChan, "")
+		}
+	})
+}
+
+func (r *RobotInfo) sendSkill(emptyPromptFunc func()) {
+	r.TalkingPreCheck(func() {
+		chatId, msgId, userId := r.GetChatIdAndMsgIdAndUserID()
+
+		rawPrompt := strings.TrimSpace(r.Robot.getPrompt())
+		catalog, catalogErr := skill.LoadDefaultCatalog()
+		if rawPrompt == "" {
+			helpText := i18n.GetMessage("skill_empty_content", nil)
+			if catalogErr == nil {
+				helpText += "\n\n" + skill.FormatCatalogList(catalog)
+			}
+			if emptyPromptFunc != nil {
+				emptyPromptFunc()
+			} else {
+				r.SendMsg(chatId, helpText, msgId, tgbotapi.ModeMarkdown, nil)
+			}
+			return
+		}
+
+		switch strings.ToLower(rawPrompt) {
+		case "list":
+			if catalogErr != nil {
+				r.SendMsg(chatId, catalogErr.Error(), msgId, tgbotapi.ModeMarkdown, nil)
+				return
+			}
+			r.SendMsg(chatId, skill.FormatCatalogList(catalog), msgId, tgbotapi.ModeMarkdown, nil)
+			return
+		case "validate":
+			report, err := skill.ValidateDefaultCatalog()
+			if err != nil {
+				r.SendMsg(chatId, err.Error(), msgId, tgbotapi.ModeMarkdown, nil)
+				return
+			}
+			r.SendMsg(chatId, skill.FormatValidationReport(report), msgId, tgbotapi.ModeMarkdown, nil)
+			return
+		}
+
+		parts := strings.Fields(rawPrompt)
+		if len(parts) < 2 {
+			msg := i18n.GetMessage("skill_empty_content", nil)
+			if catalogErr == nil {
+				msg += "\n\n" + skill.FormatCatalogList(catalog)
+			}
+			r.SendMsg(chatId, msg, msgId, tgbotapi.ModeMarkdown, nil)
+			return
+		}
+
+		skillID := strings.TrimSpace(parts[0])
+		prompt := strings.TrimSpace(strings.TrimPrefix(rawPrompt, skillID))
+		if skillID == "" || prompt == "" {
+			msg := i18n.GetMessage("skill_empty_content", nil)
+			if catalogErr == nil {
+				msg += "\n\n" + skill.FormatCatalogList(catalog)
+			}
+			r.SendMsg(chatId, msg, msgId, tgbotapi.ModeMarkdown, nil)
+			return
+		}
+
+		if catalogErr == nil {
+			resolved, ok := catalog.ResolveSkill(skillID)
+			if !ok {
+				msg := i18n.GetMessage("skill_not_found", map[string]interface{}{"skill_id": skillID})
+				msg += "\n\n" + skill.FormatCatalogList(catalog)
+				r.SendMsg(chatId, msg, msgId, tgbotapi.ModeMarkdown, nil)
+				return
+			}
+			skillID = resolved.Manifest.ID
+		} else {
+			logger.WarnCtx(r.Ctx, "load skill catalog fail in skill command", "err", catalogErr)
+		}
+
+		if strings.EqualFold(prompt, "list") || strings.EqualFold(prompt, "validate") {
+			msg := i18n.GetMessage("skill_reserved_prompt", map[string]interface{}{"skill_id": skillID})
+			r.SendMsg(chatId, msg, msgId, tgbotapi.ModeMarkdown, nil)
+			return
+		}
+
+		dpReq := &llm.LLMTaskReq{
+			Content:   prompt,
+			UserId:    userId,
+			ChatId:    chatId,
+			MsgId:     msgId,
+			PerMsgLen: r.Robot.getPerMsgLen(),
+			Cs:        r.cs,
+			Ctx:       r.Ctx,
+			SkillID:   skillID,
+		}
+
+		if _, ok := r.Robot.(*QQRobot); ok {
+			dpReq.HTTPMsgChan = make(chan string)
+		} else {
+			dpReq.MessageChan = make(chan *param.MsgInfo)
+		}
+
+		go func() {
+			defer func() {
+				if err := recover(); err != nil {
+					logger.ErrorCtx(r.Ctx, "skill execution panic", "err", err, "stack", string(debug.Stack()))
+				}
+				if dpReq.HTTPMsgChan != nil {
+					close(dpReq.HTTPMsgChan)
+				}
+				if dpReq.MessageChan != nil {
+					close(dpReq.MessageChan)
+				}
+			}()
+
+			if err := dpReq.ExecuteSkill(); err != nil {
+				logger.WarnCtx(r.Ctx, "execute skill fail", "err", err, "skill_id", skillID)
+				r.SendMsg(chatId, err.Error(), msgId, tgbotapi.ModeMarkdown, nil)
 			}
 		}()
 

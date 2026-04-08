@@ -9,8 +9,9 @@ import (
 type Mode string
 
 const (
-	ModeTask Mode = "task"
-	ModeMCP  Mode = "mcp"
+	ModeTask  Mode = "task"
+	ModeMCP   Mode = "mcp"
+	ModeSkill Mode = "skill"
 )
 
 type RunStatus string
@@ -47,6 +48,7 @@ type RunMeta struct {
 	Input    string
 	Mode     Mode
 	ReplayOf int64
+	SkillID  string
 }
 
 type TaskPlan struct {

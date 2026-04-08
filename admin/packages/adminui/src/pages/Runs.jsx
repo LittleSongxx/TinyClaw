@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from "react";
 import BotSelector from "../components/BotSelector";
+import ConfirmModal from "../components/ConfirmModal.jsx";
 import Modal from "../components/Modal";
 import Pagination from "../components/Pagination";
 import Toast from "../components/Toast.jsx";
+import BulkActionToolbar from "../components/BulkActionToolbar.jsx";
 import { useTranslation } from "react-i18next";
 
 function formatTime(ts) {
@@ -47,7 +49,12 @@ export default function Runs() {
     const [detailVisible, setDetailVisible] = useState(false);
     const [toast, setToast] = useState({ show: false, message: "", type: "error" });
     const [loading, setLoading] = useState(false);
-    const [replayLoading, setReplayLoading] = useState(false);
+    const [replayLoadingRunId, setReplayLoadingRunId] = useState(null);
+    const [runToDelete, setRunToDelete] = useState(null);
+    const [deleteVisible, setDeleteVisible] = useState(false);
+    const [selectionMode, setSelectionMode] = useState(false);
+    const [selectedRunIds, setSelectedRunIds] = useState([]);
+    const [batchDeleteVisible, setBatchDeleteVisible] = useState(false);
 
     const showToast = (message, type = "error") => {
         setToast({ show: true, message, type });
@@ -58,6 +65,10 @@ export default function Runs() {
             fetchRuns();
         }
     }, [botId, page, mode, status, userId]);
+
+    useEffect(() => {
+        setSelectedRunIds((prev) => prev.filter((id) => runs.some((run) => run.id === id)));
+    }, [runs]);
 
     const fetchRuns = async () => {
         try {
@@ -106,7 +117,7 @@ export default function Runs() {
 
     const replayRun = async (runId) => {
         try {
-            setReplayLoading(true);
+            setReplayLoadingRunId(runId);
             const params = new URLSearchParams({
                 id: botId,
                 run_id: runId,
@@ -126,15 +137,134 @@ export default function Runs() {
         } catch (err) {
             showToast(`Replay failed: ${err.message}`);
         } finally {
-            setReplayLoading(false);
+            setReplayLoadingRunId(null);
         }
+    };
+
+    const requestDeleteRun = async (runId) => {
+        const params = new URLSearchParams({
+            id: botId,
+            run_id: runId,
+        });
+        const res = await fetch(`/bot/run/delete?${params.toString()}`, {
+            method: "DELETE",
+        });
+        const data = await res.json();
+        if (data.code !== 0) {
+            throw new Error(data.message || t("run_delete_failed"));
+        }
+    };
+
+    const finalizeDeletedRuns = (runIds) => {
+        if (runIds.length === 0) {
+            return;
+        }
+
+        setSelectedRunIds((prev) => prev.filter((id) => !runIds.includes(id)));
+
+        if (selectedRun?.run?.id && runIds.includes(selectedRun.run.id)) {
+            setSelectedRun(null);
+            setDetailVisible(false);
+        }
+    };
+
+    const handleDeleteClick = (runId) => {
+        setRunToDelete(runId);
+        setDeleteVisible(true);
+    };
+
+    const cancelDelete = () => {
+        setRunToDelete(null);
+        setDeleteVisible(false);
+    };
+
+    const confirmDelete = async () => {
+        if (!runToDelete) {
+            return;
+        }
+
+        try {
+            await requestDeleteRun(runToDelete);
+            finalizeDeletedRuns([runToDelete]);
+            showToast(t("run_deleted"), "success");
+            setDeleteVisible(false);
+            setRunToDelete(null);
+            await fetchRuns();
+        } catch (err) {
+            showToast(`${t("run_delete_failed")}: ${err.message}`);
+        }
+    };
+
+    const toggleSelectionMode = () => {
+        setSelectionMode((prev) => !prev);
+        setSelectedRunIds([]);
+    };
+
+    const toggleRunSelection = (runId) => {
+        setSelectedRunIds((prev) =>
+            prev.includes(runId) ? prev.filter((id) => id !== runId) : [...prev, runId]
+        );
+    };
+
+    const visibleRunIds = runs.map((run) => run.id);
+    const allVisibleSelected =
+        visibleRunIds.length > 0 && visibleRunIds.every((id) => selectedRunIds.includes(id));
+
+    const handleSelectAllVisible = () => {
+        setSelectedRunIds((prev) => {
+            if (allVisibleSelected) {
+                return prev.filter((id) => !visibleRunIds.includes(id));
+            }
+            return Array.from(new Set([...prev, ...visibleRunIds]));
+        });
+    };
+
+    const clearSelection = () => {
+        setSelectedRunIds([]);
+    };
+
+    const openBatchDeleteConfirm = () => {
+        if (selectedRunIds.length === 0) {
+            showToast(t("no_selection"));
+            return;
+        }
+        setBatchDeleteVisible(true);
+    };
+
+    const confirmBatchDelete = async () => {
+        const ids = [...selectedRunIds];
+        let success = 0;
+        let failed = 0;
+        const deletedIds = [];
+
+        for (const id of ids) {
+            try {
+                await requestDeleteRun(id);
+                deletedIds.push(id);
+                success += 1;
+            } catch (err) {
+                failed += 1;
+            }
+        }
+
+        setBatchDeleteVisible(false);
+        clearSelection();
+        finalizeDeletedRuns(deletedIds);
+
+        if (failed > 0) {
+            showToast(t("batch_operation_partial_failed", { success, failed }));
+        } else {
+            showToast(t("batch_operation_completed", { count: success }), "success");
+        }
+
+        await fetchRuns();
     };
 
     const plannerOutputs = (selectedRun?.steps || []).filter((step) => step.kind === "planner" || step.kind === "judge");
     const toolSteps = (selectedRun?.steps || []).filter((step) => (step.observations || []).length > 0);
 
     return (
-        <div className="min-h-screen bg-gray-100 p-6">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-100 p-6">
             {toast.show && (
                 <Toast
                     message={toast.message}
@@ -172,6 +302,7 @@ export default function Runs() {
                         <option value="">{t("all_modes")}</option>
                         <option value="task">task</option>
                         <option value="mcp">mcp</option>
+                        <option value="skill">skill</option>
                     </select>
                 </div>
 
@@ -207,10 +338,41 @@ export default function Runs() {
                 </div>
             </div>
 
-            <div className="overflow-x-auto rounded-lg bg-white shadow">
+            <div className="mb-4">
+                <BulkActionToolbar
+                    selectionMode={selectionMode}
+                    onToggleMode={toggleSelectionMode}
+                    selectedCount={selectedRunIds.length}
+                    onSelectAllVisible={handleSelectAllVisible}
+                    onClearSelection={clearSelection}
+                    actions={
+                        <button
+                            type="button"
+                            onClick={openBatchDeleteConfirm}
+                            disabled={selectedRunIds.length === 0}
+                            className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {t("batch_delete")}
+                        </button>
+                    }
+                />
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-white shadow">
+                <div className="h-full overflow-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                     <tr>
+                        {selectionMode && (
+                            <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                                <input
+                                    type="checkbox"
+                                    checked={allVisibleSelected}
+                                    onChange={handleSelectAllVisible}
+                                    className="h-4 w-4 rounded border-gray-300 text-claw-600 focus:ring-claw-500"
+                                />
+                            </th>
+                        )}
                         {[
                             "ID",
                             t("mode"),
@@ -236,6 +398,16 @@ export default function Runs() {
                     {runs.length > 0 ? (
                         runs.map((run) => (
                             <tr key={run.id} className="hover:bg-gray-50">
+                                {selectionMode && (
+                                    <td className="px-4 py-4 text-sm text-gray-800">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedRunIds.includes(run.id)}
+                                            onChange={() => toggleRunSelection(run.id)}
+                                            className="h-4 w-4 rounded border-gray-300 text-claw-600 focus:ring-claw-500"
+                                        />
+                                    </td>
+                                )}
                                 <td className="px-4 py-4 text-sm text-gray-800">{run.id}</td>
                                 <td className="px-4 py-4 text-sm text-gray-800">{run.mode}</td>
                                 <td className="px-4 py-4 text-sm text-gray-800">{run.status}</td>
@@ -245,34 +417,46 @@ export default function Runs() {
                                 <td className="px-4 py-4 text-sm text-gray-800">{run.replay_of || "-"}</td>
                                 <td className="px-4 py-4 text-sm text-gray-800">{formatTime(run.update_time)}</td>
                                 <td className="px-4 py-4 text-sm text-gray-800">{trimText(run.final_output)}</td>
-                                <td className="px-4 py-4 text-sm text-gray-800 space-x-3">
-                                    <button
-                                        onClick={() => openRunDetail(run.id)}
-                                        className="text-claw-600 hover:underline"
-                                    >
-                                        {t("view")}
-                                    </button>
-                                    <button
-                                        onClick={() => replayRun(run.id)}
-                                        className="text-emerald-600 hover:underline"
-                                    >
-                                        {replayLoading ? t("replaying") : t("replay")}
-                                    </button>
+                                <td className="px-4 py-4 text-sm text-gray-800">
+                                    <div className="flex items-center gap-3 whitespace-nowrap">
+                                        <button
+                                            onClick={() => openRunDetail(run.id)}
+                                            className="text-claw-600 hover:underline"
+                                        >
+                                            {t("view")}
+                                        </button>
+                                        <button
+                                            onClick={() => replayRun(run.id)}
+                                            disabled={replayLoadingRunId === run.id}
+                                            className="text-emerald-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            {replayLoadingRunId === run.id ? t("replaying") : t("replay")}
+                                        </button>
+                                        <button
+                                            onClick={() => handleDeleteClick(run.id)}
+                                            className="text-red-600 hover:underline"
+                                        >
+                                            {t("delete")}
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         ))
                     ) : (
                         <tr>
-                            <td colSpan={10} className="py-8 text-center text-gray-500">
+                            <td colSpan={selectionMode ? 11 : 10} className="py-8 text-center text-gray-500">
                                 {loading ? t("loading") : t("no_data")}
                             </td>
                         </tr>
                     )}
                     </tbody>
                 </table>
+                </div>
             </div>
 
-            <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
+            <div className="shrink-0">
+                <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
+            </div>
 
             <Modal
                 visible={detailVisible}
@@ -283,14 +467,25 @@ export default function Runs() {
                     <div className="rounded-lg border border-gray-200 bg-slate-50 p-4">
                         <div className="mb-3 flex items-center justify-between">
                             <h3 className="text-lg font-semibold text-gray-800">{t("run_summary")}</h3>
-                            {selectedRun?.run?.id && (
-                                <button
-                                    onClick={() => replayRun(selectedRun.run.id)}
-                                    className="rounded bg-emerald-600 px-3 py-1 text-sm text-white hover:bg-emerald-700"
-                                >
-                                    {replayLoading ? t("replaying") : t("replay")}
-                                </button>
-                            )}
+                            <div className="flex items-center gap-2">
+                                {selectedRun?.run?.id && (
+                                    <button
+                                        onClick={() => replayRun(selectedRun.run.id)}
+                                        disabled={replayLoadingRunId === selectedRun.run.id}
+                                        className="rounded bg-emerald-600 px-3 py-1 text-sm text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        {replayLoadingRunId === selectedRun.run.id ? t("replaying") : t("replay")}
+                                    </button>
+                                )}
+                                {selectedRun?.run?.id && (
+                                    <button
+                                        onClick={() => handleDeleteClick(selectedRun.run.id)}
+                                        className="rounded bg-red-600 px-3 py-1 text-sm text-white hover:bg-red-700"
+                                    >
+                                        {t("delete")}
+                                    </button>
+                                )}
+                            </div>
                         </div>
                         <div className="grid gap-3 text-sm text-gray-700 md:grid-cols-3">
                             <div><span className="font-semibold">ID:</span> {selectedRun?.run?.id || "-"}</div>
@@ -372,6 +567,22 @@ export default function Runs() {
                     </div>
                 </div>
             </Modal>
+
+            <ConfirmModal
+                visible={deleteVisible}
+                title={t("delete")}
+                message={t("delete_run_confirm")}
+                onCancel={cancelDelete}
+                onConfirm={confirmDelete}
+            />
+
+            <ConfirmModal
+                visible={batchDeleteVisible}
+                title={t("batch_delete")}
+                message={t("batch_delete_confirm")}
+                onCancel={() => setBatchDeleteVisible(false)}
+                onConfirm={confirmBatchDelete}
+            />
         </div>
     );
 }

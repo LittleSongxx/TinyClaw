@@ -19,8 +19,8 @@ The codebase still contains other platform and model adapters, but this README n
 - Text chat, context memory, and built-in commands
 - Image, audio, and video related capabilities
 - Web API access
-- RAG, MCP / function calling, cron jobs, and metrics
-- Admin service for configuration, records, users, and logs
+- RAG, MCP / function calling, Skills, cron jobs, and metrics
+- Admin service for configuration, traces, skills, records, users, and logs
 
 ## Recommended Stack
 
@@ -41,6 +41,9 @@ TinyClaw/
 ├─ admin/                 admin backend and frontend
 ├─ robot/                 platform adapters
 ├─ llm/                   model integrations
+├─ http/                  bot HTTP API and runtime control endpoints
+├─ skill/                 skill catalog loading and validation logic
+├─ skills/                shipped local SKILL.md definitions
 ├─ conf/                  configuration definitions
 ├─ deploy/docker/         Docker deployment files
 ├─ scripts/               start/stop/build/release scripts
@@ -66,6 +69,14 @@ cp deploy/docker/.env.example deploy/docker/.env
 ```
 
 Then edit `deploy/docker/.env` for your own platform and model credentials.
+
+If you want to use the bundled map, web search, or GitHub MCP services, also fill:
+
+```env
+AMAP_MAPS_API_KEY=
+BOCHA_API_KEY=
+GITHUB_PERSONAL_ACCESS_TOKEN=
+```
 
 Minimal Feishu + Qwen example:
 
@@ -129,9 +140,33 @@ If you intentionally want to stop the Docker Compose stack:
 - Health check: `/pong`
 - Metrics: `/metrics`
 - Agent runs page: Admin `#/runs`
+- Skills page: Admin `#/skills`
 - RAG workbench: Admin `#/rag`
 
 Use `./scripts/status.sh` to see the actual resolved ports on your machine.
+
+## Default MCP + Skills Setup
+
+By default, TinyClaw reads MCP config from `conf/mcp/mcp.json`. The current repository ships these MCP services in that file:
+
+- `playwright`
+- `filesystem`
+- `fetch`
+- `time`
+- `memory`
+- `arxiv`
+- `amap`
+- `bocha-search`
+- `github`
+
+The shipped local skill definitions live under `skills/` and currently include:
+
+- `general_research`
+- `browser_operator`
+- `workspace_operator`
+- `github_operator`
+
+At runtime, TinyClaw also generates fallback builtin and legacy proxy skills from the registered MCP tool set. The Admin panel exposes both `#/mcp` and `#/skills` so you can inspect config, validate the skill catalog, and reload it without redeploying.
 
 ## Auto-start
 
@@ -178,6 +213,7 @@ make test
 - Feishu / Lark: [static/doc/lark.md](static/doc/lark.md)
 - Web API: [static/doc/web_api.md](static/doc/web_api.md)
 - Admin: [static/doc/admin.md](static/doc/admin.md)
+- MCP / Skills: [static/doc/functioncall.md](static/doc/functioncall.md)
 - RAG: [static/doc/rag.md](static/doc/rag.md)
 - Parameters: [static/doc/param_conf.md](static/doc/param_conf.md)
 

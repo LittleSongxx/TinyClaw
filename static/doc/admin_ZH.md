@@ -1,6 +1,6 @@
 # TinyClaw Admin 管理平台
 
-`TinyClaw Admin` 是 TinyClaw 的内置管理后台，用来查看运行状态、管理机器人配置、查看聊天记录、维护用户、RAG、MCP 和定时任务。
+`TinyClaw Admin` 是 TinyClaw 的内置管理后台，用来查看运行状态、管理机器人配置、查看聊天记录、检查 Agent 运行轨迹，并管理 Skills、RAG、MCP、用户和定时任务。
 
 这份文档只保留当前 TinyClaw 项目下真正有用的管理后台说明，不再沿用早期针对某个单一平台机器人的写法。
 
@@ -38,7 +38,7 @@
 - `Dashboard`
   查看整体运行状态、消息量、用户量和基础统计
 - `Runs`
-  查看 Agent 运行列表、步骤轨迹、tool observation，并直接 replay
+  查看 Agent 运行列表、步骤轨迹、tool observation，并支持 replay、单条删除和批量删除
 - `Bots`
   查看和修改 Bot 配置
 - `BotUsers`
@@ -52,7 +52,9 @@
 - `RAG`
   通过 `Documents / Ingestion Jobs / Retrieval Debug` 三个页签管理知识库
 - `MCP`
-  查看和管理 MCP 服务配置
+  查看和管理 MCP 服务配置、预置模板以及可用性检查
+- `Skills`
+  查看技能目录，区分 local / builtin / legacy，支持校验、reload 和详情查看
 - `Cron`
   查看和管理定时任务
 
@@ -121,6 +123,8 @@ ADMIN_PORT=18080 \
 - 主服务数据库：`data/tiny_claw.db`
 - 后台数据库：`data/tiny_claw_admin.db`
 - Agent / RAG v2：`postgres + redis + minio`
+- 默认 MCP 配置：`conf/mcp/mcp.json`
+- 本地技能目录：`skills/`
 - 主日志：`log/tiny_claw.log`
 - 部署配置：`deploy/docker/.env`
 
@@ -152,3 +156,12 @@ ADMIN_PORT=18080 \
 - TinyClaw 主服务是否已经启动
 - 主服务是否真的在写 `data/tiny_claw.db`
 - 当前环境变量是否指向了正确的数据目录
+
+### MCP 或 Skills 页面出现 warning
+
+优先检查：
+
+- `conf/mcp/mcp.json` 是否可读、JSON 是否合法
+- 如果启用了地图、联网搜索、GitHub 相关 MCP，是否已经补齐 `AMAP_MAPS_API_KEY`、`BOCHA_API_KEY`、`GITHUB_PERSONAL_ACCESS_TOKEN`
+- `app` 容器里是否真的能访问对应 MCP 命令或 URL
+- `skills/` 目录下的 `SKILL.md` 是否仍然保留了合法 frontmatter 和必需章节

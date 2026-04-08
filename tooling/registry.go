@@ -8,9 +8,20 @@ import (
 )
 
 type ToolSpec struct {
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	Policy      ToolPolicy `json:"policy"`
+	Name            string     `json:"name"`
+	Description     string     `json:"description"`
+	Version         string     `json:"version,omitempty"`
+	Path            string     `json:"path,omitempty"`
+	Memory          string     `json:"memory,omitempty"`
+	WhenToUse       string     `json:"when_to_use,omitempty"`
+	WhenNotToUse    string     `json:"when_not_to_use,omitempty"`
+	Instructions    string     `json:"instructions,omitempty"`
+	OutputContract  string     `json:"output_contract,omitempty"`
+	FailureHandling string     `json:"failure_handling,omitempty"`
+	AllowedTools    []string   `json:"allowed_tools,omitempty"`
+	Triggers        []string   `json:"triggers,omitempty"`
+	Legacy          bool       `json:"legacy"`
+	Policy          ToolPolicy `json:"policy"`
 }
 
 type ToolPolicy struct {
@@ -36,9 +47,28 @@ type ToolResult struct {
 	CompletedAt  int64         `json:"completed_at"`
 }
 
+type SkillRuntime struct {
+	ID              string   `json:"id"`
+	Name            string   `json:"name"`
+	Version         string   `json:"version"`
+	Path            string   `json:"path"`
+	Mode            string   `json:"mode"`
+	Description     string   `json:"description"`
+	Memory          string   `json:"memory"`
+	WhenToUse       string   `json:"when_to_use"`
+	WhenNotToUse    string   `json:"when_not_to_use"`
+	Instructions    string   `json:"instructions"`
+	OutputContract  string   `json:"output_contract"`
+	FailureHandling string   `json:"failure_handling"`
+	AllowedTools    []string `json:"allowed_tools,omitempty"`
+	Triggers        []string `json:"triggers,omitempty"`
+	Legacy          bool     `json:"legacy"`
+}
+
 type Entry struct {
 	Spec      ToolSpec
 	AgentInfo *conf.AgentInfo
+	Skill     *SkillRuntime
 }
 
 type Registry struct {
@@ -49,6 +79,19 @@ func NewRegistry() *Registry {
 	return &Registry{
 		entries: make(map[string]*Entry),
 	}
+}
+
+func (r *Registry) Put(entry *Entry) {
+	if r == nil || entry == nil {
+		return
+	}
+
+	key := entry.Spec.Name
+	if key == "" {
+		return
+	}
+
+	r.entries[key] = entry
 }
 
 func NewRegistryFromTaskTools() *Registry {

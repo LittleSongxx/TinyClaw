@@ -299,12 +299,12 @@ function Communicate() {
     const handleCloseToast = () => setToast(null);
 
     return (
-        <div className="p-6 bg-gray-100 min-h-screen">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-100 p-6">
             {toast && <Toast message={toast.message} type={toast.type} onClose={handleCloseToast}/>}
             <div className="flex space-x-4 mb-4 max-w-4xl min-w-[90px]">
                 <BotSelector value={botId} onChange={(bot) => setBotId(bot.id)}/>
             </div>
-            <div className="flex h-[70vh] bg-white shadow rounded-lg overflow-hidden">
+            <div className="flex min-h-0 flex-1 bg-white shadow rounded-lg overflow-hidden">
                 <div className="w-full flex flex-col">
                     <div
                         ref={chatContainerRef}

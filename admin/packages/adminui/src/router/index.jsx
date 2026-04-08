@@ -15,6 +15,7 @@ import Communicate from "../pages/Communicate.jsx";
 import Rag from "../pages/Rag.jsx";
 import Cron from "../pages/Cron.jsx";
 import Runs from "../pages/Runs.jsx";
+import Skills from "../pages/Skills.jsx";
 
 export default function Router() {
     const { isAuthenticated, isLoading } = useUser();
@@ -44,6 +45,7 @@ export default function Router() {
                     <Route path="users" element={<BotUser />} />
                     <Route path="chats" element={<BotChat />} />
                     <Route path="mcp" element={<MCP />} />
+                    <Route path="skills" element={<Skills />} />
                     <Route path="cron" element={<Cron />} />
                     <Route path="communicate" element={<Communicate />} />
                     <Route path="runs" element={<Runs />} />

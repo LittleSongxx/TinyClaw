@@ -4,6 +4,7 @@ import Modal from "../components/Modal";
 import Toast from "../components/Toast";
 import BotSelector from "../components/BotSelector";
 import ConfirmModal from "../components/ConfirmModal";
+import BulkActionToolbar from "../components/BulkActionToolbar.jsx";
 import {useTranslation} from "react-i18next";
 
 function BotUserListPage() {
@@ -21,6 +22,9 @@ function BotUserListPage() {
     const [toast, setToast] = useState({ show: false, message: "", type: "error" });
     const [confirmVisible, setConfirmVisible] = useState(false);
     const [userToDelete, setUserToDelete] = useState(null);
+    const [selectionMode, setSelectionMode] = useState(false);
+    const [selectedUserIds, setSelectedUserIds] = useState([]);
+    const [batchDeleteVisible, setBatchDeleteVisible] = useState(false);
     const showToast = (message, type = "error") => {
         setToast({ show: true, message, type });
     };
@@ -32,6 +36,10 @@ function BotUserListPage() {
             fetchBotUsers();
         }
     }, [botId, page, userIdSearch]);
+
+    useEffect(() => {
+        setSelectedUserIds((prev) => prev.filter((id) => users.some((user) => user.user_id === id)));
+    }, [users]);
 
     const fetchBotUsers = async () => {
         try {
@@ -115,8 +123,77 @@ function BotUserListPage() {
         }
     };
 
+    const toggleSelectionMode = () => {
+        setSelectionMode((prev) => !prev);
+        setSelectedUserIds([]);
+    };
+
+    const toggleUserSelection = (userId) => {
+        setSelectedUserIds((prev) =>
+            prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+        );
+    };
+
+    const visibleUserIds = users.map((user) => user.user_id);
+    const allVisibleSelected =
+        visibleUserIds.length > 0 && visibleUserIds.every((id) => selectedUserIds.includes(id));
+
+    const handleSelectAllVisible = () => {
+        setSelectedUserIds((prev) => {
+            if (allVisibleSelected) {
+                return prev.filter((id) => !visibleUserIds.includes(id));
+            }
+            return Array.from(new Set([...prev, ...visibleUserIds]));
+        });
+    };
+
+    const clearSelection = () => {
+        setSelectedUserIds([]);
+    };
+
+    const openBatchDeleteConfirm = () => {
+        if (selectedUserIds.length === 0) {
+            showToast(t("no_selection"));
+            return;
+        }
+        setBatchDeleteVisible(true);
+    };
+
+    const confirmBatchDelete = async () => {
+        const ids = [...selectedUserIds];
+        let success = 0;
+        let failed = 0;
+
+        for (const id of ids) {
+            try {
+                const res = await fetch(`/bot/user/delete?id=${botId}&user_id=${encodeURIComponent(id)}`, {
+                    method: "DELETE",
+                });
+                const data = await res.json();
+                if (data.code === 0) {
+                    success += 1;
+                } else {
+                    failed += 1;
+                }
+            } catch (err) {
+                failed += 1;
+            }
+        }
+
+        setBatchDeleteVisible(false);
+        clearSelection();
+
+        if (failed > 0) {
+            showToast(t("batch_operation_partial_failed", { success, failed }));
+        } else {
+            showToast(t("batch_operation_completed", { count: success }), "success");
+        }
+
+        await fetchBotUsers();
+    };
+
     return (
-        <div className="p-6 bg-gray-100 min-h-screen">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-100 p-6">
             {toast.show && (
                 <Toast
                     message={toast.message}
@@ -159,57 +236,101 @@ function BotUserListPage() {
                 </div>
             </div>
 
-            <div className="overflow-x-auto rounded-lg shadow">
-                <table className="min-w-full bg-white divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                    <tr>
-                        {[t("id"), t("user_id"), t("mode"), t("token"), t("available_token"), t("create_time"), t("update_time"), t("action")].map((title) => (
-                            <th
-                                key={title}
-                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                            >
-                                {title}
-                            </th>
-                        ))}
-                    </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                    {users.length > 0 ? (
-                        users.map((user) => (
-                            <tr key={user.id} className="hover:bg-gray-50">
-                                <td className="px-6 py-4 text-sm text-gray-800">{user.id}</td>
-                                <td className="px-6 py-4 text-sm text-gray-800">{user.user_id}</td>
-                                <td className="px-6 py-4 text-sm text-gray-800">{user.llm_config}</td>
-                                <td className="px-6 py-4 text-sm text-gray-800">{user.token}</td>
-                                <td className="px-6 py-4 text-sm text-gray-800">{user.avail_token}</td>
-                                <td className="px-6 py-4 text-sm text-gray-800">
-                                    {new Date(user.create_time * 1000).toLocaleString()}
-                                </td>
-                                <td className="px-6 py-4 text-sm text-gray-800">
-                                    {new Date(user.update_time * 1000).toLocaleString()}
-                                </td>
-                                <td className="px-6 py-4 text-sm text-gray-800">
-                                    <button
-                                        onClick={() => handleDeleteClick(user.user_id)}
-                                        className="text-red-600 hover:underline"
-                                    >
-                                        {t("delete")}
-                                    </button>
-                                </td>
-                            </tr>
-                        ))
-                    ) : (
-                        <tr>
-                            <td colSpan={8} className="text-center py-6 text-gray-500">
-                                {t("no_users_found")}
-                            </td>
-                        </tr>
-                    )}
-                    </tbody>
-                </table>
+            <div className="mb-4">
+                <BulkActionToolbar
+                    selectionMode={selectionMode}
+                    onToggleMode={toggleSelectionMode}
+                    selectedCount={selectedUserIds.length}
+                    onSelectAllVisible={handleSelectAllVisible}
+                    onClearSelection={clearSelection}
+                    actions={
+                        <button
+                            type="button"
+                            onClick={openBatchDeleteConfirm}
+                            disabled={selectedUserIds.length === 0}
+                            className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {t("batch_delete")}
+                        </button>
+                    }
+                />
             </div>
 
-            <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
+            <div className="min-h-0 flex-1 overflow-hidden rounded-lg shadow">
+                <div className="h-full overflow-auto">
+                    <table className="min-w-full bg-white divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                        <tr>
+                            {selectionMode && (
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <input
+                                        type="checkbox"
+                                        checked={allVisibleSelected}
+                                        onChange={handleSelectAllVisible}
+                                        className="h-4 w-4 rounded border-gray-300 text-claw-600 focus:ring-claw-500"
+                                    />
+                                </th>
+                            )}
+                            {[t("id"), t("user_id"), t("mode"), t("token"), t("available_token"), t("create_time"), t("update_time"), t("action")].map((title) => (
+                                <th
+                                    key={title}
+                                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                >
+                                    {title}
+                                </th>
+                            ))}
+                        </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                        {users.length > 0 ? (
+                            users.map((user) => (
+                                <tr key={user.id} className="hover:bg-gray-50">
+                                    {selectionMode && (
+                                        <td className="px-4 py-4 text-sm text-gray-800">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedUserIds.includes(user.user_id)}
+                                                onChange={() => toggleUserSelection(user.user_id)}
+                                                className="h-4 w-4 rounded border-gray-300 text-claw-600 focus:ring-claw-500"
+                                            />
+                                        </td>
+                                    )}
+                                    <td className="px-6 py-4 text-sm text-gray-800">{user.id}</td>
+                                    <td className="px-6 py-4 text-sm text-gray-800">{user.user_id}</td>
+                                    <td className="px-6 py-4 text-sm text-gray-800">{user.llm_config}</td>
+                                    <td className="px-6 py-4 text-sm text-gray-800">{user.token}</td>
+                                    <td className="px-6 py-4 text-sm text-gray-800">{user.avail_token}</td>
+                                    <td className="px-6 py-4 text-sm text-gray-800">
+                                        {new Date(user.create_time * 1000).toLocaleString()}
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-gray-800">
+                                        {new Date(user.update_time * 1000).toLocaleString()}
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-gray-800">
+                                        <button
+                                            onClick={() => handleDeleteClick(user.user_id)}
+                                            className="text-red-600 hover:underline"
+                                        >
+                                            {t("delete")}
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))
+                        ) : (
+                            <tr>
+                                <td colSpan={selectionMode ? 9 : 8} className="text-center py-6 text-gray-500">
+                                    {t("no_users_found")}
+                                </td>
+                            </tr>
+                        )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div className="shrink-0">
+                <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
+            </div>
 
             <ConfirmModal
                 visible={confirmVisible}
@@ -217,6 +338,13 @@ function BotUserListPage() {
                 message={t("delete_bot_user_confirm")}
                 onConfirm={confirmDelete}
                 onCancel={cancelDelete}
+            />
+            <ConfirmModal
+                visible={batchDeleteVisible}
+                title={t("batch_delete")}
+                message={t("batch_delete_confirm")}
+                onConfirm={confirmBatchDelete}
+                onCancel={() => setBatchDeleteVisible(false)}
             />
 
             <Modal visible={showModal} title="Add New Token" onClose={() => setShowModal(false)}>

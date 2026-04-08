@@ -1,32 +1,26 @@
 # TinyClaw 参数说明
 
-这份文档只保留 TinyClaw 当前仍然高频、稳定、值得维护的运行参数说明。
+这份文档只保留当前 TinyClaw 项目里最常用、最值得维护的运行参数。
 
-TinyClaw 同时支持：
+对当前仓库默认的 Docker 工作流来说，主要配置入口就是：
 
-- 环境变量
-- 命令行参数
+```text
+deploy/docker/.env
+```
 
-通常推荐优先使用环境变量，尤其是在当前仓库的 Docker Compose 结构里。
+大部分参数也可以通过命令行 flag 传入，但当前项目更推荐直接维护环境变量。
 
 ## 当前推荐方式
 
-编辑：
+1. 复制 `deploy/docker/.env.example` 为 `deploy/docker/.env`
+2. 填写平台和模型凭据
+3. 按需补齐 MCP 密钥与 RAG 参数
+4. 执行 `./scripts/start.sh`
 
-`deploy/docker/.env`
+## 参数命名规则
 
-然后启动：
-
-```bash
-./scripts/start.sh
-```
-
-## 参数来源规则
-
-一般来说：
-
-- 环境变量名：`UPPER_SNAKE_CASE`
-- 命令行参数名：`lower_snake_case`
+- 环境变量名使用 `UPPER_SNAKE_CASE`
+- 命令行参数使用 `lower_snake_case`
 
 例如：
 
@@ -40,16 +34,14 @@ TinyClaw 同时支持：
 | 变量 | 说明 |
 |---|---|
 | `BOT_NAME` | 机器人名称 |
+| `LANG` | 运行语言，常见为 `zh` / `en` |
 | `LARK_APP_ID` | 飞书 App ID |
 | `LARK_APP_SECRET` | 飞书 App Secret |
 | `QQ_APP_ID` | QQ 开放平台 App ID |
 | `QQ_APP_SECRET` | QQ 开放平台 App Secret |
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot Token |
 
-说明：
-
-- 当前推荐平台是飞书
-- 不使用的平台凭据留空即可
+当前仓库主维护的平台是飞书。
 
 ### 2. 模型与媒体能力
 
@@ -57,11 +49,11 @@ TinyClaw 同时支持：
 |---|---|
 | `TYPE` | 文本模型提供方 |
 | `DEFAULT_MODEL` | 默认文本模型 |
-| `MEDIA_TYPE` | 图片/视频能力提供方 |
+| `MEDIA_TYPE` | 图片 / 视频能力提供方 |
+| `ALIYUN_TOKEN` | 阿里云百炼 Token |
 | `OPENAI_TOKEN` | OpenAI Token |
 | `GEMINI_TOKEN` | Gemini Token |
-| `ALIYUN_TOKEN` | 阿里云百炼 Token |
-| `VOL_TOKEN` | 火山引擎通用 Token |
+| `VOL_TOKEN` | 火山引擎 Token |
 | `AI_302_TOKEN` | 302.AI Token |
 
 当前推荐值：
@@ -72,43 +64,92 @@ DEFAULT_MODEL=qwen-max
 MEDIA_TYPE=aliyun
 ```
 
-### 3. 存储与运行
+### 3. 运行与后台
 
 | 变量 | 说明 |
 |---|---|
-| `DB_TYPE` | 数据库类型，`sqlite3` 或 `mysql` |
-| `DB_CONF` | 数据库文件路径或连接串 |
-| `LANG` | 语言，常见为 `zh` / `en` |
-| `HTTP_HOST` | 主服务监听地址 |
+| `DB_TYPE` | 主库类型，通常是 `sqlite3` |
+| `DB_CONF` | 数据库文件路径或 DSN |
+| `HTTP_HOST` | Bot HTTP 监听地址 |
+| `ADMIN_PORT` | Admin 监听端口 |
+| `SESSION_KEY` | Admin 登录态签名密钥 |
+| `CHECK_BOT_SEC` | Bot 检查间隔 |
+| `LOG_LEVEL` | 日志级别 |
 | `TOKEN_PER_USER` | 单用户额度限制 |
 | `MAX_USER_CHAT` | 单用户最大并发会话数 |
 | `MAX_QA_PAIR` | 上下文保留问答对数量 |
 | `CHARACTER` | 系统人格设定 |
 
-当前仓库默认推荐：
+当前仓库默认配置主要围绕这组值：
 
 ```env
 DB_TYPE=sqlite3
-LANG=zh
 HTTP_HOST=:36060
+ADMIN_PORT=18080
+LOG_LEVEL=info
 ```
 
-### 4. Admin 后台
+### 4. MCP 与 Skills
 
 | 变量 | 说明 |
 |---|---|
-| `SESSION_KEY` | 后台登录态密钥 |
-| `ADMIN_PORT` | 后台监听端口 |
+| `USE_TOOLS` | 面向工具型部署时推荐保持开启的模型侧工具开关 |
+| `MCP_CONF_PATH` | 可选，自定义 MCP 配置文件路径 |
+| `AMAP_MAPS_API_KEY` | AMap MCP 服务密钥 |
+| `BOCHA_API_KEY` | Bocha 搜索 MCP 服务密钥 |
+| `GITHUB_PERSONAL_ACCESS_TOKEN` | GitHub MCP 服务密钥 |
 
-### 5. 代理与网络
+说明：
+
+- 如果 `MCP_CONF_PATH` 不设置，默认读取 `conf/mcp/mcp.json`
+- 本地技能目录默认从 `skills/` 加载
+- 当前维护中的 Docker 方案默认保持 `USE_TOOLS=true`
+
+### 5. RAG v2 与向量检索
 
 | 变量 | 说明 |
 |---|---|
-| `LLM_PROXY` | 模型请求代理 |
-| `ROBOT_PROXY` | 平台请求代理 |
-| `CRT_FILE` | HTTPS 证书 |
-| `KEY_FILE` | HTTPS 私钥 |
-| `CA_FILE` | CA 证书 |
+| `EMBEDDING_TYPE` | embedding 提供方 |
+| `EMBEDDING_BASE_URL` | embedding 服务地址 |
+| `EMBEDDING_MODEL_ID` | embedding 模型 ID |
+| `EMBEDDING_QUERY_INSTRUCTION` | query 侧 embedding 指令 |
+| `EMBEDDING_DIMENSIONS` | 向量维度 |
+| `VECTOR_DB_TYPE` | 向量库类型 |
+| `MILVUS_URL` | Milvus 地址 |
+| `SPACE` | 分片 / 命名空间字段 |
+| `CHUNK_SIZE` | 文档切块大小 |
+| `CHUNK_OVERLAP` | 切块重叠大小 |
+| `DEFAULT_KNOWLEDGE_BASE` | 默认知识库名 |
+| `DEFAULT_COLLECTION` | 默认 collection 名 |
+| `KNOWLEDGE_AUTO_MIGRATE` | 是否自动建表 / 建结构 |
+| `RERANKER_BASE_URL` | 可选 reranker 地址 |
+
+当前 Docker 默认值围绕：
+
+```env
+EMBEDDING_TYPE=huggingface
+EMBEDDING_BASE_URL=http://hf-embeddings:80
+EMBEDDING_MODEL_ID=BAAI/bge-small-zh-v1.5
+VECTOR_DB_TYPE=milvus
+MILVUS_URL=milvus:19530
+```
+
+### 6. 底层依赖服务
+
+| 变量 | 说明 |
+|---|---|
+| `POSTGRES_DB` | PostgreSQL 数据库名 |
+| `POSTGRES_USER` | PostgreSQL 用户名 |
+| `POSTGRES_PASSWORD` | PostgreSQL 密码 |
+| `POSTGRES_DSN` | PostgreSQL 连接串 |
+| `REDIS_ADDR` | Redis 地址 |
+| `REDIS_PASSWORD` | Redis 密码 |
+| `REDIS_DB` | Redis 逻辑库 |
+| `MINIO_ENDPOINT` | MinIO 地址 |
+| `MINIO_ACCESS_KEY` | MinIO Access Key |
+| `MINIO_SECRET_KEY` | MinIO Secret Key |
+| `MINIO_BUCKET` | 知识库文件存储桶 |
+| `MINIO_USE_SSL` | MinIO 是否启用 TLS |
 
 ## 常见配置示例
 
@@ -127,26 +168,23 @@ LARK_APP_SECRET=your_lark_app_secret
 ALIYUN_TOKEN=your_qwen_api_key
 ```
 
-### 使用 MySQL
-
-```env
-DB_TYPE=mysql
-DB_CONF=root:password@tcp(127.0.0.1:3306)/tinyclaw?charset=utf8mb4&parseTime=True&loc=Local
-```
-
-### 启用 MCP / Tools
+### 启用 MCP / Skills
 
 ```env
 USE_TOOLS=true
 ```
 
-## 与专题文档的关系
+### 填写仓库自带 MCP 所需密钥
 
-如果你需要深入看某一块配置，继续阅读：
+```env
+AMAP_MAPS_API_KEY=your-amap-key
+BOCHA_API_KEY=your-bocha-key
+GITHUB_PERSONAL_ACCESS_TOKEN=your-github-pat
+```
 
-- 飞书接入：`static/doc/lark_ZH.md`
+## 相关文档
+
+- Admin：`static/doc/admin_ZH.md`
+- MCP / Skills：`static/doc/functioncall_ZH.md`
 - RAG：`static/doc/rag_ZH.md`
-- 音频：`static/doc/audioconf_ZH.md`
-- 图片：`static/doc/photoconf_ZH.md`
-- 视频：`static/doc/videoconf_ZH.md`
 - Web API：`static/doc/web_api_ZH.md`

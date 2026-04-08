@@ -1,36 +1,30 @@
 # TinyClaw Runtime Parameters
 
-This document keeps only the runtime parameters that are still high-signal and actively useful in the current TinyClaw project.
+This document keeps only the runtime parameters that are high-signal for the current TinyClaw project layout.
 
-TinyClaw supports both:
+For the maintained Docker workflow, the main source of truth is:
 
-- environment variables
-- command-line flags
-
-For the current repository layout, environment variables are the recommended choice, especially with Docker Compose.
-
-## Recommended Workflow
-
-Edit:
-
-`deploy/docker/.env`
-
-Then start the stack:
-
-```bash
-./scripts/start.sh
+```text
+deploy/docker/.env
 ```
+
+Most settings can also be provided as flags, but environment variables are the recommended path.
+
+## Current Workflow
+
+1. Copy `deploy/docker/.env.example` to `deploy/docker/.env`
+2. Fill the required platform and model secrets
+3. Optionally fill MCP-related secrets and RAG settings
+4. Start with `./scripts/start.sh`
 
 ## Naming Rules
 
-In general:
-
 - environment variables use `UPPER_SNAKE_CASE`
-- command-line flags use `lower_snake_case`
+- flags use `lower_snake_case`
 
 Example:
 
-- env var: `LARK_APP_ID`
+- env: `LARK_APP_ID`
 - flag: `-lark_app_id`
 
 ## High-Value Parameter Groups
@@ -40,16 +34,14 @@ Example:
 | Variable | Purpose |
 |---|---|
 | `BOT_NAME` | bot display/runtime name |
+| `LANG` | runtime language, usually `zh` or `en` |
 | `LARK_APP_ID` | Feishu / Lark App ID |
 | `LARK_APP_SECRET` | Feishu / Lark App Secret |
 | `QQ_APP_ID` | QQ Open Platform App ID |
 | `QQ_APP_SECRET` | QQ Open Platform App Secret |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token |
 
-Notes:
-
-- Feishu is the currently recommended platform
-- leave unused platform credentials empty
+Current maintained setup in this repository: Feishu / Lark.
 
 ### 2. Model and Media Providers
 
@@ -57,10 +49,10 @@ Notes:
 |---|---|
 | `TYPE` | text model provider |
 | `DEFAULT_MODEL` | default text model |
-| `MEDIA_TYPE` | media generation provider |
+| `MEDIA_TYPE` | image/video provider |
+| `ALIYUN_TOKEN` | Aliyun Bailian token |
 | `OPENAI_TOKEN` | OpenAI token |
 | `GEMINI_TOKEN` | Gemini token |
-| `ALIYUN_TOKEN` | Aliyun Bailian token |
 | `VOL_TOKEN` | Volcano Engine token |
 | `AI_302_TOKEN` | 302.AI token |
 
@@ -72,43 +64,92 @@ DEFAULT_MODEL=qwen-max
 MEDIA_TYPE=aliyun
 ```
 
-### 3. Storage and Runtime
+### 3. Runtime and Admin
 
 | Variable | Purpose |
 |---|---|
-| `DB_TYPE` | `sqlite3` or `mysql` |
+| `DB_TYPE` | main app database type, usually `sqlite3` |
 | `DB_CONF` | database file path or DSN |
-| `LANG` | runtime language, commonly `zh` or `en` |
-| `HTTP_HOST` | main service listen address |
-| `TOKEN_PER_USER` | per-user quota limit |
+| `HTTP_HOST` | bot HTTP listen address |
+| `ADMIN_PORT` | admin listen port |
+| `SESSION_KEY` | admin session signing key |
+| `CHECK_BOT_SEC` | bot heartbeat / check interval |
+| `LOG_LEVEL` | runtime log level |
+| `TOKEN_PER_USER` | per-user token quota |
 | `MAX_USER_CHAT` | max concurrent chats per user |
 | `MAX_QA_PAIR` | retained QA pairs in context |
 | `CHARACTER` | system persona / behavior prompt |
 
-Recommended defaults in this repo:
+Current repo defaults are aligned with:
 
 ```env
 DB_TYPE=sqlite3
-LANG=zh
 HTTP_HOST=:36060
+ADMIN_PORT=18080
+LOG_LEVEL=info
 ```
 
-### 4. Admin Panel
+### 4. MCP and Skills
 
 | Variable | Purpose |
 |---|---|
-| `SESSION_KEY` | admin session signing key |
-| `ADMIN_PORT` | admin listen port |
+| `USE_TOOLS` | recommended model-side tool switch for tool-enabled deployments |
+| `MCP_CONF_PATH` | optional override for the default MCP config path |
+| `AMAP_MAPS_API_KEY` | secret for the AMap MCP server |
+| `BOCHA_API_KEY` | secret for the Bocha search MCP server |
+| `GITHUB_PERSONAL_ACCESS_TOKEN` | secret for the GitHub MCP server |
 
-### 5. Proxies and HTTPS
+Notes:
+
+- if `MCP_CONF_PATH` is empty, TinyClaw uses `conf/mcp/mcp.json`
+- the local skill catalog is loaded from `skills/`
+- current maintained Docker deployments keep `USE_TOOLS=true`
+
+### 5. RAG v2 and Embeddings
 
 | Variable | Purpose |
 |---|---|
-| `LLM_PROXY` | proxy for model requests |
-| `ROBOT_PROXY` | proxy for platform requests |
-| `CRT_FILE` | HTTPS certificate file |
-| `KEY_FILE` | HTTPS private key |
-| `CA_FILE` | CA certificate |
+| `EMBEDDING_TYPE` | embedding provider type |
+| `EMBEDDING_BASE_URL` | embedding service URL |
+| `EMBEDDING_MODEL_ID` | embedding model id |
+| `EMBEDDING_QUERY_INSTRUCTION` | query-side embedding instruction |
+| `EMBEDDING_DIMENSIONS` | embedding vector size |
+| `VECTOR_DB_TYPE` | vector backend type |
+| `MILVUS_URL` | Milvus endpoint |
+| `SPACE` | chunking / namespace grouping field |
+| `CHUNK_SIZE` | document chunk size |
+| `CHUNK_OVERLAP` | chunk overlap size |
+| `DEFAULT_KNOWLEDGE_BASE` | default knowledge base name |
+| `DEFAULT_COLLECTION` | default collection name |
+| `KNOWLEDGE_AUTO_MIGRATE` | auto-create storage schema if needed |
+| `RERANKER_BASE_URL` | optional reranker endpoint |
+
+The current Docker setup uses:
+
+```env
+EMBEDDING_TYPE=huggingface
+EMBEDDING_BASE_URL=http://hf-embeddings:80
+EMBEDDING_MODEL_ID=BAAI/bge-small-zh-v1.5
+VECTOR_DB_TYPE=milvus
+MILVUS_URL=milvus:19530
+```
+
+### 6. Backing Services
+
+| Variable | Purpose |
+|---|---|
+| `POSTGRES_DB` | PostgreSQL database name |
+| `POSTGRES_USER` | PostgreSQL username |
+| `POSTGRES_PASSWORD` | PostgreSQL password |
+| `POSTGRES_DSN` | PostgreSQL DSN |
+| `REDIS_ADDR` | Redis address |
+| `REDIS_PASSWORD` | Redis password |
+| `REDIS_DB` | Redis logical database |
+| `MINIO_ENDPOINT` | MinIO endpoint |
+| `MINIO_ACCESS_KEY` | MinIO access key |
+| `MINIO_SECRET_KEY` | MinIO secret key |
+| `MINIO_BUCKET` | MinIO bucket for knowledge files |
+| `MINIO_USE_SSL` | whether MinIO uses TLS |
 
 ## Common Examples
 
@@ -127,26 +168,23 @@ LARK_APP_SECRET=your_lark_app_secret
 ALIYUN_TOKEN=your_qwen_api_key
 ```
 
-### MySQL
-
-```env
-DB_TYPE=mysql
-DB_CONF=root:password@tcp(127.0.0.1:3306)/tinyclaw?charset=utf8mb4&parseTime=True&loc=Local
-```
-
-### Enable MCP / tools
+### Enable MCP / Skills
 
 ```env
 USE_TOOLS=true
 ```
 
+### Fill the bundled MCP secrets
+
+```env
+AMAP_MAPS_API_KEY=your-amap-key
+BOCHA_API_KEY=your-bocha-key
+GITHUB_PERSONAL_ACCESS_TOKEN=your-github-pat
+```
+
 ## Related Docs
 
-For deeper feature-specific settings, continue with:
-
-- Feishu / Lark: `static/doc/lark.md`
+- Admin: `static/doc/admin.md`
+- MCP / Skills: `static/doc/functioncall.md`
 - RAG: `static/doc/rag.md`
-- Audio: `static/doc/audioconf.md`
-- Photo: `static/doc/photoconf.md`
-- Video: `static/doc/videoconf.md`
 - Web API: `static/doc/web_api.md`

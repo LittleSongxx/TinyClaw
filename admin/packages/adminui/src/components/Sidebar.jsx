@@ -5,6 +5,7 @@ import {
     LayoutDashboard,
     Users,
     Bot,
+    Boxes,
     Database,
     UserCircle,
     MessageCircle,
@@ -27,6 +28,7 @@ export default function Sidebar() {
         { path: "/admins", label: t("admin_users"), icon: Users },
         { path: "/bot", label: t("bots"), icon: Bot },
         { path: "/mcp", label: t("mcp"), icon: Database },
+        { path: "/skills", label: t("skills"), icon: Boxes },
         { path: "/cron", label: t("cron"), icon: Timer },
         { path: "/users", label: t("bot_users"), icon: UserCircle },
         { path: "/chats", label: t("bot_chats"), icon: MessageCircle },
@@ -38,7 +40,7 @@ export default function Sidebar() {
 
     return (
         <div
-            className={`h-full bg-gradient-to-b from-claw-700 via-claw-800 to-claw-900 p-4 shadow-lg text-gray-100 transition-all duration-300 ${
+            className={`h-full overflow-y-auto bg-gradient-to-b from-claw-700 via-claw-800 to-claw-900 p-4 shadow-lg text-gray-100 transition-all duration-300 ${
                 collapsed ? "w-20" : "w-60"
             }`}
         >

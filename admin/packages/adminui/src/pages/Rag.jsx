@@ -323,7 +323,7 @@ export default function Rag() {
     ];
 
     return (
-        <div className="min-h-screen bg-gray-100 p-6">
+        <div className="h-full overflow-auto bg-gray-100 p-6">
             {toast.show && (
                 <Toast
                     message={toast.message}

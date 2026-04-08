@@ -119,3 +119,7 @@ func ReplayRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func DeleteRun(w http.ResponseWriter, r *http.Request) {
+	proxyBotRequest(w, r, http.MethodDelete, "/run/delete", nil)
+}

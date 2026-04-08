@@ -65,3 +65,40 @@ func TestInsertAndGetAgentRunDetail(t *testing.T) {
 		assert.Equal(t, "search", detail.Steps[0].Observations[0].Function)
 	}
 }
+
+func TestDeleteAgentRunByID(t *testing.T) {
+	run := &AgentRun{
+		UserId: "delete-run-user",
+		ChatId: "chat-delete",
+		MsgId:  "msg-delete",
+		Mode:   "task",
+		Input:  "delete this run",
+		Status: "succeeded",
+	}
+
+	runID, err := InsertAgentRun(run)
+	assert.NoError(t, err)
+	assert.NotZero(t, runID)
+
+	step := &AgentStep{
+		RunID:     runID,
+		StepIndex: 1,
+		Kind:      "planner",
+		Name:      "cleanup",
+		Input:     run.Input,
+		Status:    "succeeded",
+	}
+
+	_, err = InsertAgentStep(step)
+	assert.NoError(t, err)
+
+	err = DeleteAgentRunByID(runID)
+	assert.NoError(t, err)
+
+	_, err = GetAgentRunByID(runID)
+	assert.Error(t, err)
+
+	steps, err := GetAgentStepsByRunID(runID)
+	assert.NoError(t, err)
+	assert.Len(t, steps, 0)
+}
