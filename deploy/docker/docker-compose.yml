@@ -108,12 +108,20 @@ services:
       dockerfile: deploy/docker/Dockerfile
     image: tinyclaw-local:latest
     restart: unless-stopped
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
     env_file:
       - .env
     environment:
       HTTP_HOST: ":36060"
       ADMIN_PORT: "18080"
       TZ: ${TZ}
+      HOME: ${APP_HOME:-/app/data/home}
+      XDG_CACHE_HOME: ${XDG_CACHE_HOME:-/app/data/.cache}
+      GATEWAY_WS_PATH: ${GATEWAY_WS_PATH:-/gateway/ws}
+      GATEWAY_NODE_WS_PATH: ${GATEWAY_NODE_WS_PATH:-/gateway/nodes/ws}
+      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET:-}
+      NODE_PAIRING_TOKEN: ${NODE_PAIRING_TOKEN:-}
+      SESSION_TRANSCRIPT_DIR: ${SESSION_TRANSCRIPT_DIR:-/app/data/sessions}
       SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
       REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
       USE_TOOLS: ${USE_TOOLS:-true}

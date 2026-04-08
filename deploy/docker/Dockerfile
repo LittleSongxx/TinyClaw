@@ -27,6 +27,7 @@ COPY . .
 
 # Build the Go application
 RUN go build -ldflags="-s -w" -o TinyClaw ./cmd/tinyclaw
+RUN go build -ldflags="-s -w" -o TinyClawNode ./cmd/tinyclaw-node
 RUN go build -ldflags="-s -w" -o TinyClawAdmin ./admin
 
 FROM node:20-bookworm-slim AS node_runtime
@@ -97,13 +98,13 @@ RUN set -eux; \
       if [ "${attempt}" -eq 3 ]; then exit 1; fi; \
       sleep 5; \
     done; \
-    mkdir -p /app/data/mcp/memory /app/data/mcp/arxiv /workspace; \
+    mkdir -p /app/data/mcp/memory /app/data/mcp/arxiv /app/data/sessions /workspace; \
     rm -rf /var/lib/apt/lists/* /root/.cache/pip /root/.npm
 
 COPY deploy/docker/start-tinyclaw.sh /app/start-tinyclaw.sh
 COPY deploy/docker/start-services.sh /app/start-services.sh
 
-RUN mkdir -p /app/data /app/log && \
+RUN mkdir -p /app/data /app/data/sessions /app/log && \
     chmod +x /app/start-tinyclaw.sh /app/start-services.sh
 
 # Expose application port

@@ -24,8 +24,10 @@ export default function Layout() {
                 <Sidebar />
 
                 <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-                    <div className="h-full min-h-0 w-full overflow-hidden">
-                        <Outlet />
+                    <div className="h-full min-h-0 w-full overflow-x-hidden overflow-y-auto">
+                        <div className="min-h-full">
+                            <Outlet />
+                        </div>
                     </div>
                 </div>
             </div>

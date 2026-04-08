@@ -15,6 +15,8 @@ import {
     ScrollText,
     DatabaseIcon,
     Timer,
+    Monitor,
+    ChartColumn,
 } from "lucide-react";
 import {useTranslation} from "react-i18next";
 
@@ -31,8 +33,10 @@ export default function Sidebar() {
         { path: "/skills", label: t("skills"), icon: Boxes },
         { path: "/cron", label: t("cron"), icon: Timer },
         { path: "/users", label: t("bot_users"), icon: UserCircle },
+        { path: "/quota", label: t("quota_stats"), icon: ChartColumn },
         { path: "/chats", label: t("bot_chats"), icon: MessageCircle },
         { path: "/communicate", label: t("chat"), icon: MessageSquare },
+        { path: "/nodes", label: t("nodes"), icon: Monitor },
         { path: "/runs", label: t("runs"), icon: Activity },
         { path: "/rag", label: t("rag"), icon: DatabaseIcon },
         { path: "/log", label: t("log"), icon: ScrollText },

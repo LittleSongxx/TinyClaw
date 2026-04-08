@@ -18,9 +18,11 @@ import (
 	"github.com/ArtisanCloud/PowerWeChat/v3/src/work/message/request"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/db"
+	"github.com/LittleSongxx/TinyClaw/gateway"
 	"github.com/LittleSongxx/TinyClaw/i18n"
 	"github.com/LittleSongxx/TinyClaw/llm"
 	"github.com/LittleSongxx/TinyClaw/logger"
+	"github.com/LittleSongxx/TinyClaw/node"
 	"github.com/LittleSongxx/TinyClaw/param"
 	"github.com/LittleSongxx/TinyClaw/rag"
 	"github.com/LittleSongxx/TinyClaw/skill"
@@ -544,6 +546,27 @@ func WithUseRecord(userRecord bool) func(*RobotInfo) {
 	}
 }
 
+func WithContextState(cs *param.ContextState) func(*RobotInfo) {
+	return func(r *RobotInfo) {
+		r.cs = cloneContextState(cs)
+	}
+}
+
+func (r *RobotInfo) ApplyContextState(cs *param.ContextState) {
+	if r == nil {
+		return
+	}
+	r.cs = cloneContextState(cs)
+}
+
+func cloneContextState(cs *param.ContextState) *param.ContextState {
+	if cs == nil {
+		return &param.ContextState{UseRecord: true}
+	}
+	cp := *cs
+	return &cp
+}
+
 func StartRobot() {
 	ctx, cancel := context.WithCancel(context.Background())
 	RobotControl.Cancel = cancel
@@ -833,6 +856,10 @@ func (r *RobotInfo) ExecCmd(cmd string, defaultFunc func(), modeFunc func(string
 		r.retryLastQuestion()
 	case param.Chat, "/" + param.Chat, "$" + param.Chat:
 		r.Robot.sendChatMessage()
+	case param.Approve, "/" + param.Approve, "$" + param.Approve:
+		r.handleApprovalDecision(true)
+	case param.Reject, "/" + param.Reject, "$" + param.Reject:
+		r.handleApprovalDecision(false)
 	case param.TxtType, "/" + param.TxtType, "$" + param.TxtType, param.PhotoType, "/" + param.PhotoType, "$" + param.PhotoType, param.VideoType,
 		"/" + param.VideoType, "$" + param.VideoType, param.RecType, "/" + param.RecType, "$" + param.RecType, param.TtsType, "/" + param.TtsType, "$" + param.TtsType:
 		if typesFunc != nil {
@@ -885,6 +912,63 @@ func (r *RobotInfo) ExecCmd(cmd string, defaultFunc func(), modeFunc func(string
 	default:
 		defaultFunc()
 	}
+}
+
+func (r *RobotInfo) handleApprovalDecision(approved bool) {
+	chatId, msgId, _ := r.GetChatIdAndMsgIdAndUserID()
+	fields := strings.Fields(strings.TrimSpace(r.Robot.getPrompt()))
+	if len(fields) == 0 {
+		usage := "/approve <approval_id>"
+		if !approved {
+			usage = "/reject <approval_id>"
+		}
+		r.SendMsg(chatId, usage, msgId, "", nil)
+		return
+	}
+
+	commandID := fields[0]
+	reason := ""
+	if len(fields) > 1 {
+		reason = strings.Join(fields[1:], " ")
+	}
+
+	result, err := gateway.DefaultService().DecideApproval(r.Ctx, node.ApprovalDecision{
+		CommandID: commandID,
+		SessionID: r.cs.SessionID,
+		Approved:  approved,
+		Reason:    reason,
+		CreatedAt: time.Now().Unix(),
+	})
+	if err != nil {
+		r.SendMsg(chatId, "审批处理失败: "+err.Error(), msgId, "", nil)
+		return
+	}
+
+	approval, _ := result["approval"].(*node.ApprovalRequest)
+	commandResult, _ := result["result"].(*node.NodeCommandResult)
+	if !approved {
+		summary := "设备操作已取消"
+		if approval != nil && approval.Summary != "" {
+			summary = "已取消设备操作: " + approval.Summary
+		}
+		r.SendMsg(chatId, summary, msgId, "", nil)
+		return
+	}
+
+	content := "设备操作已批准并执行"
+	if approval != nil && approval.Summary != "" {
+		content = "已执行设备操作: " + approval.Summary
+	}
+	if commandResult != nil {
+		detail := strings.TrimSpace(commandResult.Output)
+		switch {
+		case commandResult.Error != "":
+			content += "\n结果: " + commandResult.Error
+		case detail != "":
+			content += "\n结果: " + detail
+		}
+	}
+	r.SendMsg(chatId, content, msgId, "", nil)
 }
 
 func (r *RobotInfo) cronList() {
@@ -1335,6 +1419,7 @@ func (r *RobotInfo) ExecChain(msgContent string, msgChan *MsgChan) {
 				OpenAITools:  conf.OpenAITools,
 				GeminiTools:  conf.GeminiTools,
 			}),
+			llm.WithToolBroker(gateway.DefaultService().ToolBroker()),
 		)
 		var err error
 		if rag.KnowledgeV2Enabled() {
@@ -1407,6 +1492,7 @@ func (r *RobotInfo) ExecLLM(msgContent string, msgChan *MsgChan) {
 			OpenAITools:  conf.OpenAITools,
 			GeminiTools:  conf.GeminiTools,
 		}),
+		llm.WithToolBroker(gateway.DefaultService().ToolBroker()),
 		llm.WithImages(images),
 	)
 

@@ -152,7 +152,7 @@ func InitConf() {
 	flag.StringVar(&BaseConfInfo.LLMProxy, "llm_proxy", "", "llm proxy: http://127.0.0.1:7890")
 	flag.StringVar(&BaseConfInfo.RobotProxy, "robot_proxy", "", "robot proxy: http://127.0.0.1:7890")
 	flag.StringVar(&BaseConfInfo.Lang, "lang", "en", "lang")
-	flag.IntVar(&BaseConfInfo.TokenPerUser, "token_per_user", 10000, "token per user")
+	flag.IntVar(&BaseConfInfo.TokenPerUser, "token_per_user", 100000, "token per user")
 	flag.IntVar(&BaseConfInfo.MaxUserChat, "max_user_chat", 2, "max chat per user")
 	flag.StringVar(&BaseConfInfo.HTTPHost, "http_host", ":36060", "http server port")
 	flag.BoolVar(&BaseConfInfo.UseTools, "use_tools", false, "use function tools")

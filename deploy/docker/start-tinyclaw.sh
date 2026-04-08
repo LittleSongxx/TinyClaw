@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-mkdir -p /app/data/mcp/memory /app/data/mcp/arxiv
+mkdir -p /app/data/mcp/memory /app/data/mcp/arxiv /app/data/sessions
 
 wait_for_http() {
   local name="$1"

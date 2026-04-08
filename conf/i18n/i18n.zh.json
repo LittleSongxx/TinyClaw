@@ -46,6 +46,8 @@
   "photo_export_prompt": "我对这张图片有一个疑问：\n\n {{.question}} \n\n 这是识别后的图片内容：{{.answer}}\n\n 请进行总结",
   "set_pre_prompt_success": "🚀 已成功设置命令，请在5分钟内上传图片/语音。",
   "send_mcp_info": "请求 MCP 服务，函数名为 {{.function_name}} \n\n 请求参数为 {{.request_args}} \n\n 响应为 {{.response}}",
+  "approval_required": "该设备操作需要确认：{{.summary}}\n回复 /approve {{.approval_id}} 执行，或回复 /reject {{.approval_id}} 取消。",
+  "approval_waiting": "[等待用户确认设备操作]",
   "mix_mode_choose": "请到 {{.link}} 选择一个模型，使用/$command xxx ,例如 /txt\\_model gpt-5-chat-latest 选择模型",
   "save_audio_success": "保存语音成功，语音文件地址:{{.filename}}",
   "audio_create_prompt": "请说下面的内容: {{.content}}",

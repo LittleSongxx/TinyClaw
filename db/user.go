@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/LittleSongxx/TinyClaw/conf"
@@ -20,6 +21,45 @@ type User struct {
 	AvailToken   int              `json:"avail_token"`
 	LLMConfig    string           `json:"llm_config"`
 	LLMConfigRaw *param.LLMConfig `json:"llm_config_raw"`
+}
+
+type UserQuotaMetric struct {
+	ID             int64   `json:"id"`
+	UserID         string  `json:"user_id"`
+	Token          int     `json:"token"`
+	AvailToken     int     `json:"avail_token"`
+	RemainingToken int     `json:"remaining_token"`
+	UsageRate      float64 `json:"usage_rate"`
+	CreateTime     int64   `json:"create_time"`
+	UpdateTime     int64   `json:"update_time"`
+}
+
+type UserQuotaBucket struct {
+	Label string `json:"label"`
+	Min   int    `json:"min"`
+	Max   int    `json:"max"`
+	Count int    `json:"count"`
+}
+
+type UserQuotaSummary struct {
+	TotalUsers        int     `json:"total_users"`
+	TotalUsedToken    int     `json:"total_used_token"`
+	TotalRemainToken  int     `json:"total_remaining_token"`
+	TotalQuotaToken   int     `json:"total_quota_token"`
+	AverageUsageRate  float64 `json:"average_usage_rate"`
+}
+
+type UserQuotaStats struct {
+	Summary         UserQuotaSummary  `json:"summary"`
+	TopUsed         []UserQuotaMetric `json:"top_used"`
+	LowestRemaining []UserQuotaMetric `json:"lowest_remaining"`
+	Distribution    []UserQuotaBucket `json:"distribution"`
+	List            []UserQuotaMetric `json:"list"`
+	Total           int               `json:"total"`
+	Page            int               `json:"page"`
+	PageSize        int               `json:"page_size"`
+	SortBy          string            `json:"sort_by"`
+	UserID          string            `json:"user_id,omitempty"`
 }
 
 // InsertUser insert user data
@@ -187,6 +227,203 @@ func GetUserCount(userId string) (int, error) {
 	}
 
 	return total, nil
+}
+
+func GetUserQuotaStats(page, pageSize int, userId, sortBy string) (*UserQuotaStats, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+
+	users, err := getUsersForQuotaStats(userId)
+	if err != nil {
+		return nil, err
+	}
+
+	metrics := make([]UserQuotaMetric, 0, len(users))
+	summary := UserQuotaSummary{}
+	for _, user := range users {
+		remaining := user.AvailToken - user.Token
+		totalQuota := user.AvailToken
+		usageRate := 0.0
+		if totalQuota > 0 {
+			usageRate = float64(user.Token) / float64(totalQuota)
+		}
+		metrics = append(metrics, UserQuotaMetric{
+			ID:             user.ID,
+			UserID:         user.UserId,
+			Token:          user.Token,
+			AvailToken:     user.AvailToken,
+			RemainingToken: remaining,
+			UsageRate:      usageRate,
+			CreateTime:     user.CreateTime,
+			UpdateTime:     user.UpdateTime,
+		})
+		summary.TotalUsers++
+		summary.TotalUsedToken += user.Token
+		summary.TotalRemainToken += remaining
+		summary.TotalQuotaToken += totalQuota
+	}
+	if summary.TotalUsers > 0 {
+		summary.AverageUsageRate = float64(summary.TotalUsedToken) / float64(max(summary.TotalQuotaToken, 1))
+	}
+
+	sortedMetrics := append([]UserQuotaMetric(nil), metrics...)
+	normalizedSortBy := normalizeQuotaSort(sortBy)
+	sortUserQuotaMetrics(sortedMetrics, normalizedSortBy)
+
+	topUsed := append([]UserQuotaMetric(nil), metrics...)
+	sortUserQuotaMetrics(topUsed, "high_used")
+	if len(topUsed) > 5 {
+		topUsed = topUsed[:5]
+	}
+
+	lowestRemaining := append([]UserQuotaMetric(nil), metrics...)
+	sortUserQuotaMetrics(lowestRemaining, "low_remaining")
+	if len(lowestRemaining) > 5 {
+		lowestRemaining = lowestRemaining[:5]
+	}
+
+	start := (page - 1) * pageSize
+	if start > len(sortedMetrics) {
+		start = len(sortedMetrics)
+	}
+	end := start + pageSize
+	if end > len(sortedMetrics) {
+		end = len(sortedMetrics)
+	}
+
+	return &UserQuotaStats{
+		Summary:         summary,
+		TopUsed:         topUsed,
+		LowestRemaining: lowestRemaining,
+		Distribution:    buildQuotaDistribution(metrics),
+		List:            sortedMetrics[start:end],
+		Total:           len(sortedMetrics),
+		Page:            page,
+		PageSize:        pageSize,
+		SortBy:          normalizedSortBy,
+		UserID:          userId,
+	}, nil
+}
+
+func getUsersForQuotaStats(userId string) ([]User, error) {
+	var (
+		whereSQL string
+		args     []interface{}
+	)
+	if userId != "" {
+		whereSQL = "WHERE user_id = ?"
+		args = append(args, userId)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, user_id, llm_config, token, avail_token, update_time, create_time
+		FROM users %s
+	`, whereSQL)
+
+	rows, err := DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := make([]User, 0)
+	for rows.Next() {
+		var user User
+		if err := rows.Scan(&user.ID, &user.UserId, &user.LLMConfig, &user.Token, &user.AvailToken, &user.UpdateTime, &user.CreateTime); err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	return users, rows.Err()
+}
+
+func normalizeQuotaSort(sortBy string) string {
+	switch sortBy {
+	case "low_remaining", "usage_rate", "latest", "user_id":
+		return sortBy
+	case "high_used":
+		return sortBy
+	default:
+		return "high_used"
+	}
+}
+
+func sortUserQuotaMetrics(items []UserQuotaMetric, sortBy string) {
+	switch sortBy {
+	case "low_remaining":
+		sort.SliceStable(items, func(i, j int) bool {
+			if items[i].RemainingToken == items[j].RemainingToken {
+				return items[i].Token > items[j].Token
+			}
+			return items[i].RemainingToken < items[j].RemainingToken
+		})
+	case "usage_rate":
+		sort.SliceStable(items, func(i, j int) bool {
+			if items[i].UsageRate == items[j].UsageRate {
+				return items[i].Token > items[j].Token
+			}
+			return items[i].UsageRate > items[j].UsageRate
+		})
+	case "latest":
+		sort.SliceStable(items, func(i, j int) bool {
+			if items[i].UpdateTime == items[j].UpdateTime {
+				return items[i].ID > items[j].ID
+			}
+			return items[i].UpdateTime > items[j].UpdateTime
+		})
+	case "user_id":
+		sort.SliceStable(items, func(i, j int) bool {
+			return items[i].UserID < items[j].UserID
+		})
+	default:
+		sort.SliceStable(items, func(i, j int) bool {
+			if items[i].Token == items[j].Token {
+				return items[i].UsageRate > items[j].UsageRate
+			}
+			return items[i].Token > items[j].Token
+		})
+	}
+}
+
+func buildQuotaDistribution(items []UserQuotaMetric) []UserQuotaBucket {
+	buckets := []UserQuotaBucket{
+		{Label: "0-25%", Min: 0, Max: 25},
+		{Label: "25-50%", Min: 25, Max: 50},
+		{Label: "50-75%", Min: 50, Max: 75},
+		{Label: "75-90%", Min: 75, Max: 90},
+		{Label: "90-100%", Min: 90, Max: 100},
+		{Label: "100%+", Min: 100, Max: 101},
+	}
+
+	for _, item := range items {
+		percent := int(item.UsageRate * 100)
+		switch {
+		case percent < 25:
+			buckets[0].Count++
+		case percent < 50:
+			buckets[1].Count++
+		case percent < 75:
+			buckets[2].Count++
+		case percent < 90:
+			buckets[3].Count++
+		case percent < 100:
+			buckets[4].Count++
+		default:
+			buckets[5].Count++
+		}
+	}
+	return buckets
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func GetDailyNewUsers(days int) ([]DailyStat, error) {

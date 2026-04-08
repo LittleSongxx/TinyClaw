@@ -8,6 +8,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/LittleSongxx/TinyClaw/conf"
@@ -68,6 +69,7 @@ func (p *HTTPServer) Start() {
 		mux.HandleFunc("/mcp/sync", SyncMCPConf)
 
 		mux.HandleFunc("/user/list", GetUsers)
+		mux.HandleFunc("/user/quota/stats", GetUserQuotaStats)
 		mux.HandleFunc("/user/insert/record", InsertUserRecords)
 		mux.HandleFunc("/record/list", GetRecords)
 		mux.HandleFunc("/record/delete", DeleteRecord)
@@ -98,6 +100,13 @@ func (p *HTTPServer) Start() {
 
 		mux.HandleFunc("/pong", PongHandler)
 		mux.HandleFunc("/dashboard", DashboardHandler)
+		mux.HandleFunc("/gateway/ws", GatewayWS)
+		mux.HandleFunc("/gateway/nodes/ws", GatewayNodesWS)
+		mux.HandleFunc("/gateway/nodes/list", GetGatewayNodes)
+		mux.HandleFunc("/gateway/sessions/list", GetGatewaySessions)
+		mux.HandleFunc("/gateway/approvals/list", GetGatewayApprovals)
+		mux.HandleFunc("/gateway/node/command", ExecuteGatewayNodeCommand)
+		mux.HandleFunc("/gateway/approvals/decide", DecideGatewayApproval)
 
 		mux.HandleFunc("/communicate", Communicate)
 		mux.HandleFunc("/com/wechat", ComWechatComm)
@@ -167,9 +176,10 @@ func WithRequestContext(next http.Handler) http.Handler {
 		ctx := r.Context()
 
 		isSSE := r.Header.Get("Accept") == "text/event-stream"
+		isWebSocket := strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
 
 		var cancel context.CancelFunc
-		if !isSSE {
+		if !isSSE && !isWebSocket {
 			ctx, cancel = context.WithTimeout(ctx, 15*time.Minute)
 			defer cancel()
 		}

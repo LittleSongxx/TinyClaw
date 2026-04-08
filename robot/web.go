@@ -60,6 +60,16 @@ func NewWeb(command string, userId int64, realUserId, prompt, originalPrompt str
 	return web
 }
 
+func (web *Web) ApplyContextState(cs *param.ContextState) {
+	if web == nil {
+		return
+	}
+	web.cs = cloneContextState(cs)
+	if web.Robot != nil {
+		web.Robot.ApplyContextState(cs)
+	}
+}
+
 func (web *Web) getMsgContent() string {
 	return web.Prompt
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/db"
+	"github.com/LittleSongxx/TinyClaw/gateway"
 	"github.com/LittleSongxx/TinyClaw/http"
 	"github.com/LittleSongxx/TinyClaw/i18n"
 	"github.com/LittleSongxx/TinyClaw/logger"
@@ -23,11 +24,13 @@ import (
 func main() {
 	logger.InitLogger()
 	conf.InitConf()
+	conf.InitRuntimeConf()
 	i18n.InitI18n()
 	db.InitTable()
 	conf.InitTools()
 	skill.LogDefaultCatalog(context.Background())
 	rag.InitRag()
+	gateway.Init()
 	http.InitHTTP()
 	metrics.RegisterMetrics()
 	robot.StartRobot()

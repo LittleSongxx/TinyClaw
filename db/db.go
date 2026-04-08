@@ -132,6 +132,29 @@ var (
 		CREATE INDEX IF NOT EXISTS idx_agent_steps_run_id ON agent_steps(run_id);
 		CREATE INDEX IF NOT EXISTS idx_agent_steps_run_idx ON agent_steps(run_id, step_index);
 	`,
+		"sessions": `
+		CREATE TABLE IF NOT EXISTS sessions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			session_id VARCHAR(100) NOT NULL DEFAULT '',
+			session_key TEXT NOT NULL DEFAULT '',
+			channel VARCHAR(100) NOT NULL DEFAULT '',
+			account_id VARCHAR(255) NOT NULL DEFAULT '',
+			peer_id VARCHAR(255) NOT NULL DEFAULT '',
+			group_id VARCHAR(255) NOT NULL DEFAULT '',
+			thread_id VARCHAR(255) NOT NULL DEFAULT '',
+			kind VARCHAR(50) NOT NULL DEFAULT '',
+			transcript_path TEXT NOT NULL DEFAULT '',
+			summary TEXT NOT NULL DEFAULT '',
+			message_count INTEGER NOT NULL DEFAULT 0,
+			last_message_at INTEGER NOT NULL DEFAULT 0,
+			create_time INTEGER NOT NULL DEFAULT 0,
+			update_time INTEGER NOT NULL DEFAULT 0,
+			from_bot VARCHAR(255) NOT NULL DEFAULT ''
+		);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_session_id ON sessions(session_id);
+		CREATE INDEX IF NOT EXISTS idx_sessions_channel ON sessions(channel);
+		CREATE INDEX IF NOT EXISTS idx_sessions_update_time ON sessions(update_time);
+	`,
 	}
 
 	mysqlInitializeSQLs = []string{
@@ -256,6 +279,29 @@ var (
 
           INDEX idx_agent_steps_run_id (run_id),
           INDEX idx_agent_steps_run_idx (run_id, step_index)
+       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+	`,
+		`CREATE TABLE IF NOT EXISTS sessions (
+          id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          session_id VARCHAR(100) NOT NULL DEFAULT '',
+          session_key MEDIUMTEXT NOT NULL,
+          channel VARCHAR(100) NOT NULL DEFAULT '',
+          account_id VARCHAR(255) NOT NULL DEFAULT '',
+          peer_id VARCHAR(255) NOT NULL DEFAULT '',
+          group_id VARCHAR(255) NOT NULL DEFAULT '',
+          thread_id VARCHAR(255) NOT NULL DEFAULT '',
+          kind VARCHAR(50) NOT NULL DEFAULT '',
+          transcript_path MEDIUMTEXT NOT NULL,
+          summary MEDIUMTEXT NOT NULL,
+          message_count INT NOT NULL DEFAULT 0,
+          last_message_at BIGINT NOT NULL DEFAULT 0,
+          create_time INT(10) NOT NULL DEFAULT 0,
+          update_time INT(10) NOT NULL DEFAULT 0,
+          from_bot VARCHAR(255) NOT NULL DEFAULT '',
+
+          UNIQUE KEY idx_sessions_session_id (session_id),
+          INDEX idx_sessions_channel (channel),
+          INDEX idx_sessions_update_time (update_time)
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 	`,
 	}

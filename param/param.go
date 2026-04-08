@@ -149,6 +149,8 @@ const (
 	CronList   = "cron_list"
 	CronDel    = "cron_del"
 	CronClear  = "cron_clear"
+	Approve    = "approve"
+	Reject     = "reject"
 )
 
 var (
@@ -330,10 +332,19 @@ type LLMConfig struct {
 }
 
 type ContextState struct {
-	Token     int
-	RecordID  int64
-	SkipCheck bool
-	UseRecord bool
+	Token        int
+	RecordID     int64
+	SkipCheck    bool
+	UseRecord    bool
+	SessionID    string
+	SessionKey   string
+	SessionScope string
+	Channel      string
+	AccountID    string
+	PeerID       string
+	GroupID      string
+	ThreadID     string
+	Source       string
 }
 
 type MCPResp struct {

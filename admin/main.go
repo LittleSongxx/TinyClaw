@@ -54,7 +54,13 @@ func main() {
 	mux.HandleFunc("/bot/run/get", controller.RequireLogin(controller.GetRun))
 	mux.HandleFunc("/bot/run/replay", controller.RequireLogin(controller.ReplayRun))
 	mux.HandleFunc("/bot/run/delete", controller.RequireLogin(controller.DeleteRun))
+	mux.HandleFunc("/bot/nodes/list", controller.RequireLogin(controller.ListGatewayNodes))
+	mux.HandleFunc("/bot/sessions/list", controller.RequireLogin(controller.ListGatewaySessions))
+	mux.HandleFunc("/bot/approvals/list", controller.RequireLogin(controller.ListGatewayApprovals))
+	mux.HandleFunc("/bot/node/command", controller.RequireLogin(controller.ExecuteGatewayNodeCommand))
+	mux.HandleFunc("/bot/approvals/decide", controller.RequireLogin(controller.DecideGatewayApproval))
 	mux.HandleFunc("/bot/user/list", controller.RequireLogin(controller.GetBotUser))
+	mux.HandleFunc("/bot/user/quota/stats", controller.RequireLogin(controller.GetBotUserQuotaStats))
 	mux.HandleFunc("/bot/user/delete", controller.RequireLogin(controller.DeleteBotUser))
 	mux.HandleFunc("/bot/user/mode/update", controller.RequireLogin(controller.UpdateUserMode))
 	mux.HandleFunc("/bot/user/insert/records", controller.RequireLogin(controller.InsertUserRecord))
@@ -104,11 +110,11 @@ func main() {
 	}
 }
 
-//go:embed adminui/*
+//go:embed packages/adminui/dist
 var staticFiles embed.FS
 
 func View() http.HandlerFunc {
-	distFS, _ := fs.Sub(staticFiles, "adminui")
+	distFS, _ := fs.Sub(staticFiles, "packages/adminui/dist")
 
 	staticHandler := http.FileServer(http.FS(distFS))
 

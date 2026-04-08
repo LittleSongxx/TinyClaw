@@ -12,11 +12,12 @@ import (
 	"github.com/ArtisanCloud/PowerWeChat/v3/src/kernel"
 	"github.com/ArtisanCloud/PowerWeChat/v3/src/kernel/contract"
 	"github.com/ArtisanCloud/PowerWeChat/v3/src/kernel/messages"
-	"github.com/tencent-connect/botgo/interaction/webhook"
-	"github.com/tencent-connect/botgo/token"
 	"github.com/LittleSongxx/TinyClaw/conf"
+	"github.com/LittleSongxx/TinyClaw/gateway"
 	"github.com/LittleSongxx/TinyClaw/logger"
 	"github.com/LittleSongxx/TinyClaw/robot"
+	"github.com/tencent-connect/botgo/interaction/webhook"
+	"github.com/tencent-connect/botgo/token"
 )
 
 // Communicate handles the Server-Sent Events
@@ -36,6 +37,9 @@ func Communicate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	realUserId := r.URL.Query().Get("user_id")
+	if realUserId == "" {
+		realUserId = "web:" + r.RemoteAddr
+	}
 	intUserId, _ := strconv.ParseInt(realUserId, 10, 64)
 
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -51,6 +55,22 @@ func Communicate(w http.ResponseWriter, r *http.Request) {
 	command, p := robot.ParseCommand(prompt)
 
 	web := robot.NewWeb(command, intUserId, realUserId, p, prompt, fileData, w, flusher)
+	_, state, err := gateway.DefaultService().BeginInbound(ctx, gateway.InboundMessage{
+		Channel:   "web",
+		AccountID: "default",
+		PeerID:    realUserId,
+		MessageID: realUserId,
+		Kind:      "dm",
+		Metadata: map[string]string{
+			"source": "web",
+		},
+	})
+	if err != nil {
+		logger.ErrorCtx(ctx, "gateway begin inbound fail", "err", err)
+		http.Error(w, "gateway session init failed", http.StatusInternalServerError)
+		return
+	}
+	web.ApplyContextState(state)
 	web.AddUserInfo()
 	web.Robot.Exec()
 }

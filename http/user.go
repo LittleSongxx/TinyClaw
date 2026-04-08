@@ -71,6 +71,29 @@ func GetUsers(w http.ResponseWriter, r *http.Request) {
 	utils.Success(ctx, w, r, result)
 }
 
+func GetUserQuotaStats(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if err := r.ParseForm(); err != nil {
+		logger.ErrorCtx(ctx, "parse form error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeParamError, param.MsgParamError, err)
+		return
+	}
+
+	page := utils.ParseInt(r.FormValue("page"))
+	pageSize := utils.ParseInt(r.FormValue("page_size"))
+	userID := r.FormValue("user_id")
+	sortBy := r.FormValue("sort_by")
+
+	stats, err := db.GetUserQuotaStats(page, pageSize, userID, sortBy)
+	if err != nil {
+		logger.ErrorCtx(ctx, "get user quota stats error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeDBQueryFail, param.MsgDBQueryFail, err)
+		return
+	}
+
+	utils.Success(ctx, w, r, stats)
+}
+
 func DeleteUser(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userId := r.URL.Query().Get("user_id")

@@ -6,9 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"regexp"
 	"runtime/debug"
 	"strings"
 
+	"github.com/LittleSongxx/TinyClaw/conf"
+	"github.com/LittleSongxx/TinyClaw/gateway"
+	"github.com/LittleSongxx/TinyClaw/i18n"
+	"github.com/LittleSongxx/TinyClaw/logger"
+	"github.com/LittleSongxx/TinyClaw/metrics"
+	"github.com/LittleSongxx/TinyClaw/param"
+	"github.com/LittleSongxx/TinyClaw/utils"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -17,12 +25,6 @@ import (
 	larkcontact "github.com/larksuite/oapi-sdk-go/v3/service/contact/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
-	"github.com/LittleSongxx/TinyClaw/conf"
-	"github.com/LittleSongxx/TinyClaw/i18n"
-	"github.com/LittleSongxx/TinyClaw/logger"
-	"github.com/LittleSongxx/TinyClaw/metrics"
-	"github.com/LittleSongxx/TinyClaw/param"
-	"github.com/LittleSongxx/TinyClaw/utils"
 )
 
 type MessageText struct {
@@ -89,6 +91,24 @@ func NewLarkRobot(message *larkim.P2MessageReceiveV1) *LarkRobot {
 func LarkMessageHandler(ctx context.Context, message *larkim.P2MessageReceiveV1) error {
 	l := NewLarkRobot(message)
 	l.Robot = NewRobot(WithRobot(l), WithContext(ctx))
+	groupID := ""
+	if larkcore.StringValue(message.Event.Message.ChatType) == "group" {
+		groupID = larkcore.StringValue(message.Event.Message.ChatId)
+	}
+	_, state, err := gateway.DefaultService().BeginInbound(ctx, gateway.InboundMessage{
+		Channel:   "lark",
+		AccountID: conf.BaseConfInfo.LarkAPPID,
+		PeerID:    larkcore.StringValue(message.Event.Sender.SenderId.UserId),
+		GroupID:   groupID,
+		MessageID: larkcore.StringValue(message.Event.Message.MessageId),
+		Kind:      "",
+		Metadata: map[string]string{
+			"source": "lark",
+		},
+	})
+	if err == nil {
+		l.Robot.ApplyContextState(state)
+	}
 
 	go func() {
 		defer func() {
@@ -312,6 +332,7 @@ func (l *LarkRobot) executeLLM() {
 }
 
 func GetMarkdownContent(content string) string {
+	content = sanitizeLarkMarkdownContent(content)
 	markdownMsg, _ := larkim.NewMessagePost().ZhCn(larkim.NewMessagePostContent().AppendContent(
 		[]larkim.MessagePostElement{
 			&MessagePostMarkdown{
@@ -320,6 +341,36 @@ func GetMarkdownContent(content string) string {
 		}).Build()).Build()
 
 	return markdownMsg
+}
+
+func sanitizeLarkMarkdownContent(content string) string {
+	cleaned := strings.TrimSpace(content)
+	if cleaned == "" {
+		return cleaned
+	}
+
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`(?s)\[MCP 返回的 Base64 图像已直接发送给用户\]`),
+		regexp.MustCompile(`(?s)\{这里只是一个示例 Base64 图像字符串.*?\}`),
+		regexp.MustCompile(`(?m)^\s*\].*$`),
+	}
+	for _, pattern := range patterns {
+		cleaned = pattern.ReplaceAllString(cleaned, "")
+	}
+
+	lines := strings.Split(cleaned, "\n")
+	filtered := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if strings.Contains(trimmed, "Base64 图像") || strings.Contains(trimmed, "MCP 返回的图像数据") {
+			continue
+		}
+		filtered = append(filtered, strings.TrimLeft(trimmed, "] "))
+	}
+	return strings.TrimSpace(strings.Join(filtered, "\n"))
 }
 
 type MessagePostMarkdown struct {

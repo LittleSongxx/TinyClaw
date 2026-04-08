@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+: "${HOME:=/app/data/home}"
+: "${XDG_CACHE_HOME:=/app/data/.cache}"
+
+mkdir -p "${HOME}" "${XDG_CACHE_HOME}" /app/data/mcp/memory /app/data/mcp/arxiv /app/data/sessions /app/log
+
 /app/TinyClawAdmin &
 admin_pid=$!
 

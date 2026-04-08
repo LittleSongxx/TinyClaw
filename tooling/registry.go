@@ -9,7 +9,9 @@ import (
 
 type ToolSpec struct {
 	Name            string     `json:"name"`
+	Category        string     `json:"category,omitempty"`
 	Description     string     `json:"description"`
+	InputSchema     any        `json:"input_schema,omitempty"`
 	Version         string     `json:"version,omitempty"`
 	Path            string     `json:"path,omitempty"`
 	Memory          string     `json:"memory,omitempty"`

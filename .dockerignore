@@ -12,4 +12,3 @@ build
 release
 output
 admin/packages/adminui/node_modules
-admin/packages/adminui/dist

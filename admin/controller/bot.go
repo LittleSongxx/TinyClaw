@@ -500,6 +500,42 @@ func GetBotUser(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func GetBotUserQuotaStats(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	botInfo, err := getBot(r)
+	if err != nil {
+		logger.ErrorCtx(ctx, "get bot user quota stats error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeDBQueryFail, param.MsgDBQueryFail, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		logger.ErrorCtx(ctx, "parse form error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeParamError, param.MsgParamError, err)
+		return
+	}
+
+	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodGet, strings.TrimSuffix(botInfo.Address, "/")+
+		fmt.Sprintf("/user/quota/stats?page=%s&page_size=%s&user_id=%s&sort_by=%s",
+			r.FormValue("page"),
+			r.FormValue("pageSize"),
+			url.QueryEscape(r.FormValue("userId")),
+			url.QueryEscape(r.FormValue("sortBy")),
+		), bytes.NewBuffer(nil)))
+	if err != nil {
+		logger.ErrorCtx(ctx, "get bot user quota stats error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		logger.ErrorCtx(ctx, "copy user quota stats response error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
+	}
+}
+
 func DeleteBotUser(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	botInfo, err := getBot(r)
@@ -1011,6 +1047,136 @@ func Communicate(w http.ResponseWriter, r *http.Request) {
 			}
 			break
 		}
+	}
+}
+
+func ListGatewayNodes(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	botInfo, err := getBot(r)
+	if err != nil {
+		logger.ErrorCtx(ctx, "get bot for nodes list error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeDBQueryFail, param.MsgDBQueryFail, err)
+		return
+	}
+
+	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodGet,
+		strings.TrimSuffix(botInfo.Address, "/")+"/gateway/nodes/list", bytes.NewBuffer(nil)))
+	if err != nil {
+		logger.ErrorCtx(ctx, "list gateway nodes error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		logger.ErrorCtx(ctx, "copy nodes list response error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
+	}
+}
+
+func ListGatewaySessions(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	botInfo, err := getBot(r)
+	if err != nil {
+		logger.ErrorCtx(ctx, "get bot for sessions list error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeDBQueryFail, param.MsgDBQueryFail, err)
+		return
+	}
+
+	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodGet,
+		strings.TrimSuffix(botInfo.Address, "/")+"/gateway/sessions/list", bytes.NewBuffer(nil)))
+	if err != nil {
+		logger.ErrorCtx(ctx, "list gateway sessions error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		logger.ErrorCtx(ctx, "copy sessions list response error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
+	}
+}
+
+func ListGatewayApprovals(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	botInfo, err := getBot(r)
+	if err != nil {
+		logger.ErrorCtx(ctx, "get bot for approvals list error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeDBQueryFail, param.MsgDBQueryFail, err)
+		return
+	}
+
+	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodGet,
+		strings.TrimSuffix(botInfo.Address, "/")+"/gateway/approvals/list", bytes.NewBuffer(nil)))
+	if err != nil {
+		logger.ErrorCtx(ctx, "list gateway approvals error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		logger.ErrorCtx(ctx, "copy approvals list response error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
+	}
+}
+
+func ExecuteGatewayNodeCommand(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	botInfo, err := getBot(r)
+	if err != nil {
+		logger.ErrorCtx(ctx, "get bot for node command error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeDBQueryFail, param.MsgDBQueryFail, err)
+		return
+	}
+
+	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodPost,
+		strings.TrimSuffix(botInfo.Address, "/")+"/gateway/node/command", r.Body))
+	if err != nil {
+		logger.ErrorCtx(ctx, "execute gateway node command error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		logger.ErrorCtx(ctx, "copy node command response error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
+	}
+}
+
+func DecideGatewayApproval(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	botInfo, err := getBot(r)
+	if err != nil {
+		logger.ErrorCtx(ctx, "get bot for approval decision error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeDBQueryFail, param.MsgDBQueryFail, err)
+		return
+	}
+
+	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodPost,
+		strings.TrimSuffix(botInfo.Address, "/")+"/gateway/approvals/decide", r.Body))
+	if err != nil {
+		logger.ErrorCtx(ctx, "decide gateway approval error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		logger.ErrorCtx(ctx, "copy approval decision response error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
 	}
 }
 
