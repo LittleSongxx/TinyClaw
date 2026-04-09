@@ -7,7 +7,9 @@ import (
 	"github.com/LittleSongxx/TinyClaw/conf"
 )
 
-type RagFiles struct {
+const knowledgeFileTable = "knowledge_files"
+
+type KnowledgeFileRecord struct {
 	ID         int64  `json:"id"`
 	FileName   string `json:"file_name"`
 	FileMd5    string `json:"file_md5"`
@@ -17,9 +19,8 @@ type RagFiles struct {
 	IsDeleted  int    `json:"is_deleted"`
 }
 
-func InsertRagFile(fileName, fileMd5 string) (int64, error) {
-	// insert data
-	insertSQL := `INSERT INTO rag_files (file_name, file_md5, create_time, update_time, vector_id, from_bot) VALUES (?, ?, ?, ?, ?, ?)`
+func InsertKnowledgeFile(fileName, fileMd5 string) (int64, error) {
+	insertSQL := fmt.Sprintf(`INSERT INTO %s (file_name, file_md5, create_time, update_time, vector_id, from_bot) VALUES (?, ?, ?, ?, ?, ?)`, knowledgeFileTable)
 	result, err := DB.Exec(insertSQL, fileName, fileMd5, time.Now().Unix(), time.Now().Unix(), "", conf.BaseConfInfo.BotName)
 	if err != nil {
 		return 0, err
@@ -33,8 +34,8 @@ func InsertRagFile(fileName, fileMd5 string) (int64, error) {
 	return id, nil
 }
 
-func GetRagFileByFileMd5(fileMd5 string) ([]*RagFiles, error) {
-	querySQL := `SELECT id, file_name, file_md5, update_time, create_time FROM rag_files WHERE file_md5 = ? and is_deleted = 0 and from_bot = ?`
+func GetKnowledgeFileByFileMD5(fileMd5 string) ([]*KnowledgeFileRecord, error) {
+	querySQL := fmt.Sprintf(`SELECT id, file_name, file_md5, update_time, create_time FROM %s WHERE file_md5 = ? and is_deleted = 0 and from_bot = ?`, knowledgeFileTable)
 	rows, err := DB.Query(querySQL, fileMd5, conf.BaseConfInfo.BotName)
 
 	if err != nil {
@@ -42,24 +43,23 @@ func GetRagFileByFileMd5(fileMd5 string) ([]*RagFiles, error) {
 	}
 	defer rows.Close()
 
-	var ragFiles []*RagFiles
+	var records []*KnowledgeFileRecord
 	for rows.Next() {
-		var ragFile RagFiles
-		if err := rows.Scan(&ragFile.ID, &ragFile.FileName, &ragFile.FileMd5, &ragFile.UpdateTime, &ragFile.CreateTime); err != nil {
+		var record KnowledgeFileRecord
+		if err := rows.Scan(&record.ID, &record.FileName, &record.FileMd5, &record.UpdateTime, &record.CreateTime); err != nil {
 			return nil, err
 		}
-		ragFiles = append(ragFiles, &ragFile)
+		records = append(records, &record)
 	}
 
-	// check error
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return ragFiles, nil
+	return records, nil
 }
 
-func GetRagFileByFileName(fileName string) ([]*RagFiles, error) {
-	querySQL := `SELECT id, file_name, file_md5, update_time, create_time, vector_id FROM rag_files WHERE file_name = ? and is_deleted = 0 and from_bot = ?`
+func GetKnowledgeFileByFileName(fileName string) ([]*KnowledgeFileRecord, error) {
+	querySQL := fmt.Sprintf(`SELECT id, file_name, file_md5, update_time, create_time, vector_id FROM %s WHERE file_name = ? and is_deleted = 0 and from_bot = ?`, knowledgeFileTable)
 	rows, err := DB.Query(querySQL, fileName, conf.BaseConfInfo.BotName)
 
 	if err != nil {
@@ -67,47 +67,46 @@ func GetRagFileByFileName(fileName string) ([]*RagFiles, error) {
 	}
 	defer rows.Close()
 
-	var ragFiles []*RagFiles
+	var records []*KnowledgeFileRecord
 	for rows.Next() {
-		var ragFile RagFiles
-		if err := rows.Scan(&ragFile.ID, &ragFile.FileName, &ragFile.FileMd5, &ragFile.UpdateTime, &ragFile.CreateTime, &ragFile.VectorId); err != nil {
+		var record KnowledgeFileRecord
+		if err := rows.Scan(&record.ID, &record.FileName, &record.FileMd5, &record.UpdateTime, &record.CreateTime, &record.VectorId); err != nil {
 			return nil, err
 		}
-		ragFiles = append(ragFiles, &ragFile)
+		records = append(records, &record)
 	}
 
-	// check error
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return ragFiles, nil
+	return records, nil
 }
 
-func DeleteRagFileByFileName(fileName string) error {
-	query := `UPDATE rag_files set is_deleted = 1 WHERE file_name = ? and from_bot = ?`
+func DeleteKnowledgeFileByFileName(fileName string) error {
+	query := fmt.Sprintf(`UPDATE %s set is_deleted = 1 WHERE file_name = ? and from_bot = ?`, knowledgeFileTable)
 	_, err := DB.Exec(query, fileName, conf.BaseConfInfo.BotName)
 	return err
 }
 
-func DeleteAllRagFiles() error {
-	query := `UPDATE rag_files set is_deleted = 1 WHERE is_deleted = 0 and from_bot = ?`
+func DeleteAllKnowledgeFiles() error {
+	query := fmt.Sprintf(`UPDATE %s set is_deleted = 1 WHERE is_deleted = 0 and from_bot = ?`, knowledgeFileTable)
 	_, err := DB.Exec(query, conf.BaseConfInfo.BotName)
 	return err
 }
 
-func DeleteRagFileByVectorId(fileName string) error {
-	query := `UPDATE rag_files set is_deleted = 1 WHERE vector_id = ? and from_bot = ?`
-	_, err := DB.Exec(query, fileName, conf.BaseConfInfo.BotName)
+func DeleteKnowledgeFileByVectorID(vectorID string) error {
+	query := fmt.Sprintf(`UPDATE %s set is_deleted = 1 WHERE vector_id = ? and from_bot = ?`, knowledgeFileTable)
+	_, err := DB.Exec(query, vectorID, conf.BaseConfInfo.BotName)
 	return err
 }
 
 func UpdateVectorIdByFileMd5(fileMd5, vectorId string) error {
-	query := `UPDATE rag_files set vector_id = ? WHERE file_md5 = ? and from_bot = ?`
+	query := fmt.Sprintf(`UPDATE %s set vector_id = ? WHERE file_md5 = ? and from_bot = ?`, knowledgeFileTable)
 	_, err := DB.Exec(query, vectorId, fileMd5, conf.BaseConfInfo.BotName)
 	return err
 }
 
-func GetRagFilesByPage(page, pageSize int, name string) ([]RagFiles, error) {
+func GetKnowledgeFilesByPage(page, pageSize int, name string) ([]KnowledgeFileRecord, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -129,9 +128,9 @@ func GetRagFilesByPage(page, pageSize int, name string) ([]RagFiles, error) {
 	// 查询数据
 	listSQL := fmt.Sprintf(`
 		SELECT id, file_name, file_md5, vector_id, update_time, create_time, is_deleted
-		FROM rag_files %s
+		FROM %s %s
 		ORDER BY id DESC
-		LIMIT ? OFFSET ?`, whereSQL)
+		LIMIT ? OFFSET ?`, knowledgeFileTable, whereSQL)
 
 	args = append(args, pageSize, offset)
 
@@ -141,9 +140,9 @@ func GetRagFilesByPage(page, pageSize int, name string) ([]RagFiles, error) {
 	}
 	defer rows.Close()
 
-	var files []RagFiles
+	var files []KnowledgeFileRecord
 	for rows.Next() {
-		var f RagFiles
+		var f KnowledgeFileRecord
 		if err := rows.Scan(&f.ID, &f.FileName, &f.FileMd5, &f.VectorId, &f.UpdateTime, &f.CreateTime, &f.IsDeleted); err != nil {
 			return nil, err
 		}
@@ -153,7 +152,7 @@ func GetRagFilesByPage(page, pageSize int, name string) ([]RagFiles, error) {
 	return files, nil
 }
 
-func GetRagFilesCount(name string) (int, error) {
+func GetKnowledgeFilesCount(name string) (int, error) {
 	whereSQL := "WHERE is_deleted = 0 and from_bot = ?"
 	args := []interface{}{conf.BaseConfInfo.BotName}
 
@@ -162,7 +161,7 @@ func GetRagFilesCount(name string) (int, error) {
 		args = append(args, "%"+name+"%")
 	}
 
-	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM rag_files %s", whereSQL)
+	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM %s %s", knowledgeFileTable, whereSQL)
 
 	var count int
 	err := DB.QueryRow(countSQL, args...).Scan(&count)

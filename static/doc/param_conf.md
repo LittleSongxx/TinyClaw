@@ -14,7 +14,7 @@ Most settings can also be provided as flags, but environment variables are the r
 
 1. Copy `deploy/docker/.env.example` to `deploy/docker/.env`
 2. Fill the required platform and model secrets
-3. Optionally fill MCP-related secrets and RAG settings
+3. Optionally fill MCP-related secrets and knowledge settings
 4. Start with `./scripts/start.sh`
 
 ## Naming Rules
@@ -105,7 +105,7 @@ Notes:
 - the local skill catalog is loaded from `skills/`
 - current maintained Docker deployments keep `USE_TOOLS=true`
 
-### 5. RAG v2 and Embeddings
+### 5. Knowledge and Embeddings
 
 | Variable | Purpose |
 |---|---|
@@ -114,24 +114,19 @@ Notes:
 | `EMBEDDING_MODEL_ID` | embedding model id |
 | `EMBEDDING_QUERY_INSTRUCTION` | query-side embedding instruction |
 | `EMBEDDING_DIMENSIONS` | embedding vector size |
-| `VECTOR_DB_TYPE` | vector backend type |
-| `MILVUS_URL` | Milvus endpoint |
-| `SPACE` | chunking / namespace grouping field |
 | `CHUNK_SIZE` | document chunk size |
 | `CHUNK_OVERLAP` | chunk overlap size |
 | `DEFAULT_KNOWLEDGE_BASE` | default knowledge base name |
 | `DEFAULT_COLLECTION` | default collection name |
-| `KNOWLEDGE_AUTO_MIGRATE` | auto-create storage schema if needed |
+| `KNOWLEDGE_AUTO_MIGRATE` | auto-migrate legacy files into the unified knowledge store |
 | `RERANKER_BASE_URL` | optional reranker endpoint |
 
-The current Docker setup uses:
+The current Docker setup uses the unified knowledge stack:
 
 ```env
 EMBEDDING_TYPE=huggingface
 EMBEDDING_BASE_URL=http://hf-embeddings:80
 EMBEDDING_MODEL_ID=BAAI/bge-small-zh-v1.5
-VECTOR_DB_TYPE=milvus
-MILVUS_URL=milvus:19530
 ```
 
 ### 6. Backing Services
@@ -144,12 +139,18 @@ MILVUS_URL=milvus:19530
 | `POSTGRES_DSN` | PostgreSQL DSN |
 | `REDIS_ADDR` | Redis address |
 | `REDIS_PASSWORD` | Redis password |
-| `REDIS_DB` | Redis logical database |
+| `REDIS_DB` | Redis logical database used only when async ingestion is enabled |
 | `MINIO_ENDPOINT` | MinIO endpoint |
 | `MINIO_ACCESS_KEY` | MinIO access key |
 | `MINIO_SECRET_KEY` | MinIO secret key |
 | `MINIO_BUCKET` | MinIO bucket for knowledge files |
 | `MINIO_USE_SSL` | whether MinIO uses TLS |
+
+Notes:
+
+- `POSTGRES_DSN + MINIO_ENDPOINT` form the default unified knowledge path.
+- `REDIS_*` is optional; without it, document ingestion runs synchronously.
+- `etcd + milvus` are now optional containers behind `ENABLE_FULL_STACK=true` and are no longer part of the default runtime path.
 
 ## Common Examples
 
@@ -186,5 +187,5 @@ GITHUB_PERSONAL_ACCESS_TOKEN=your-github-pat
 
 - Admin: `static/doc/admin.md`
 - MCP / Skills: `static/doc/functioncall.md`
-- RAG: `static/doc/rag.md`
+- Knowledge: `static/doc/knowledge.md`
 - Web API: `static/doc/web_api.md`

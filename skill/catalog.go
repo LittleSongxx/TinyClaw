@@ -20,9 +20,11 @@ import (
 )
 
 const (
-	ModeTask  = "task"
-	ModeMCP   = "mcp"
-	ModeSkill = "skill"
+	ModeChat     = "chat"
+	ModeTask     = "task"
+	ModeMCP      = "mcp"
+	ModeSkill    = "skill"
+	ModeWorkflow = "workflow"
 
 	MemoryNone         = "none"
 	MemoryConversation = "conversation"
@@ -35,9 +37,11 @@ var (
 	sectionHeadingExpr = regexp.MustCompile(`(?m)^##\s+(.+?)\s*$`)
 	identifierExpr     = regexp.MustCompile(`[^a-z0-9_]+`)
 	validModes         = map[string]bool{
-		ModeTask:  true,
-		ModeMCP:   true,
-		ModeSkill: true,
+		ModeChat:     true,
+		ModeTask:     true,
+		ModeMCP:      true,
+		ModeSkill:    true,
+		ModeWorkflow: true,
 	}
 	validMemoryModes = map[string]bool{
 		MemoryNone:         true,

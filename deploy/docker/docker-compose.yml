@@ -39,6 +39,8 @@ services:
 
   etcd:
     image: quay.io/coreos/etcd:v3.5.16
+    profiles:
+      - full
     restart: unless-stopped
     environment:
       ETCD_AUTO_COMPACTION_MODE: revision
@@ -70,6 +72,8 @@ services:
 
   milvus:
     image: milvusdb/milvus:v2.5.14
+    profiles:
+      - full
     restart: unless-stopped
     command:
       - milvus
@@ -130,9 +134,6 @@ services:
       EMBEDDING_MODEL_ID: ${EMBEDDING_MODEL_ID:-BAAI/bge-small-zh-v1.5}
       EMBEDDING_QUERY_INSTRUCTION: ${EMBEDDING_QUERY_INSTRUCTION:-为这个句子生成表示以用于检索相关文章：}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-512}
-      VECTOR_DB_TYPE: ${VECTOR_DB_TYPE:-milvus}
-      MILVUS_URL: ${MILVUS_URL:-milvus:19530}
-      SPACE: ${SPACE:-TinyClaw}
       CHUNK_SIZE: ${CHUNK_SIZE:-500}
       CHUNK_OVERLAP: ${CHUNK_OVERLAP:-50}
       POSTGRES_DSN: ${POSTGRES_DSN:-postgres://tinyclaw:tinyclawpass@postgres:5432/tinyclaw?sslmode=disable}
@@ -153,7 +154,6 @@ services:
       - postgres
       - redis
       - minio
-      - milvus
       - playwright-mcp
     ports:
       - "${HOST_HTTP_PORT:-36060}:36060"

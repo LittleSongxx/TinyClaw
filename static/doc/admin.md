@@ -1,6 +1,6 @@
 # TinyClaw Admin
 
-`TinyClaw Admin` is the built-in management panel for TinyClaw. It is used to inspect runtime status, manage bot configuration, review chat records, inspect agent runs, and operate Skills, RAG, MCP, users, and cron jobs.
+`TinyClaw Admin` is the built-in management panel for TinyClaw. It is used to inspect runtime status, manage bot configuration, review chat records, inspect agent runs, and operate Skills, Knowledge, MCP, users, and cron jobs.
 
 This document now describes the current TinyClaw admin usage instead of the old single-platform bot wording.
 
@@ -47,7 +47,7 @@ The admin panel is most useful for these areas:
   direct admin-side bot debugging
 - `Log`
   runtime logs
-- `RAG`
+- `Knowledge`
   knowledge management through `Documents / Ingestion Jobs / Retrieval Debug`
 - `MCP`
   MCP service configuration, prepared templates, and availability inspection
@@ -72,7 +72,7 @@ This is the default project workflow.
 `./scripts/stop.sh` is now a safe helper and does not stop containers by default.
 Use `./scripts/stop.sh --down` only when you intentionally want to stop the Compose stack.
 
-If you want a full live validation for the Agent and RAG stack, run:
+If you want a full live validation for the Agent and knowledge stack, run:
 
 ```bash
 ./scripts/verify.sh --full
@@ -120,7 +120,7 @@ The most relevant files are:
 
 - main database: `data/tiny_claw.db`
 - admin database: `data/tiny_claw_admin.db`
-- Agent / RAG v2 services: `postgres + redis + minio`
+- Agent / knowledge services: `postgres + minio`, with optional `redis`
 - default MCP config: `conf/mcp/mcp.json`
 - local skills directory: `skills/`
 - main log: `log/tiny_claw.log`

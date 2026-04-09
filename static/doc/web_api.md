@@ -203,34 +203,47 @@ The response includes:
 - per-server availability status
 - setup, runtime, or secret warnings
 
-## RAG Endpoints
+## Runtime / Knowledge Endpoints
 
-The current RAG v2 HTTP endpoints are:
+The current unified runtime and knowledge HTTP endpoints are:
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/rag/list` | legacy file list |
-| `POST` | `/rag/create` | legacy file create |
-| `GET` | `/rag/get` | legacy file get |
-| `DELETE` | `/rag/delete` | legacy file delete |
-| `POST` | `/rag/clear` | clear vector data |
-| `GET` | `/rag/collections/list` | list collections |
-| `POST` | `/rag/collections/create` | create collection |
-| `GET` | `/rag/documents/list` | list documents |
-| `GET` | `/rag/documents/get` | get one document |
-| `POST` | `/rag/documents/create` | create one text or binary document |
-| `DELETE` | `/rag/documents/delete` | delete one document |
-| `GET` | `/rag/jobs/list` | list ingestion jobs |
-| `POST` | `/rag/retrieval/debug` | run retrieval debug |
-| `GET` | `/rag/retrieval/runs/list` | list retrieval runs |
-| `GET` | `/rag/retrieval/runs/get` | get one retrieval run |
+| `POST` | `/runs` | create a unified chat / task / skill / workflow run |
+| `GET` | `/runs/{id}` | fetch one run result |
+| `GET` | `/tools/effective` | inspect the effective runtime tool set |
+| `GET` | `/skills/status` | inspect skill status |
+| `GET` | `/memory/status` | inspect memory status |
+| `GET` | `/knowledge/status` | inspect knowledge status |
+| `POST` | `/knowledge/search` | run unified knowledge retrieval |
+| `POST` | `/knowledge/ingest` | ingest text or files into the unified knowledge store |
+
+The knowledge management endpoints are:
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/knowledge/files/list` | unified knowledge file list |
+| `POST` | `/knowledge/files/create` | create a unified knowledge file |
+| `GET` | `/knowledge/files/get` | fetch a unified knowledge file |
+| `DELETE` | `/knowledge/files/delete` | delete a unified knowledge file |
+| `POST` | `/knowledge/clear` | clear unified knowledge data |
+| `GET` | `/knowledge/collections/list` | list collections |
+| `POST` | `/knowledge/collections/create` | create collection |
+| `GET` | `/knowledge/documents/list` | list documents |
+| `GET` | `/knowledge/documents/get` | get one document |
+| `POST` | `/knowledge/documents/create` | create one text or binary document |
+| `DELETE` | `/knowledge/documents/delete` | delete one document |
+| `GET` | `/knowledge/jobs/list` | list ingestion jobs |
+| `POST` | `/knowledge/retrieval/debug` | run retrieval debug |
+| `GET` | `/knowledge/retrieval/runs/list` | list retrieval runs |
+| `GET` | `/knowledge/retrieval/runs/get` | get one retrieval run |
 
 The endpoints most commonly used by the current verification flow are:
 
-- `/rag/collections/list`
-- `/rag/documents/create`
-- `/rag/jobs/list`
-- `/rag/retrieval/debug`
+- `/knowledge/collections/list`
+- `/knowledge/documents/create`
+- `/knowledge/jobs/list`
+- `/knowledge/retrieval/debug`
 
 ## Cron Endpoints
 
@@ -257,6 +270,6 @@ The runtime also exposes:
 ## Practical Notes
 
 - Admin uses its own `/bot/...` proxy routes, but those proxy to the bot-side endpoints documented here
-- the current `scripts/verify.sh` flow directly checks `/pong`, `/metrics`, `/run/list`, and the RAG endpoints
+- the current `scripts/verify.sh` flow directly checks `/pong`, `/metrics`, `/run/list`, and the knowledge endpoints
 - the current `#/runs` page depends on `/run/list`, `/run/get`, `/run/replay`, and `/run/delete`
 - the current `#/skills` page depends on `/skills/list`, `/skills/detail`, `/skills/reload`, and `/skills/validate`

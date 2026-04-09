@@ -10,6 +10,11 @@ import (
 type ToolSpec struct {
 	Name            string     `json:"name"`
 	Category        string     `json:"category,omitempty"`
+	Source          string     `json:"source,omitempty"`
+	Visibility      string     `json:"visibility,omitempty"`
+	ApprovalPolicy  string     `json:"approval_policy,omitempty"`
+	Tags            []string   `json:"tags,omitempty"`
+	DisabledReason  string     `json:"disabled_reason,omitempty"`
 	Description     string     `json:"description"`
 	InputSchema     any        `json:"input_schema,omitempty"`
 	Version         string     `json:"version,omitempty"`
@@ -134,7 +139,7 @@ func (r *Registry) List() []ToolSpec {
 
 	specs := make([]ToolSpec, 0, len(r.entries))
 	for _, entry := range r.entries {
-		specs = append(specs, entry.Spec)
+		specs = append(specs, normalizeToolSpec(entry.Spec))
 	}
 
 	sort.Slice(specs, func(i, j int) bool {
@@ -150,5 +155,59 @@ func (r *Registry) Get(name string) (*Entry, bool) {
 	}
 
 	entry, ok := r.entries[name]
+	if ok && entry != nil {
+		copyEntry := *entry
+		copyEntry.Spec = normalizeToolSpec(copyEntry.Spec)
+		return &copyEntry, true
+	}
 	return entry, ok
+}
+
+func normalizeToolSpec(spec ToolSpec) ToolSpec {
+	if spec.Source == "" {
+		switch spec.Category {
+		case CategoryNode:
+			spec.Source = "node"
+		case CategoryMCP, CategoryBrowser:
+			spec.Source = "mcp"
+		case CategoryKnowledge:
+			spec.Source = "knowledge"
+		default:
+			spec.Source = "system"
+		}
+	}
+
+	if spec.Visibility == "" {
+		switch spec.Category {
+		case CategoryNode, CategoryKnowledge, CategoryMCP, CategoryBrowser:
+			spec.Visibility = "runtime"
+		default:
+			spec.Visibility = "planner"
+		}
+	}
+
+	if spec.ApprovalPolicy == "" {
+		if spec.Category == CategoryNode {
+			spec.ApprovalPolicy = "user_confirmation"
+		} else {
+			spec.ApprovalPolicy = "implicit"
+		}
+	}
+
+	if spec.Policy.Disabled && spec.DisabledReason == "" {
+		spec.DisabledReason = "disabled by policy"
+	}
+
+	if len(spec.Tags) == 0 {
+		switch spec.Source {
+		case "node":
+			spec.Tags = []string{"runtime", "desktop"}
+		case "knowledge":
+			spec.Tags = []string{"runtime", "recall"}
+		case "mcp":
+			spec.Tags = []string{"runtime", "mcp"}
+		}
+	}
+
+	return spec
 }

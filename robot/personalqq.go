@@ -9,14 +9,14 @@ import (
 	"net/http"
 	"strings"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/json-iterator/go"
-	"github.com/json-iterator/go/extra"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/i18n"
 	"github.com/LittleSongxx/TinyClaw/logger"
 	"github.com/LittleSongxx/TinyClaw/param"
 	"github.com/LittleSongxx/TinyClaw/utils"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/json-iterator/go"
+	"github.com/json-iterator/go/extra"
 )
 
 func init() {
@@ -235,11 +235,7 @@ func (q *PersonalQQRobot) sendVideo() {
 
 func (q *PersonalQQRobot) sendChatMessage() {
 	q.Robot.TalkingPreCheck(func() {
-		if conf.RagConfInfo.Store != nil {
-			q.executeChain()
-		} else {
-			q.executeLLM()
-		}
+		q.executeLLM()
 	})
 
 }

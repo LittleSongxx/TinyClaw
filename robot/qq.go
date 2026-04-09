@@ -14,18 +14,18 @@ import (
 	"strings"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/tencent-connect/botgo"
-	"github.com/tencent-connect/botgo/dto"
-	"github.com/tencent-connect/botgo/event"
-	"github.com/tencent-connect/botgo/openapi"
-	"github.com/tencent-connect/botgo/token"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/i18n"
 	"github.com/LittleSongxx/TinyClaw/logger"
 	"github.com/LittleSongxx/TinyClaw/metrics"
 	"github.com/LittleSongxx/TinyClaw/param"
 	"github.com/LittleSongxx/TinyClaw/utils"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/tencent-connect/botgo"
+	"github.com/tencent-connect/botgo/dto"
+	"github.com/tencent-connect/botgo/event"
+	"github.com/tencent-connect/botgo/openapi"
+	"github.com/tencent-connect/botgo/token"
 	"golang.org/x/oauth2"
 )
 
@@ -328,11 +328,7 @@ func (q *QQRobot) sendVideo() {
 
 func (q *QQRobot) sendChatMessage() {
 	q.Robot.TalkingPreCheck(func() {
-		if conf.RagConfInfo.Store != nil {
-			q.executeChain()
-		} else {
-			q.executeLLM()
-		}
+		q.executeLLM()
 	})
 
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/LittleSongxx/TinyClaw/llm"
 	"github.com/LittleSongxx/TinyClaw/logger"
 	"github.com/LittleSongxx/TinyClaw/param"
+	"github.com/LittleSongxx/TinyClaw/runtimecore"
 	"github.com/LittleSongxx/TinyClaw/utils"
 )
 
@@ -119,33 +120,24 @@ func ReplayAgentRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req := &llm.LLMTaskReq{
-		Content:   run.Input,
-		UserId:    run.UserId,
-		ChatId:    run.ChatId,
-		MsgId:     run.MsgId,
+	result, err := runtimecore.DefaultService().Run(runtimecore.RunRequest{
+		Ctx:       replayCtx,
+		Mode:      runtimecore.Mode(run.Mode),
+		Input:     run.Input,
+		UserID:    run.UserId,
+		ChatID:    run.ChatId,
+		MsgID:     run.MsgId,
 		PerMsgLen: llm.OneMsgLen,
 		Cs:        &param.ContextState{UseRecord: true},
-		Ctx:       replayCtx,
 		ReplayOf:  run.ID,
-	}
-
-	var replayed *db.AgentRun
-	switch run.Mode {
-	case "mcp":
-		req.SkillID = run.SkillID
-		replayed, err = req.ExecuteMcpRun()
-	case "skill":
-		req.SkillID = run.SkillID
-		replayed, err = req.ExecuteSkillRun()
-	default:
-		replayed, err = req.ExecuteTaskRun()
-	}
+		SkillID:   run.SkillID,
+	})
 	if err != nil {
 		logger.ErrorCtx(ctx, "replay agent run fail", "err", err, "id", id)
 		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
 		return
 	}
+	replayed := result.Run
 
 	detail, err := db.GetAgentRunDetailByID(replayed.ID)
 	if err != nil {

@@ -15,11 +15,11 @@ var (
 )
 
 func InitFeatureDB() error {
-	if !conf.RagConfInfo.UseKnowledgeV2() {
+	if !conf.KnowledgeConfInfo.FeatureStoreEnabled() {
 		return nil
 	}
 
-	db, err := sql.Open("pgx", conf.RagConfInfo.PostgresDSN)
+	db, err := sql.Open("pgx", conf.KnowledgeConfInfo.PostgresDSN)
 	if err != nil {
 		return err
 	}
@@ -46,7 +46,7 @@ func FeatureEnabled() bool {
 }
 
 func featureEmbeddingColumnType() string {
-	dim := conf.RagConfInfo.EmbeddingDimensions
+	dim := conf.KnowledgeConfInfo.EmbeddingDimensions
 	if dim <= 0 {
 		dim = 512
 	}

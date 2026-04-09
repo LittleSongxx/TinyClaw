@@ -50,6 +50,14 @@ build_app_image() {
   BUILDKIT_PROGRESS=plain docker_compose build app
 }
 
+dependency_services=(
+  postgres
+  redis
+  hf-embeddings
+  minio
+  playwright-mcp
+)
+
 if [[ ! -f "${ENV_FILE}" ]]; then
   echo "Missing ${ENV_FILE}" >&2
   exit 1
@@ -60,6 +68,11 @@ source_env_file "${ENV_FILE}"
 mkdir -p "${DATA_DIR}" "${DATA_DIR}/knowledge" "${LOG_DIR}" "${START_LOG_DIR}"
 
 ENABLE_CLOUDFLARED="${ENABLE_CLOUDFLARED:-false}"
+ENABLE_FULL_STACK="${ENABLE_FULL_STACK:-false}"
+
+if [[ "${ENABLE_FULL_STACK}" == "true" ]]; then
+  dependency_services+=(etcd milvus)
+fi
 
 find_free_port() {
   local port="$1"
@@ -101,7 +114,7 @@ app_log="${START_LOG_DIR}/${START_RUN_ID}-app.log"
 cloudflared_log="${START_LOG_DIR}/${START_RUN_ID}-cloudflared.log"
 
 run_step "Starting dependency containers" "${deps_log}" \
-  docker_compose up -d --remove-orphans postgres redis hf-embeddings etcd minio milvus playwright-mcp
+  docker_compose up -d --remove-orphans "${dependency_services[@]}"
 
 run_step "Building TinyClaw app image (first run may take several minutes)" "${build_log}" \
   build_app_image

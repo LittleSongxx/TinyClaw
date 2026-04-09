@@ -34,7 +34,7 @@ func GetCommand(w http.ResponseWriter, r *http.Request) {
 	res += CompareFlagsWithStructTags(conf.AudioConfInfo)
 	res += CompareFlagsWithStructTags(conf.LLMConfInfo)
 	res += CompareFlagsWithStructTags(conf.PhotoConfInfo)
-	res += CompareFlagsWithStructTags(conf.RagConfInfo)
+	res += CompareFlagsWithStructTags(conf.KnowledgeConfInfo)
 	res += CompareFlagsWithStructTags(conf.VideoConfInfo)
 	res += CompareFlagsWithStructTags(conf.ToolsConfInfo)
 
@@ -62,8 +62,8 @@ func UpdateConf(w http.ResponseWriter, r *http.Request) {
 		err = utils.SetStructFieldByJSONTag(conf.LLMConfInfo, updateConfParam.Key, updateConfParam.Value)
 	case "photo":
 		err = utils.SetStructFieldByJSONTag(conf.PhotoConfInfo, updateConfParam.Key, updateConfParam.Value)
-	case "rag":
-		err = utils.SetStructFieldByJSONTag(conf.RagConfInfo, updateConfParam.Key, updateConfParam.Value)
+	case "knowledge":
+		err = utils.SetStructFieldByJSONTag(conf.KnowledgeConfInfo, updateConfParam.Key, updateConfParam.Value)
 	case "video":
 		err = utils.SetStructFieldByJSONTag(conf.VideoConfInfo, updateConfParam.Key, updateConfParam.Value)
 	default:
@@ -89,7 +89,7 @@ func GetConf(w http.ResponseWriter, r *http.Request) {
 	res["audio"] = conf.AudioConfInfo
 	res["llm"] = conf.LLMConfInfo
 	res["photo"] = conf.PhotoConfInfo
-	res["rag"] = conf.RagConfInfo
+	res["knowledge"] = conf.KnowledgeConfInfo
 	res["video"] = conf.VideoConfInfo
 
 	utils.Success(ctx, w, r, res)

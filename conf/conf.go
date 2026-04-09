@@ -186,7 +186,7 @@ func InitConf() {
 	InitVideoConf()
 	InitAudioConf()
 	InitToolsConf()
-	InitRagConf()
+	InitKnowledgeConf()
 	InitRegisterConf()
 
 	flag.CommandLine.Init(os.Args[0], flag.ContinueOnError)
@@ -461,7 +461,7 @@ func InitConf() {
 	}
 
 	EnvAudioConf()
-	EnvRagConf()
+	EnvKnowledgeConf()
 	EnvLLMConf()
 	EnvPhotoConf()
 	EnvToolsConf()
@@ -582,17 +582,17 @@ func logConf(allowedUserIds, allowedGroupIds, privilegedUserIds string) {
 	logger.Info("AUDIO_CONF", "AliyunAudioVoice", AudioConfInfo.AliyunAudioVoice)
 	logger.Info("AUDIO_CONF", "AliyunAudioRecModel", AudioConfInfo.AliyunAudioRecModel)
 
-	logger.Info("RAG_CONF", "EmbeddingType", RagConfInfo.EmbeddingType)
-	logger.Info("RAG_CONF", "EmbeddingBaseURL", RagConfInfo.EmbeddingBaseURL)
-	logger.Info("RAG_CONF", "EmbeddingModelID", RagConfInfo.EmbeddingModelID)
-	logger.Info("RAG_CONF", "EmbeddingQueryInstruction", RagConfInfo.EmbeddingQueryInstruction)
-	logger.Info("RAG_CONF", "KnowledgePath", RagConfInfo.KnowledgePath)
-	logger.Info("RAG_CONF", "VectorDBType", RagConfInfo.VectorDBType)
-	logger.Info("RAG_CONF", "ChromaURL", RagConfInfo.ChromaURL)
-	logger.Info("RAG_CONF", "ChromaSpace", RagConfInfo.Space)
-	logger.Info("RAG_CONF", "MilvusURL", RagConfInfo.MilvusURL)
-	logger.Info("RAG_CONF", "WeaviateURL", RagConfInfo.WeaviateURL)
-	logger.Info("RAG_CONF", "WeaviateScheme", RagConfInfo.WeaviateScheme)
+	logger.Info("KNOWLEDGE_CONF", "EmbeddingType", KnowledgeConfInfo.EmbeddingType)
+	logger.Info("KNOWLEDGE_CONF", "EmbeddingBaseURL", KnowledgeConfInfo.EmbeddingBaseURL)
+	logger.Info("KNOWLEDGE_CONF", "EmbeddingModelID", KnowledgeConfInfo.EmbeddingModelID)
+	logger.Info("KNOWLEDGE_CONF", "EmbeddingQueryInstruction", KnowledgeConfInfo.EmbeddingQueryInstruction)
+	logger.Info("KNOWLEDGE_CONF", "KnowledgePath", KnowledgeConfInfo.KnowledgePath)
+	logger.Info("KNOWLEDGE_CONF", "PostgresDSN", maskSecret(KnowledgeConfInfo.PostgresDSN))
+	logger.Info("KNOWLEDGE_CONF", "RedisAddr", KnowledgeConfInfo.RedisAddr)
+	logger.Info("KNOWLEDGE_CONF", "MinIOEndpoint", KnowledgeConfInfo.MinIOEndpoint)
+	logger.Info("KNOWLEDGE_CONF", "MinIOBucket", KnowledgeConfInfo.MinIOBucket)
+	logger.Info("KNOWLEDGE_CONF", "DefaultKnowledgeBase", KnowledgeConfInfo.DefaultKnowledgeBase)
+	logger.Info("KNOWLEDGE_CONF", "DefaultCollection", KnowledgeConfInfo.DefaultCollection)
 
 	logger.Info("PHOTO_CONF", "ReqKey", PhotoConfInfo.ReqKey)
 	logger.Info("PHOTO_CONF", "ModelVersion", PhotoConfInfo.ModelVersion)
@@ -722,9 +722,9 @@ func loadConf() bool {
 		return false
 	}
 
-	err = TransferMapToConf(AllConf["rag"].(map[string]interface{}), RagConfInfo)
+	err = TransferMapToConf(AllConf["knowledge"].(map[string]interface{}), KnowledgeConfInfo)
 	if err != nil {
-		logger.Error("Failed to transfer map to rag conf", "err", err)
+		logger.Error("Failed to transfer map to knowledge conf", "err", err)
 		return false
 	}
 
@@ -754,7 +754,7 @@ func SaveConf() {
 	AllConf["audio"] = AudioConfInfo
 	AllConf["llm"] = LLMConfInfo
 	AllConf["photo"] = PhotoConfInfo
-	AllConf["rag"] = RagConfInfo
+	AllConf["knowledge"] = KnowledgeConfInfo
 	AllConf["video"] = VideoConfInfo
 	AllConf["register"] = RegisterConfInfo
 	AllConf["tools"] = ToolsConfInfo

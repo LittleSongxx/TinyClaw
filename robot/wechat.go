@@ -12,13 +12,13 @@ import (
 	"github.com/ArtisanCloud/PowerWeChat/v3/src/kernel/models"
 	"github.com/ArtisanCloud/PowerWeChat/v3/src/officialAccount"
 	serverModel "github.com/ArtisanCloud/PowerWeChat/v3/src/work/server/handlers/models"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/i18n"
 	"github.com/LittleSongxx/TinyClaw/logger"
 	"github.com/LittleSongxx/TinyClaw/metrics"
 	"github.com/LittleSongxx/TinyClaw/param"
 	"github.com/LittleSongxx/TinyClaw/utils"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 var (
@@ -316,11 +316,7 @@ func (w *WechatRobot) sendVideo() {
 
 func (w *WechatRobot) sendChatMessage() {
 	w.Robot.TalkingPreCheck(func() {
-		if conf.RagConfInfo.Store != nil {
-			w.executeChain()
-		} else {
-			w.executeLLM()
-		}
+		w.executeLLM()
 	})
 
 }

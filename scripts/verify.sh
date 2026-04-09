@@ -84,19 +84,19 @@ verify_step "Checking agent run API"
 request_json GET "${HTTP_BASE}/run/list?page=1&page_size=5" >/dev/null
 verify_ok "Agent run API"
 
-verify_step "Checking RAG collection API"
-request_json GET "${HTTP_BASE}/rag/collections/list" >/dev/null
-verify_ok "RAG collection API"
+verify_step "Checking knowledge collection API"
+request_json GET "${HTTP_BASE}/knowledge/collections/list" >/dev/null
+verify_ok "Knowledge collection API"
 
 verify_step "Creating verification document"
 create_payload="$(printf '{"file_name":"%s","content":"%s"}' "${VERIFY_DOC_NAME}" "${VERIFY_DOC_CONTENT}" | sed 's/\\/\\\\/g')"
-request_json POST "${HTTP_BASE}/rag/documents/create" "${create_payload}" >/dev/null
+request_json POST "${HTTP_BASE}/knowledge/documents/create" "${create_payload}" >/dev/null
 verify_ok "Verification document created"
 
 verify_step "Waiting for ingestion job"
 job_ok=false
 for _ in $(seq 1 60); do
-  jobs_response="$(request_json GET "${HTTP_BASE}/rag/jobs/list?page=1&page_size=20" || true)"
+  jobs_response="$(request_json GET "${HTTP_BASE}/knowledge/jobs/list?page=1&page_size=20" || true)"
   if [[ "${jobs_response}" == *"\"document_name\":\"${VERIFY_DOC_NAME}\""* && "${jobs_response}" == *'"status":"succeeded"'* ]]; then
     job_ok=true
     break
@@ -109,7 +109,7 @@ for _ in $(seq 1 60); do
 done
 
 if [[ "${job_ok}" != "true" ]]; then
-  script_error "RAG ingestion job did not finish successfully for ${VERIFY_DOC_NAME}"
+    script_error "Knowledge ingestion job did not finish successfully for ${VERIFY_DOC_NAME}"
   exit 1
 fi
 verify_ok "Ingestion job succeeded"
@@ -119,7 +119,7 @@ debug_payload="$(printf '{"query":"%s"}' "${VERIFY_DOC_QUERY}" | sed 's/\\/\\\\/
 debug_ok=false
 debug_response=""
 for _ in $(seq 1 30); do
-  debug_response="$(request_json POST "${HTTP_BASE}/rag/retrieval/debug" "${debug_payload}")"
+  debug_response="$(request_json POST "${HTTP_BASE}/knowledge/retrieval/debug" "${debug_payload}")"
   if [[ "${debug_response}" == *"\"document_name\":\"${VERIFY_DOC_NAME}\""* && "${debug_response}" == *"${VERIFY_MARKER}"* ]]; then
     debug_ok=true
     break

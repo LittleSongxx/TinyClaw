@@ -14,6 +14,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/LittleSongxx/TinyClaw/conf"
+	"github.com/LittleSongxx/TinyClaw/i18n"
+	"github.com/LittleSongxx/TinyClaw/logger"
+	"github.com/LittleSongxx/TinyClaw/metrics"
+	"github.com/LittleSongxx/TinyClaw/param"
+	"github.com/LittleSongxx/TinyClaw/utils"
 	openapi "github.com/alibabacloud-go/darabonba-openapi/v2/client"
 	dingtalkaiinteraction "github.com/alibabacloud-go/dingtalk/ai_interaction_1_0"
 	dingtalkoauth2 "github.com/alibabacloud-go/dingtalk/oauth2_1_0"
@@ -25,12 +31,6 @@ import (
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/client"
 	dingLogger "github.com/open-dingtalk/dingtalk-stream-sdk-go/logger"
 	dingUtils "github.com/open-dingtalk/dingtalk-stream-sdk-go/utils"
-	"github.com/LittleSongxx/TinyClaw/conf"
-	"github.com/LittleSongxx/TinyClaw/i18n"
-	"github.com/LittleSongxx/TinyClaw/logger"
-	"github.com/LittleSongxx/TinyClaw/metrics"
-	"github.com/LittleSongxx/TinyClaw/param"
-	"github.com/LittleSongxx/TinyClaw/utils"
 )
 
 var (
@@ -251,11 +251,7 @@ func (d *DingRobot) sendVideo() {
 
 func (d *DingRobot) sendChatMessage() {
 	d.Robot.TalkingPreCheck(func() {
-		if conf.RagConfInfo.Store != nil {
-			d.executeChain()
-		} else {
-			d.executeLLM()
-		}
+		d.executeLLM()
 	})
 
 }

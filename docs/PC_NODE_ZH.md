@@ -8,7 +8,7 @@
 
 当前推荐拓扑是：
 
-- `Docker Compose` 运行 TinyClaw 主服务、Admin、RAG 和基础依赖
+- `Docker Compose` 运行 TinyClaw 主服务、Admin、Knowledge 和基础依赖
 - `tinyclaw-node` 跑在真实主机上，向 Gateway 注册设备能力
 
 如果你的目标是“控制这台 Windows 电脑，同时还能执行同机 WSL 里的 Linux 命令”，推荐做法是：

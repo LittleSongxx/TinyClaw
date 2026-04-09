@@ -24,11 +24,9 @@ import (
 	"github.com/LittleSongxx/TinyClaw/logger"
 	"github.com/LittleSongxx/TinyClaw/node"
 	"github.com/LittleSongxx/TinyClaw/param"
-	"github.com/LittleSongxx/TinyClaw/rag"
+	"github.com/LittleSongxx/TinyClaw/runtimecore"
 	"github.com/LittleSongxx/TinyClaw/skill"
 	"github.com/LittleSongxx/TinyClaw/utils"
-	"github.com/LittleSongxx/langchaingo/chains"
-	"github.com/LittleSongxx/langchaingo/vectorstores"
 	"github.com/bwmarrin/discordgo"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/google/uuid"
@@ -47,6 +45,11 @@ const (
 var (
 	smartModeReg = regexp.MustCompile(`\{\s*(?:"cron"\s*:\s*".*?"\s*,\s*"prompt"\s*:\s*".*?"\s*,\s*)?"command"\s*:\s*".*?"\s*\}`)
 	Cron         *cron.Cron
+	commandAliases = map[string]string{
+		"skil":   param.Skill,
+		"skills": param.Skill,
+		"mcps":   param.Mcp,
+	}
 )
 
 type MsgChan struct {
@@ -849,11 +852,41 @@ func ParseCommand(prompt string) (command string, args string) {
 	return command, args
 }
 
+func canonicalizeCommand(cmd string) string {
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" {
+		return ""
+	}
+
+	prefix := ""
+	if strings.HasPrefix(cmd, "/") || strings.HasPrefix(cmd, "$") {
+		prefix = cmd[:1]
+		cmd = strings.TrimSpace(cmd[1:])
+	}
+
+	cmd = strings.ToLower(strings.TrimSpace(cmd))
+	cmd = strings.ReplaceAll(cmd, "-", "_")
+	if alias, ok := commandAliases[cmd]; ok {
+		cmd = alias
+	}
+	if cmd == "" {
+		return prefix
+	}
+	return prefix + cmd
+}
+
+func isExplicitCommand(cmd string) bool {
+	cmd = strings.TrimSpace(cmd)
+	return strings.HasPrefix(cmd, "/") || strings.HasPrefix(cmd, "$")
+}
+
 func (r *RobotInfo) ExecCmd(cmd string, defaultFunc func(), modeFunc func(string), typesFunc func(string)) {
 	_, _, userID := r.GetChatIdAndMsgIdAndUserID()
-	logger.InfoCtx(r.Ctx, "command info", "userID", userID, "cmd", cmd)
+	rawCmd := strings.TrimSpace(cmd)
+	cmd = canonicalizeCommand(rawCmd)
+	logger.InfoCtx(r.Ctx, "command info", "userID", userID, "cmd", cmd, "raw_cmd", rawCmd)
 
-	if approved, ok := parseInlineApprovalDecision(cmd); ok {
+	if approved, ok := parseInlineApprovalDecision(rawCmd); ok {
 		if r.handleLatestApprovalDecision(approved) {
 			return
 		}
@@ -922,8 +955,61 @@ func (r *RobotInfo) ExecCmd(cmd string, defaultFunc func(), modeFunc func(string
 	case param.CronClear, "/" + param.CronClear, "$" + param.CronClear:
 		r.cronClear()
 	default:
+		if r.tryHandleDynamicSlashCommand(rawCmd, cmd) {
+			return
+		}
+		if isExplicitCommand(rawCmd) {
+			r.sendUnknownCommand(rawCmd)
+			return
+		}
 		defaultFunc()
 	}
+}
+
+func (r *RobotInfo) tryHandleDynamicSlashCommand(rawCmd, canonicalCmd string) bool {
+	if !isExplicitCommand(rawCmd) {
+		return false
+	}
+
+	commandName := strings.TrimSpace(strings.TrimLeft(canonicalCmd, "/$"))
+	if commandName == "" {
+		return false
+	}
+
+	catalog, err := skill.LoadDefaultCatalog()
+	if err != nil {
+		logger.WarnCtx(r.Ctx, "load skill catalog fail in dynamic command dispatch", "err", err, "cmd", rawCmd)
+		return false
+	}
+
+	resolved, ok := catalog.ResolveSkill(commandName)
+	if !ok || resolved == nil {
+		return false
+	}
+
+	prompt := strings.TrimSpace(r.Robot.getPrompt())
+	chatId, msgId, _ := r.GetChatIdAndMsgIdAndUserID()
+	if prompt == "" {
+		example := fmt.Sprintf("Please provide task details for `%s`, for example `%s <your task>`.", rawCmd, rawCmd)
+		if conf.BaseConfInfo.Lang == "zh" {
+			example = fmt.Sprintf("请为 `%s` 提供具体任务内容，例如 `%s <你的任务>`。", rawCmd, rawCmd)
+		}
+		r.SendMsg(chatId, example, msgId, tgbotapi.ModeMarkdown, nil)
+		return true
+	}
+
+	logger.InfoCtx(r.Ctx, "dynamic command matched skill", "cmd", canonicalCmd, "skill_id", resolved.Manifest.ID, "prompt", prompt)
+	r.executeSkillByID(resolved.Manifest.ID, prompt)
+	return true
+}
+
+func (r *RobotInfo) sendUnknownCommand(rawCmd string) {
+	chatId, msgId, _ := r.GetChatIdAndMsgIdAndUserID()
+	msg := fmt.Sprintf("Unknown command `%s`. Try `/skill list`, `/mcp list`, or use a registered skill / MCP alias such as `/amap <task>`.", rawCmd)
+	if conf.BaseConfInfo.Lang == "zh" {
+		msg = fmt.Sprintf("未识别命令 `%s`。可使用 `/skill list`、`/mcp list`，或直接使用已注册的 skill / MCP 别名，例如 `/amap <任务>`。", rawCmd)
+	}
+	r.SendMsg(chatId, msg, msgId, tgbotapi.ModeMarkdown, nil)
 }
 
 func (r *RobotInfo) handleApprovalDecision(approved bool) {
@@ -1508,74 +1594,15 @@ func (r *RobotInfo) showTTSModel() {
 
 func (r *RobotInfo) ExecChain(msgContent string, msgChan *MsgChan) {
 	r.TalkingPreCheck(func() {
-		chatId, msgId, userId := r.GetChatIdAndMsgIdAndUserID()
-
-		defer func() {
-			if err := recover(); err != nil {
-				logger.ErrorCtx(r.Ctx, "panic", "err", err, "stack", string(debug.Stack()))
-			}
-			if msgChan.NormalMessageChan != nil {
-				close(msgChan.NormalMessageChan)
-			}
-
-			if msgChan.StrMessageChan != nil {
-				close(msgChan.StrMessageChan)
-			}
-		}()
-
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
-
-		content := r.Robot.getPrompt()
-		if len(msgContent) == 0 {
-			logger.InfoCtx(r.Ctx, "content is empty")
-			return
-		}
-
-		r.InsertRecord()
-		perMsgLen := r.Robot.getPerMsgLen()
-		if conf.AudioConfInfo.TTSType != "" {
-			perMsgLen = AudioMsgLen
-		}
-
-		dpLLM := rag.NewRag(
-			llm.WithMessageChan(msgChan.NormalMessageChan),
-			llm.WithHTTPMsgChan(msgChan.StrMessageChan),
-			llm.WithContent(content),
-			llm.WithChatId(chatId),
-			llm.WithUserId(userId),
-			llm.WithPerMsgLen(perMsgLen),
-			llm.WithCS(r.cs),
-			llm.WithContext(r.Ctx),
-			llm.WithContentParameter(map[string]string{
-				"username":  r.Robot.getUserName(),
-				"image_day": strconv.Itoa(conf.BaseConfInfo.ImageDay),
-			}),
-			llm.WithTaskTools(&conf.AgentInfo{
-				DeepseekTool: conf.DeepseekTools,
-				VolTool:      conf.VolTools,
-				OpenAITools:  conf.OpenAITools,
-				GeminiTools:  conf.GeminiTools,
-			}),
-			llm.WithToolBroker(gateway.DefaultService().ToolBroker()),
-		)
-		var err error
-		if rag.KnowledgeV2Enabled() {
-			_, err = dpLLM.Call(ctx, content)
-		} else {
-			qaChain := chains.NewRetrievalQAFromLLM(
-				dpLLM,
-				vectorstores.ToRetriever(conf.RagConfInfo.Store, 3),
-			)
-			_, err = chains.Run(ctx, qaChain, content)
-		}
-		if err != nil {
-			r.SendMsg(chatId, err.Error(), msgId, "", nil)
-		}
+		r.execChatRuntime(msgChan)
 	})
 }
 
 func (r *RobotInfo) ExecLLM(msgContent string, msgChan *MsgChan) {
+	r.execChatRuntime(msgChan)
+}
+
+func (r *RobotInfo) execChatRuntime(msgChan *MsgChan) {
 	defer func() {
 		if err := recover(); err != nil {
 			logger.ErrorCtx(r.Ctx, "GetContent panic err", "err", err, "stack", string(debug.Stack()))
@@ -1610,31 +1637,27 @@ func (r *RobotInfo) ExecLLM(msgContent string, msgChan *MsgChan) {
 		images = append(images, r.Robot.getImage())
 	}
 
-	llmClient := llm.NewLLM(
-		llm.WithChatId(chatId),
-		llm.WithUserId(userId),
-		llm.WithMsgId(msgId),
-		llm.WithMessageChan(msgChan.NormalMessageChan),
-		llm.WithHTTPMsgChan(msgChan.StrMessageChan),
-		llm.WithContent(content),
-		llm.WithPerMsgLen(perMsgLen),
-		llm.WithCS(r.cs),
-		llm.WithContext(r.Ctx),
-		llm.WithContentParameter(map[string]string{
+	ctx, cancel := context.WithTimeout(r.Ctx, 5*time.Minute)
+	defer cancel()
+
+	_, err := runtimecore.DefaultService().Run(runtimecore.RunRequest{
+		Ctx:         ctx,
+		Mode:        runtimecore.ModeChat,
+		Input:       content,
+		UserID:      userId,
+		ChatID:      chatId,
+		MsgID:       msgId,
+		PerMsgLen:   perMsgLen,
+		Cs:          r.cs,
+		MessageChan: msgChan.NormalMessageChan,
+		HTTPMsgChan: msgChan.StrMessageChan,
+		Images:      images,
+		ContentParameter: map[string]string{
 			"username":  r.Robot.getUserName(),
 			"image_day": strconv.Itoa(conf.BaseConfInfo.ImageDay),
-		}),
-		llm.WithTaskTools(&conf.AgentInfo{
-			DeepseekTool: conf.DeepseekTools,
-			VolTool:      conf.VolTools,
-			OpenAITools:  conf.OpenAITools,
-			GeminiTools:  conf.GeminiTools,
-		}),
-		llm.WithToolBroker(gateway.DefaultService().ToolBroker()),
-		llm.WithImages(images),
-	)
-
-	err := llmClient.CallLLM()
+		},
+		ToolBroker: gateway.DefaultService().ToolBroker(),
+	})
 	if err != nil {
 		logger.ErrorCtx(r.Ctx, "get content fail", "err", err)
 		r.SendMsg(chatId, err.Error(), msgId, "", nil)
@@ -1789,7 +1812,7 @@ func (r *RobotInfo) sendMultiAgent(agentType string, emptyPromptFunc func()) {
 
 func (r *RobotInfo) sendSkill(emptyPromptFunc func()) {
 	r.TalkingPreCheck(func() {
-		chatId, msgId, userId := r.GetChatIdAndMsgIdAndUserID()
+		chatId, msgId, _ := r.GetChatIdAndMsgIdAndUserID()
 
 		rawPrompt := strings.TrimSpace(r.Robot.getPrompt())
 		catalog, catalogErr := skill.LoadDefaultCatalog()
@@ -1864,52 +1887,58 @@ func (r *RobotInfo) sendSkill(emptyPromptFunc func()) {
 			return
 		}
 
-		dpReq := &llm.LLMTaskReq{
-			Content:   prompt,
-			UserId:    userId,
-			ChatId:    chatId,
-			MsgId:     msgId,
-			PerMsgLen: r.Robot.getPerMsgLen(),
-			Cs:        r.cs,
-			Ctx:       r.Ctx,
-			SkillID:   skillID,
-		}
+		r.executeSkillByID(skillID, prompt)
+	})
+}
 
-		if _, ok := r.Robot.(*QQRobot); ok {
-			dpReq.HTTPMsgChan = make(chan string)
-		} else {
-			dpReq.MessageChan = make(chan *param.MsgInfo)
-		}
+func (r *RobotInfo) executeSkillByID(skillID, prompt string) {
+	chatId, msgId, userId := r.GetChatIdAndMsgIdAndUserID()
 
-		go func() {
-			defer func() {
-				if err := recover(); err != nil {
-					logger.ErrorCtx(r.Ctx, "skill execution panic", "err", err, "stack", string(debug.Stack()))
-				}
-				if dpReq.HTTPMsgChan != nil {
-					close(dpReq.HTTPMsgChan)
-				}
-				if dpReq.MessageChan != nil {
-					close(dpReq.MessageChan)
-				}
-			}()
+	dpReq := &llm.LLMTaskReq{
+		Content:   prompt,
+		UserId:    userId,
+		ChatId:    chatId,
+		MsgId:     msgId,
+		PerMsgLen: r.Robot.getPerMsgLen(),
+		Cs:        r.cs,
+		Ctx:       r.Ctx,
+		SkillID:   skillID,
+	}
 
-			if err := dpReq.ExecuteSkill(); err != nil {
-				logger.WarnCtx(r.Ctx, "execute skill fail", "err", err, "skill_id", skillID)
-				r.SendMsg(chatId, err.Error(), msgId, tgbotapi.ModeMarkdown, nil)
+	if _, ok := r.Robot.(*QQRobot); ok {
+		dpReq.HTTPMsgChan = make(chan string)
+	} else {
+		dpReq.MessageChan = make(chan *param.MsgInfo)
+	}
+
+	go func() {
+		defer func() {
+			if err := recover(); err != nil {
+				logger.ErrorCtx(r.Ctx, "skill execution panic", "err", err, "stack", string(debug.Stack()))
+			}
+			if dpReq.HTTPMsgChan != nil {
+				close(dpReq.HTTPMsgChan)
+			}
+			if dpReq.MessageChan != nil {
+				close(dpReq.MessageChan)
 			}
 		}()
 
-		msgChan := &MsgChan{
-			NormalMessageChan: dpReq.MessageChan,
-			StrMessageChan:    dpReq.HTTPMsgChan,
+		if err := dpReq.ExecuteSkill(); err != nil {
+			logger.WarnCtx(r.Ctx, "execute skill fail", "err", err, "skill_id", skillID)
+			r.SendMsg(chatId, err.Error(), msgId, tgbotapi.ModeMarkdown, nil)
 		}
-		if _, ok := r.Robot.(*Web); ok {
-			r.HandleUpdate(msgChan, "")
-		} else {
-			go r.HandleUpdate(msgChan, "")
-		}
-	})
+	}()
+
+	msgChan := &MsgChan{
+		NormalMessageChan: dpReq.MessageChan,
+		StrMessageChan:    dpReq.HTTPMsgChan,
+	}
+	if _, ok := r.Robot.(*Web); ok {
+		r.HandleUpdate(msgChan, "")
+	} else {
+		go r.HandleUpdate(msgChan, "")
+	}
 }
 
 func (r *RobotInfo) CreatePhoto(prompt string, lastImageContent []byte) ([]byte, int, error) {

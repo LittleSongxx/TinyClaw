@@ -585,7 +585,7 @@ func (l *LLM) ensureRuntimeTools() {
 	for _, spec := range specs {
 		if spec.Category == tooling.CategoryNode {
 			l.RuntimeToolGuidance = append(l.RuntimeToolGuidance,
-				`你可以使用 node_* 工具直接操作真实配对的 PC 节点（Windows、macOS 或 Linux）。当用户明确要求截图、打开应用、打开网页、读写文件或执行桌面命令时，应优先调用相应 node 工具，而不是只给出文字说明。用户提到“当前窗口”“这个应用”“记事本界面”等窗口语义时，截图优先使用 active_window。涉及按钮、输入框、复选框、菜单项等控件时，优先先用 node_ui_find 或 node_ui_inspect 找到稳定元素，再执行点击或输入；只有在找不到稳定元素时才退回坐标。若用户没有指定 node_id，可以留空让系统自动选择兼容设备。对明显具有破坏性的操作，应先确认。`)
+				`你可以使用 node_* 工具直接操作真实配对的 PC 节点（Windows、macOS 或 Linux）。当用户明确要求截图、打开应用、打开网页、读写文件、查看在线设备或执行桌面命令时，应优先调用相应 node 工具，而不是只给出文字说明。用户询问“当前有哪些电脑节点/在线节点/可用设备”时，先调用 node_list_devices；用户要求截图时，必须调用 node_screen_snapshot，绝不能编造截图、Base64 图片或“示例图像数据”。用户提到“当前窗口”“这个应用”“记事本界面”等窗口语义时，截图优先使用 active_window。涉及按钮、输入框、复选框、菜单项等控件时，优先先用 node_ui_find 或 node_ui_inspect 找到稳定元素，再执行点击或输入；只有在找不到稳定元素时才退回坐标。若用户没有指定 node_id，可以留空让系统自动选择兼容设备。对明显具有破坏性的操作，应先确认。`)
 			if conf.IsPrivilegedUser(l.UserId) {
 				l.RuntimeToolGuidance = append(l.RuntimeToolGuidance,
 					`当前用户是受信任管理员。对于常规 Windows/WSL 操作，例如打开应用、聚焦窗口、输入文本、截图、查看或修改当前项目文件、执行常见开发命令，应尽量一次性连续完成，不要把同一个小任务拆成多轮确认，也不要在回复中输出原始堆栈、PowerShell 诊断或低价值技术噪音。只有在删除数据、批量覆盖文件、安装或卸载软件、修改系统设置、执行明显高风险脚本、涉及密码密钥付款等高风险场景下，才额外征求确认。`)
@@ -593,6 +593,10 @@ func (l *LLM) ensureRuntimeTools() {
 			break
 		}
 	}
+}
+
+func (l *LLM) PrepareRuntimeTools() {
+	l.ensureRuntimeTools()
 }
 
 func appendOpenAITools(current []openai.Tool, tools ...openai.Tool) []openai.Tool {

@@ -282,11 +282,7 @@ func (l *LarkRobot) sendChatMessage() {
 	l.Robot.TalkingPreCheck(func() {
 		chatId, msgId, _ := l.Robot.GetChatIdAndMsgIdAndUserID()
 		l.Robot.SendMsg(chatId, i18n.GetMessage("thinking", nil), msgId, tgbotapi.ModeMarkdown, nil)
-		if conf.RagConfInfo.Store != nil {
-			l.executeChain()
-		} else {
-			l.executeLLM()
-		}
+		l.executeLLM()
 	})
 
 }

@@ -9,9 +9,11 @@ import (
 type Mode string
 
 const (
-	ModeTask  Mode = "task"
-	ModeMCP   Mode = "mcp"
-	ModeSkill Mode = "skill"
+	ModeChat     Mode = "chat"
+	ModeTask     Mode = "task"
+	ModeMCP      Mode = "mcp"
+	ModeSkill    Mode = "skill"
+	ModeWorkflow Mode = "workflow"
 )
 
 type RunStatus string

@@ -1,6 +1,6 @@
 # TinyClaw Admin 管理平台
 
-`TinyClaw Admin` 是 TinyClaw 的内置管理后台，用来查看运行状态、管理机器人配置、查看聊天记录、检查 Agent 运行轨迹，并管理 Skills、RAG、MCP、用户和定时任务。
+`TinyClaw Admin` 是 TinyClaw 的内置管理后台，用来查看运行状态、管理机器人配置、查看聊天记录、检查 Agent 运行轨迹，并管理 Skills、Knowledge、MCP、用户和定时任务。
 
 这份文档只保留当前 TinyClaw 项目下真正有用的管理后台说明，不再沿用早期针对某个单一平台机器人的写法。
 
@@ -49,7 +49,7 @@
   直接在后台和当前 Bot 调试对话
 - `Log`
   查看运行日志
-- `RAG`
+- `Knowledge`
   通过 `Documents / Ingestion Jobs / Retrieval Debug` 三个页签管理知识库
 - `MCP`
   查看和管理 MCP 服务配置、预置模板以及可用性检查
@@ -74,7 +74,7 @@
 `./scripts/stop.sh` 现在是安全辅助脚本，默认不会停掉容器。
 只有在你明确要停整套 Compose 时，才使用 `./scripts/stop.sh --down`。
 
-如果要对 Agent 和 RAG 新栈做一轮完整在线验证，可以执行：
+如果要对 Agent 和 Knowledge 新栈做一轮完整在线验证，可以执行：
 
 ```bash
 ./scripts/verify.sh --full
@@ -122,7 +122,7 @@ ADMIN_PORT=18080 \
 
 - 主服务数据库：`data/tiny_claw.db`
 - 后台数据库：`data/tiny_claw_admin.db`
-- Agent / RAG v2：`postgres + redis + minio`
+- Agent / Knowledge 服务：`postgres + minio`，可选 `redis`
 - 默认 MCP 配置：`conf/mcp/mcp.json`
 - 本地技能目录：`skills/`
 - 主日志：`log/tiny_claw.log`

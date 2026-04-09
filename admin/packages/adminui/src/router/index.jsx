@@ -12,7 +12,7 @@ import BotChat from "../pages/BotChat.jsx";
 import MCP from "../pages/MCP.jsx";
 import Log from "../pages/Log.jsx";
 import Communicate from "../pages/Communicate.jsx";
-import Rag from "../pages/Rag.jsx";
+import Knowledge from "../pages/Knowledge.jsx";
 import Cron from "../pages/Cron.jsx";
 import Runs from "../pages/Runs.jsx";
 import Skills from "../pages/Skills.jsx";
@@ -53,7 +53,8 @@ export default function Router() {
                     <Route path="communicate" element={<Communicate />} />
                     <Route path="nodes" element={<Nodes />} />
                     <Route path="runs" element={<Runs />} />
-                    <Route path="rag" element={<Rag />} />
+                    <Route path="rag" element={<Navigate to="/knowledge" replace />} />
+                    <Route path="knowledge" element={<Knowledge />} />
                     <Route path="log" element={<Log />} />
                     <Route path="test" element={<TestPage />} />
                     {/* 从根路径 / 跳转到看板页 */}

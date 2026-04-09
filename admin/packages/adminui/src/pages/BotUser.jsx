@@ -299,7 +299,7 @@ function BotUserListPage() {
                                     <td className="px-6 py-4 text-sm text-gray-800">{user.user_id}</td>
                                     <td className="px-6 py-4 text-sm text-gray-800">{user.llm_config}</td>
                                     <td className="px-6 py-4 text-sm text-gray-800">{user.token}</td>
-                                    <td className="px-6 py-4 text-sm text-gray-800">{user.avail_token}</td>
+                                    <td className="px-6 py-4 text-sm text-gray-800">{formatQuotaValue(user)}</td>
                                     <td className="px-6 py-4 text-sm text-gray-800">
                                         {new Date(user.create_time * 1000).toLocaleString()}
                                     </td>
@@ -379,6 +379,13 @@ function BotUserListPage() {
             </Modal>
         </div>
     );
+}
+
+function formatQuotaValue(user) {
+    if (user?.unlimited) {
+        return "∞";
+    }
+    return user?.avail_token ?? "-";
 }
 
 export default BotUserListPage;

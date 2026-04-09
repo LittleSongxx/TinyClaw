@@ -203,34 +203,47 @@ Query 参数：
 - 每个服务的 availability 状态
 - setup / runtime / secret 相关 warning
 
-## RAG 接口
+## Runtime / Knowledge 接口
 
-当前 RAG v2 相关 HTTP 接口包括：
+当前统一 runtime 与 knowledge 相关 HTTP 接口包括：
 
 | 方法 | 接口 | 作用 |
 |---|---|---|
-| `GET` | `/rag/list` | 旧版文件列表 |
-| `POST` | `/rag/create` | 旧版文件创建 |
-| `GET` | `/rag/get` | 旧版文件读取 |
-| `DELETE` | `/rag/delete` | 旧版文件删除 |
-| `POST` | `/rag/clear` | 清空向量数据 |
-| `GET` | `/rag/collections/list` | 列出 collection |
-| `POST` | `/rag/collections/create` | 创建 collection |
-| `GET` | `/rag/documents/list` | 列出 document |
-| `GET` | `/rag/documents/get` | 获取单个 document |
-| `POST` | `/rag/documents/create` | 创建文本或二进制 document |
-| `DELETE` | `/rag/documents/delete` | 删除 document |
-| `GET` | `/rag/jobs/list` | 获取 ingestion job 列表 |
-| `POST` | `/rag/retrieval/debug` | 执行 retrieval debug |
-| `GET` | `/rag/retrieval/runs/list` | 获取 retrieval run 列表 |
-| `GET` | `/rag/retrieval/runs/get` | 获取单个 retrieval run |
+| `POST` | `/runs` | 统一发起 chat / task / skill / workflow run |
+| `GET` | `/runs/{id}` | 获取单个 run 结果 |
+| `GET` | `/tools/effective` | 查看当前运行时实际可用工具 |
+| `GET` | `/skills/status` | 查看技能状态 |
+| `GET` | `/memory/status` | 查看 memory 状态 |
+| `GET` | `/knowledge/status` | 查看 knowledge 状态 |
+| `POST` | `/knowledge/search` | 执行统一 knowledge 检索 |
+| `POST` | `/knowledge/ingest` | 向统一 knowledge 库写入文本或文件 |
 
-当前自检脚本 `scripts/verify.sh` 重点依赖这些接口：
+knowledge 管理接口包括：
 
-- `/rag/collections/list`
-- `/rag/documents/create`
-- `/rag/jobs/list`
-- `/rag/retrieval/debug`
+| 方法 | 接口 | 作用 |
+|---|---|---|
+| `GET` | `/knowledge/files/list` | 统一知识库文件列表 |
+| `POST` | `/knowledge/files/create` | 创建统一知识库文件 |
+| `GET` | `/knowledge/files/get` | 读取统一知识库文件 |
+| `DELETE` | `/knowledge/files/delete` | 删除统一知识库文件 |
+| `POST` | `/knowledge/clear` | 清空统一知识库数据 |
+| `GET` | `/knowledge/collections/list` | 列出 collection |
+| `POST` | `/knowledge/collections/create` | 创建 collection |
+| `GET` | `/knowledge/documents/list` | 列出 document |
+| `GET` | `/knowledge/documents/get` | 获取单个 document |
+| `POST` | `/knowledge/documents/create` | 创建文本或二进制 document |
+| `DELETE` | `/knowledge/documents/delete` | 删除 document |
+| `GET` | `/knowledge/jobs/list` | 获取 ingestion job 列表 |
+| `POST` | `/knowledge/retrieval/debug` | 执行 retrieval debug |
+| `GET` | `/knowledge/retrieval/runs/list` | 获取 retrieval run 列表 |
+| `GET` | `/knowledge/retrieval/runs/get` | 获取单个 retrieval run |
+
+当前自检脚本 `scripts/verify.sh` 重点依赖这些 knowledge 接口：
+
+- `/knowledge/collections/list`
+- `/knowledge/documents/create`
+- `/knowledge/jobs/list`
+- `/knowledge/retrieval/debug`
 
 ## Cron 接口
 
@@ -257,6 +270,6 @@ Query 参数：
 ## 实际使用说明
 
 - Admin 使用的是自己的 `/bot/...` 代理路由，但最终转发到这里记录的 bot 侧接口
-- 当前 `scripts/verify.sh` 会直接检查 `/pong`、`/metrics`、`/run/list` 和多组 RAG 接口
+- 当前 `scripts/verify.sh` 会直接检查 `/pong`、`/metrics`、`/run/list` 和多组 Knowledge 接口
 - 当前后台 `#/runs` 页面依赖 `/run/list`、`/run/get`、`/run/replay`、`/run/delete`
 - 当前后台 `#/skills` 页面依赖 `/skills/list`、`/skills/detail`、`/skills/reload`、`/skills/validate`

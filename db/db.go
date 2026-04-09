@@ -46,8 +46,8 @@ var (
 		CREATE INDEX IF NOT EXISTS idx_records_user_id ON records(user_id);
 		CREATE INDEX IF NOT EXISTS idx_records_create_time ON records(create_time);
 	`,
-		"rag_files": `
-		CREATE TABLE IF NOT EXISTS rag_files (
+		"knowledge_files": `
+		CREATE TABLE IF NOT EXISTS knowledge_files (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			file_name VARCHAR(255) NOT NULL DEFAULT '',
 			file_md5 VARCHAR(255) NOT NULL DEFAULT '',
@@ -195,8 +195,8 @@ var (
            INDEX idx_records_create_time (create_time)
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 	`,
-		// 3. rag_files 表 (无额外索引，仅PRIMARY KEY)
-		`CREATE TABLE IF NOT EXISTS rag_files (
+		// 3. knowledge_files table (no extra index beyond PRIMARY KEY)
+		`CREATE TABLE IF NOT EXISTS knowledge_files (
           id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
           file_name VARCHAR(255) NOT NULL DEFAULT '',
           file_md5 VARCHAR(255) NOT NULL DEFAULT '',
@@ -394,6 +394,9 @@ func migratePrimaryAgentTables(db *sql.DB) error {
 
 	switch conf.BaseConfInfo.DBType {
 	case "sqlite3":
+		if err := migrateSQLiteKnowledgeFileTable(db); err != nil {
+			return err
+		}
 		if err := ensureSQLiteColumn(db, "agent_runs", "skill_id", "VARCHAR(255) NOT NULL DEFAULT ''"); err != nil {
 			return err
 		}
@@ -422,6 +425,9 @@ func migratePrimaryAgentTables(db *sql.DB) error {
 			return err
 		}
 	case "mysql":
+		if err := migrateMySQLKnowledgeFileTable(db); err != nil {
+			return err
+		}
 		if err := ensureMySQLColumn(db, "agent_runs", "skill_id", "VARCHAR(255) NOT NULL DEFAULT ''"); err != nil {
 			return err
 		}
@@ -506,4 +512,48 @@ func ensureMySQLColumn(db *sql.DB, tableName, columnName, definition string) err
 
 	_, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", tableName, columnName, definition))
 	return err
+}
+
+func migrateSQLiteKnowledgeFileTable(db *sql.DB) error {
+	oldExists, err := sqliteTableExists(db, "rag_files")
+	if err != nil || !oldExists {
+		return err
+	}
+	newExists, err := sqliteTableExists(db, "knowledge_files")
+	if err != nil || !newExists {
+		return err
+	}
+	_, err = db.Exec(`
+		INSERT OR IGNORE INTO knowledge_files (id, file_name, file_md5, vector_id, create_time, update_time, is_deleted, from_bot)
+		SELECT id, file_name, file_md5, vector_id, create_time, update_time, is_deleted, from_bot
+		FROM rag_files`)
+	return err
+}
+
+func sqliteTableExists(db *sql.DB, tableName string) (bool, error) {
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name = ?", tableName).Scan(&count)
+	return count > 0, err
+}
+
+func migrateMySQLKnowledgeFileTable(db *sql.DB) error {
+	oldExists, err := mysqlTableExists(db, "rag_files")
+	if err != nil || !oldExists {
+		return err
+	}
+	newExists, err := mysqlTableExists(db, "knowledge_files")
+	if err != nil || !newExists {
+		return err
+	}
+	_, err = db.Exec(`
+		INSERT IGNORE INTO knowledge_files (id, file_name, file_md5, vector_id, create_time, update_time, is_deleted, from_bot)
+		SELECT id, file_name, file_md5, vector_id, create_time, update_time, is_deleted, from_bot
+		FROM rag_files`)
+	return err
+}
+
+func mysqlTableExists(db *sql.DB, tableName string) (bool, error) {
+	var count int
+	err := db.QueryRow(`SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`, tableName).Scan(&count)
+	return count > 0, err
 }

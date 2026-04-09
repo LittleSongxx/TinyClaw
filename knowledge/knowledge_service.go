@@ -1,4 +1,4 @@
-package rag
+package knowledge
 
 import (
 	"bytes"
@@ -115,7 +115,9 @@ type RetrievalHit struct {
 	DenseScore        float64                `json:"dense_score"`
 	LexicalScore      float64                `json:"lexical_score"`
 	RRFScore          float64                `json:"rrf_score"`
+	RerankScore       float64                `json:"rerank_score,omitempty"`
 	FinalScore        float64                `json:"final_score"`
+	Reranked          bool                   `json:"-"`
 }
 
 type RetrievalRun struct {
@@ -156,7 +158,7 @@ func (noopReranker) Rerank(_ context.Context, _ string, hits []RetrievalHit) ([]
 	return hits, nil
 }
 
-type knowledgeService struct {
+type KnowledgeService struct {
 	db       *sql.DB
 	minio    *minio.Client
 	bucket   string
@@ -169,39 +171,52 @@ type ingestionPayload struct {
 	JobID int64 `json:"job_id"`
 }
 
-var defaultKnowledgeService *knowledgeService
+var defaultService *KnowledgeService
 
-func KnowledgeV2Enabled() bool {
-	return defaultKnowledgeService != nil
+func Enabled() bool {
+	return defaultService != nil
 }
 
-func DefaultKnowledgeService() *knowledgeService {
-	return defaultKnowledgeService
+func DefaultService() *KnowledgeService {
+	return defaultService
 }
 
-func initKnowledgeV2(ctx context.Context) error {
-	if !conf.RagConfInfo.UseKnowledgeV2() {
+func initKnowledge(ctx context.Context) error {
+	if !conf.KnowledgeConfInfo.Enabled() {
 		return nil
 	}
 	if db.FeatureDB == nil {
 		return fmt.Errorf("feature db is not initialized")
 	}
 
-	minioClient, err := minio.New(conf.RagConfInfo.MinIOEndpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(conf.RagConfInfo.MinIOAccessKey, conf.RagConfInfo.MinIOSecretKey, ""),
-		Secure: conf.RagConfInfo.MinIOUseSSL,
+	minioClient, err := minio.New(conf.KnowledgeConfInfo.MinIOEndpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(conf.KnowledgeConfInfo.MinIOAccessKey, conf.KnowledgeConfInfo.MinIOSecretKey, ""),
+		Secure: conf.KnowledgeConfInfo.MinIOUseSSL,
 	})
 	if err != nil {
 		return err
 	}
 
-	service := &knowledgeService{
+	service := &KnowledgeService{
 		db:       db.FeatureDB,
 		minio:    minioClient,
-		bucket:   conf.RagConfInfo.MinIOBucket,
-		queue:    asynq.NewClient(asynq.RedisClientOpt{Addr: conf.RagConfInfo.RedisAddr, Password: conf.RagConfInfo.RedisPassword, DB: conf.RagConfInfo.RedisDB}),
-		server:   asynq.NewServer(asynq.RedisClientOpt{Addr: conf.RagConfInfo.RedisAddr, Password: conf.RagConfInfo.RedisPassword, DB: conf.RagConfInfo.RedisDB}, asynq.Config{Concurrency: 2}),
+		bucket:   conf.KnowledgeConfInfo.MinIOBucket,
 		reranker: noopReranker{},
+	}
+	if strings.TrimSpace(conf.KnowledgeConfInfo.RerankerBaseURL) != "" {
+		service.reranker = newTEIReranker(conf.KnowledgeConfInfo.RerankerBaseURL, conf.KnowledgeConfInfo.RerankerTopN)
+	}
+	if conf.KnowledgeConfInfo.QueueEnabled() {
+		service.queue = asynq.NewClient(asynq.RedisClientOpt{
+			Addr:     conf.KnowledgeConfInfo.RedisAddr,
+			Password: conf.KnowledgeConfInfo.RedisPassword,
+			DB:       conf.KnowledgeConfInfo.RedisDB,
+		})
+		service.server = asynq.NewServer(asynq.RedisClientOpt{
+			Addr:     conf.KnowledgeConfInfo.RedisAddr,
+			Password: conf.KnowledgeConfInfo.RedisPassword,
+			DB:       conf.KnowledgeConfInfo.RedisDB,
+		}, asynq.Config{Concurrency: 2})
 	}
 
 	exists, err := service.minio.BucketExists(ctx, service.bucket)
@@ -218,17 +233,19 @@ func initKnowledgeV2(ctx context.Context) error {
 		return err
 	}
 
-	mux := asynq.NewServeMux()
-	mux.HandleFunc(ingestionTaskType, service.handleIngestionTask)
-	go func() {
-		if runErr := service.server.Run(mux); runErr != nil {
-			logger.Error("knowledge worker stopped", "err", runErr)
-		}
-	}()
+	if service.server != nil {
+		mux := asynq.NewServeMux()
+		mux.HandleFunc(ingestionTaskType, service.handleIngestionTask)
+		go func() {
+			if runErr := service.server.Run(mux); runErr != nil {
+				logger.Error("knowledge worker stopped", "err", runErr)
+			}
+		}()
+	}
 
-	defaultKnowledgeService = service
+	defaultService = service
 
-	if conf.RagConfInfo.KnowledgeAutoMigrate {
+	if conf.KnowledgeConfInfo.KnowledgeAutoMigrate {
 		go func() {
 			migrateCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
@@ -241,13 +258,13 @@ func initKnowledgeV2(ctx context.Context) error {
 	return nil
 }
 
-func (s *knowledgeService) ensureDefaultCollection(ctx context.Context) (*KnowledgeBase, *Collection, error) {
-	kb, err := s.getOrCreateKnowledgeBase(ctx, conf.RagConfInfo.KnowledgeBaseName(), "")
+func (s *KnowledgeService) ensureDefaultCollection(ctx context.Context) (*KnowledgeBase, *Collection, error) {
+	kb, err := s.getOrCreateKnowledgeBase(ctx, conf.KnowledgeConfInfo.KnowledgeBaseName(), "")
 	if err != nil {
 		return nil, nil, err
 	}
 
-	collection, err := s.getOrCreateCollection(ctx, kb.ID, conf.RagConfInfo.CollectionName(), "")
+	collection, err := s.getOrCreateCollection(ctx, kb.ID, conf.KnowledgeConfInfo.CollectionName(), "")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -255,7 +272,7 @@ func (s *knowledgeService) ensureDefaultCollection(ctx context.Context) (*Knowle
 	return kb, collection, nil
 }
 
-func (s *knowledgeService) getOrCreateKnowledgeBase(ctx context.Context, name, description string) (*KnowledgeBase, error) {
+func (s *KnowledgeService) getOrCreateKnowledgeBase(ctx context.Context, name, description string) (*KnowledgeBase, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, name, description, status, create_time, update_time
 		FROM knowledge_bases WHERE from_bot = $1 AND name = $2`,
@@ -287,7 +304,7 @@ func (s *knowledgeService) getOrCreateKnowledgeBase(ctx context.Context, name, d
 	return &kb, nil
 }
 
-func (s *knowledgeService) getOrCreateCollection(ctx context.Context, knowledgeBaseID int64, name, description string) (*Collection, error) {
+func (s *KnowledgeService) getOrCreateCollection(ctx context.Context, knowledgeBaseID int64, name, description string) (*Collection, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, knowledge_base_id, name, description, status, create_time, update_time
 		FROM collections WHERE knowledge_base_id = $1 AND name = $2`,
@@ -320,7 +337,7 @@ func (s *knowledgeService) getOrCreateCollection(ctx context.Context, knowledgeB
 	return &collection, nil
 }
 
-func (s *knowledgeService) listCollections(ctx context.Context) (*ListResult[Collection], error) {
+func (s *KnowledgeService) listCollections(ctx context.Context) (*ListResult[Collection], error) {
 	kb, _, err := s.ensureDefaultCollection(ctx)
 	if err != nil {
 		return nil, err
@@ -348,7 +365,7 @@ func (s *knowledgeService) listCollections(ctx context.Context) (*ListResult[Col
 	return &ListResult[Collection]{List: collections, Total: len(collections), Page: 1, PageSize: len(collections)}, rows.Err()
 }
 
-func (s *knowledgeService) upsertDocumentContent(ctx context.Context, collectionName, name, sourceType, contentType string, data []byte) (*Document, *DocumentVersion, *IngestionJob, error) {
+func (s *KnowledgeService) upsertDocumentContent(ctx context.Context, collectionName, name, sourceType, contentType string, data []byte) (*Document, *DocumentVersion, *IngestionJob, error) {
 	kb, collection, err := s.ensureDefaultCollection(ctx)
 	if err != nil {
 		return nil, nil, nil, err
@@ -460,26 +477,37 @@ func (s *knowledgeService) upsertDocumentContent(ctx context.Context, collection
 		return nil, nil, nil, err
 	}
 
-	payloadBody, err := json.Marshal(ingestionPayload{JobID: job.ID})
-	if err != nil {
-		return nil, nil, nil, err
+	if s.queue != nil {
+		payloadBody, err := json.Marshal(ingestionPayload{JobID: job.ID})
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		info, err := s.queue.EnqueueContext(ctx, asynq.NewTask(ingestionTaskType, payloadBody))
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		job.TaskID = info.ID
+		_, err = s.db.ExecContext(ctx, `UPDATE ingestion_jobs SET task_id = $1, update_time = $2 WHERE id = $3`, info.ID, time.Now().Unix(), job.ID)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		return document, version, job, nil
 	}
 
-	info, err := s.queue.EnqueueContext(ctx, asynq.NewTask(ingestionTaskType, payloadBody))
-	if err != nil {
-		return nil, nil, nil, err
+	if err = s.processIngestionJob(ctx, job.ID); err != nil {
+		job.Status = "failed"
+		job.Error = err.Error()
+		return document, version, job, err
 	}
-
-	job.TaskID = info.ID
-	_, err = s.db.ExecContext(ctx, `UPDATE ingestion_jobs SET task_id = $1, update_time = $2 WHERE id = $3`, info.ID, time.Now().Unix(), job.ID)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
+	job.Status = "succeeded"
+	job.Stage = "finished"
+	job.UpdateTime = time.Now().Unix()
 	return document, version, job, nil
 }
 
-func (s *knowledgeService) getDocumentByNameTx(ctx context.Context, tx *sql.Tx, collectionID int64, name string) (*Document, error) {
+func (s *KnowledgeService) getDocumentByNameTx(ctx context.Context, tx *sql.Tx, collectionID int64, name string) (*Document, error) {
 	row := tx.QueryRowContext(ctx,
 		`SELECT id, collection_id, name, source_type, content_type, object_key, status, latest_version, create_time, update_time
 		FROM documents WHERE collection_id = $1 AND name = $2`,
@@ -492,7 +520,7 @@ func (s *knowledgeService) getDocumentByNameTx(ctx context.Context, tx *sql.Tx, 
 	return &document, nil
 }
 
-func (s *knowledgeService) getDocumentByName(ctx context.Context, collectionID int64, name string) (*Document, error) {
+func (s *KnowledgeService) getDocumentByName(ctx context.Context, collectionID int64, name string) (*Document, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, collection_id, name, source_type, content_type, object_key, status, latest_version, create_time, update_time
 		FROM documents WHERE collection_id = $1 AND name = $2`,
@@ -505,7 +533,7 @@ func (s *knowledgeService) getDocumentByName(ctx context.Context, collectionID i
 	return &document, nil
 }
 
-func (s *knowledgeService) getMaxDocumentVersionTx(ctx context.Context, tx *sql.Tx, documentID int64) (int, error) {
+func (s *KnowledgeService) getMaxDocumentVersionTx(ctx context.Context, tx *sql.Tx, documentID int64) (int, error) {
 	var version sql.NullInt64
 	if err := tx.QueryRowContext(ctx, `SELECT MAX(version) FROM document_versions WHERE document_id = $1`, documentID).Scan(&version); err != nil {
 		return 0, err
@@ -516,15 +544,15 @@ func (s *knowledgeService) getMaxDocumentVersionTx(ctx context.Context, tx *sql.
 	return int(version.Int64), nil
 }
 
-func (s *knowledgeService) sourceObjectKey(collectionID int64, name string, ts int64) string {
-	return fmt.Sprintf("%s/%s/%d/%d-%s", conf.BaseConfInfo.BotName, conf.RagConfInfo.CollectionName(), collectionID, ts, filepath.Base(name))
+func (s *KnowledgeService) sourceObjectKey(collectionID int64, name string, ts int64) string {
+	return fmt.Sprintf("%s/%s/%d/%d-%s", conf.BaseConfInfo.BotName, conf.KnowledgeConfInfo.CollectionName(), collectionID, ts, filepath.Base(name))
 }
 
-func (s *knowledgeService) parsedObjectKey(documentID int64, version int) string {
-	return fmt.Sprintf("%s/%s/%d/v%d/parsed.json", conf.BaseConfInfo.BotName, conf.RagConfInfo.CollectionName(), documentID, version)
+func (s *KnowledgeService) parsedObjectKey(documentID int64, version int) string {
+	return fmt.Sprintf("%s/%s/%d/v%d/parsed.json", conf.BaseConfInfo.BotName, conf.KnowledgeConfInfo.CollectionName(), documentID, version)
 }
 
-func (s *knowledgeService) handleIngestionTask(ctx context.Context, task *asynq.Task) error {
+func (s *KnowledgeService) handleIngestionTask(ctx context.Context, task *asynq.Task) error {
 	payload := ingestionPayload{}
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 		return err
@@ -532,7 +560,7 @@ func (s *knowledgeService) handleIngestionTask(ctx context.Context, task *asynq.
 	return s.processIngestionJob(ctx, payload.JobID)
 }
 
-func (s *knowledgeService) processIngestionJob(ctx context.Context, jobID int64) error {
+func (s *KnowledgeService) processIngestionJob(ctx context.Context, jobID int64) error {
 	job, version, document, collection, err := s.loadJobBundle(ctx, jobID)
 	if err != nil {
 		return err
@@ -575,7 +603,7 @@ func (s *knowledgeService) processIngestionJob(ctx context.Context, jobID int64)
 		texts = append(texts, doc.PageContent)
 	}
 
-	embeddingsRes, err := conf.RagConfInfo.Embedder.EmbedDocuments(ctx, texts)
+	embeddingsRes, err := conf.KnowledgeConfInfo.Embedder.EmbedDocuments(ctx, texts)
 	if err != nil {
 		return s.failJob(ctx, jobID, version.ID, "embed", err)
 	}
@@ -620,7 +648,7 @@ func (s *knowledgeService) processIngestionJob(ctx context.Context, jobID int64)
 	return err
 }
 
-func (s *knowledgeService) failJob(ctx context.Context, jobID, versionID int64, stage string, err error) error {
+func (s *KnowledgeService) failJob(ctx context.Context, jobID, versionID int64, stage string, err error) error {
 	now := time.Now().Unix()
 	if _, execErr := s.db.ExecContext(ctx,
 		`UPDATE ingestion_jobs SET status = 'failed', stage = $1, error = $2, finish_time = $3, update_time = $3 WHERE id = $4`,
@@ -637,7 +665,7 @@ func (s *knowledgeService) failJob(ctx context.Context, jobID, versionID int64, 
 	return err
 }
 
-func (s *knowledgeService) loadJobBundle(ctx context.Context, jobID int64) (*IngestionJob, *DocumentVersion, *Document, *Collection, error) {
+func (s *KnowledgeService) loadJobBundle(ctx context.Context, jobID int64) (*IngestionJob, *DocumentVersion, *Document, *Collection, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT j.id, j.collection_id, j.document_id, j.document_version_id, j.task_id, j.stage, j.status, j.error, j.create_time, j.update_time, j.start_time, j.finish_time,
 		        d.name, dv.version, dv.status, dv.file_md5, dv.object_key, dv.parsed_object_key, dv.file_size, dv.chunk_count, dv.error,
@@ -671,7 +699,7 @@ func (s *knowledgeService) loadJobBundle(ctx context.Context, jobID int64) (*Ing
 	return job, version, document, collection, nil
 }
 
-func (s *knowledgeService) indexVersionChunks(ctx context.Context, collection *Collection, document *Document, version *DocumentVersion, docs []schema.Document, embeddingsRes [][]float32) error {
+func (s *KnowledgeService) indexVersionChunks(ctx context.Context, collection *Collection, document *Document, version *DocumentVersion, docs []schema.Document, embeddingsRes [][]float32) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -712,7 +740,7 @@ func (s *knowledgeService) indexVersionChunks(ctx context.Context, collection *C
 	return tx.Commit()
 }
 
-func (s *knowledgeService) listDocuments(ctx context.Context, page, pageSize int, name string) (*ListResult[Document], error) {
+func (s *KnowledgeService) listDocuments(ctx context.Context, page, pageSize int, name string) (*ListResult[Document], error) {
 	if page < 1 {
 		page = 1
 	}
@@ -773,7 +801,7 @@ func (s *knowledgeService) listDocuments(ctx context.Context, page, pageSize int
 	return &ListResult[Document]{List: result, Total: total, Page: page, PageSize: pageSize}, rows.Err()
 }
 
-func (s *knowledgeService) listIngestionJobs(ctx context.Context, page, pageSize int, status string) (*ListResult[IngestionJob], error) {
+func (s *KnowledgeService) listIngestionJobs(ctx context.Context, page, pageSize int, status string) (*ListResult[IngestionJob], error) {
 	if page < 1 {
 		page = 1
 	}
@@ -822,7 +850,7 @@ func (s *knowledgeService) listIngestionJobs(ctx context.Context, page, pageSize
 	return &ListResult[IngestionJob]{List: jobs, Total: total, Page: page, PageSize: pageSize}, rows.Err()
 }
 
-func (s *knowledgeService) getDocumentContent(ctx context.Context, name string) (string, error) {
+func (s *KnowledgeService) getDocumentContent(ctx context.Context, name string) (string, error) {
 	_, collection, err := s.ensureDefaultCollection(ctx)
 	if err != nil {
 		return "", err
@@ -856,7 +884,7 @@ func (s *knowledgeService) getDocumentContent(ctx context.Context, name string) 
 	return string(body), nil
 }
 
-func (s *knowledgeService) deleteDocumentByName(ctx context.Context, name string) error {
+func (s *KnowledgeService) deleteDocumentByName(ctx context.Context, name string) error {
 	_, collection, err := s.ensureDefaultCollection(ctx)
 	if err != nil {
 		return err
@@ -886,8 +914,8 @@ func (s *knowledgeService) deleteDocumentByName(ctx context.Context, name string
 	return tx.Commit()
 }
 
-func (s *knowledgeService) autoMigrateLegacyKnowledge(ctx context.Context) error {
-	entries, err := os.ReadDir(conf.RagConfInfo.KnowledgePath)
+func (s *KnowledgeService) autoMigrateLegacyKnowledge(ctx context.Context) error {
+	entries, err := os.ReadDir(conf.KnowledgeConfInfo.KnowledgePath)
 	if err != nil {
 		return err
 	}
@@ -900,7 +928,7 @@ func (s *knowledgeService) autoMigrateLegacyKnowledge(ctx context.Context) error
 			continue
 		}
 
-		fullPath := filepath.Join(conf.RagConfInfo.KnowledgePath, entry.Name())
+		fullPath := filepath.Join(conf.KnowledgeConfInfo.KnowledgePath, entry.Name())
 		body, err := os.ReadFile(fullPath)
 		if err != nil {
 			return err
@@ -925,7 +953,7 @@ func (s *knowledgeService) autoMigrateLegacyKnowledge(ctx context.Context) error
 			return err
 		}
 
-		if _, _, _, err = s.upsertDocumentContent(ctx, conf.RagConfInfo.CollectionName(), entry.Name(), "migration", contentTypeFromName(entry.Name()), body); err != nil {
+		if _, _, _, err = s.upsertDocumentContent(ctx, conf.KnowledgeConfInfo.CollectionName(), entry.Name(), "migration", contentTypeFromName(entry.Name()), body); err != nil {
 			return err
 		}
 	}
@@ -933,7 +961,7 @@ func (s *knowledgeService) autoMigrateLegacyKnowledge(ctx context.Context) error
 	return nil
 }
 
-func (s *knowledgeService) debugRetrieve(ctx context.Context, query string, persist bool) (*RetrievalDebugResult, error) {
+func (s *KnowledgeService) debugRetrieve(ctx context.Context, query string, persist bool) (*RetrievalDebugResult, error) {
 	kb, collection, err := s.ensureDefaultCollection(ctx)
 	if err != nil {
 		return nil, err
@@ -942,7 +970,7 @@ func (s *knowledgeService) debugRetrieve(ctx context.Context, query string, pers
 	query = strings.TrimSpace(query)
 	queryNormalized := normalizeLexicalText(query)
 	rewrittenQuery := query
-	queryEmbedding, err := conf.RagConfInfo.Embedder.EmbedQuery(ctx, query)
+	queryEmbedding, err := conf.KnowledgeConfInfo.Embedder.EmbedQuery(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -959,21 +987,29 @@ func (s *knowledgeService) debugRetrieve(ctx context.Context, query string, pers
 	hits := fuseRetrievalHits(denseHits, lexicalHits)
 	hits, err = s.reranker.Rerank(ctx, rewrittenQuery, hits)
 	if err != nil {
-		return nil, err
+		logger.WarnCtx(ctx, "knowledge rerank failed; falling back to fused hits", "err", err)
+		hits = fuseRetrievalHits(denseHits, lexicalHits)
 	}
+	hits = filterRetrievalHits(hits, currentRetrievalThresholds())
 
 	for i := range hits {
 		hits[i].RankPosition = i + 1
-		hits[i].FinalScore = hits[i].RRFScore
+		if hits[i].FinalScore == 0 {
+			hits[i].FinalScore = hits[i].RRFScore
+		}
 	}
 
+	status := "succeeded"
+	if len(hits) == 0 {
+		status = "no_match"
+	}
 	run := &RetrievalRun{
 		KnowledgeBaseID: kb.ID,
 		CollectionID:    collection.ID,
 		QueryText:       query,
 		QueryNormalized: queryNormalized,
 		RewrittenQuery:  rewrittenQuery,
-		Status:          "succeeded",
+		Status:          status,
 		Citations:       hitCitations(hits),
 		CreateTime:      time.Now().Unix(),
 		UpdateTime:      time.Now().Unix(),
@@ -991,13 +1027,30 @@ func (s *knowledgeService) debugRetrieve(ctx context.Context, query string, pers
 	}, nil
 }
 
-func (s *knowledgeService) answerWithLLM(ctx context.Context, callLLM *llm.LLM, userInput string) (string, *RetrievalDebugResult, error) {
+func (s *KnowledgeService) answerWithLLM(ctx context.Context, callLLM *llm.LLM, userInput string) (string, *RetrievalDebugResult, error) {
 	debugResult, err := s.debugRetrieve(ctx, userInput, true)
 	if err != nil {
 		return "", nil, err
 	}
+	if len(debugResult.Hits) == 0 {
+		answer := noRelevantKnowledgeAnswer()
+		callLLM.WholeContent = answer
+		callLLM.DirectSendMsg(answer, true)
+		callLLM.Content = userInput
+		debugResult.Run.Status = "no_match"
+		if err = callLLM.InsertOrUpdate(); err != nil {
+			return "", nil, err
+		}
+		debugResult.Run.Answer = answer
+		if _, err = s.db.ExecContext(ctx, `UPDATE retrieval_runs SET answer = $1, citations = $2::jsonb, status = $3, update_time = $4 WHERE id = $5`,
+			answer, mustJSON([]string{}), "no_match", time.Now().Unix(), debugResult.Run.ID); err != nil {
+			return "", nil, err
+		}
+		return answer, debugResult, nil
+	}
 
 	prompt := buildKnowledgePrompt(userInput, debugResult.Hits)
+	callLLM.PrepareRuntimeTools()
 	callLLM.GetMessages(callLLM.UserId, prompt)
 	callLLM.Content = prompt
 	callLLM.LLMClient.GetModel(callLLM)
@@ -1031,7 +1084,7 @@ func (s *knowledgeService) answerWithLLM(ctx context.Context, callLLM *llm.LLM, 
 	return answer, debugResult, nil
 }
 
-func (s *knowledgeService) insertRetrievalRun(ctx context.Context, run *RetrievalRun, hits []RetrievalHit) error {
+func (s *KnowledgeService) insertRetrievalRun(ctx context.Context, run *RetrievalRun, hits []RetrievalHit) error {
 	if run == nil {
 		return fmt.Errorf("retrieval run is nil")
 	}
@@ -1071,7 +1124,7 @@ func (s *knowledgeService) insertRetrievalRun(ctx context.Context, run *Retrieva
 	return nil
 }
 
-func (s *knowledgeService) listRetrievalRuns(ctx context.Context, page, pageSize int) (*ListResult[RetrievalRun], error) {
+func (s *KnowledgeService) listRetrievalRuns(ctx context.Context, page, pageSize int) (*ListResult[RetrievalRun], error) {
 	if page < 1 {
 		page = 1
 	}
@@ -1112,7 +1165,7 @@ func (s *knowledgeService) listRetrievalRuns(ctx context.Context, page, pageSize
 	return &ListResult[RetrievalRun]{List: runs, Total: total, Page: page, PageSize: pageSize}, rows.Err()
 }
 
-func (s *knowledgeService) getRetrievalRun(ctx context.Context, id int64) (*RetrievalDebugResult, error) {
+func (s *KnowledgeService) getRetrievalRun(ctx context.Context, id int64) (*RetrievalDebugResult, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, knowledge_base_id, collection_id, query_text, query_normalized, rewritten_query, answer, citations, status, error, create_time, update_time
 		FROM retrieval_runs WHERE id = $1 AND from_bot = $2`,
@@ -1158,7 +1211,7 @@ func (s *knowledgeService) getRetrievalRun(ctx context.Context, id int64) (*Retr
 	return &RetrievalDebugResult{Run: &run, Hits: hits, Query: run.QueryText}, rows.Err()
 }
 
-func (s *knowledgeService) searchDense(ctx context.Context, collectionID int64, embedding []float32, limit int) ([]RetrievalHit, error) {
+func (s *KnowledgeService) searchDense(ctx context.Context, collectionID int64, embedding []float32, limit int) ([]RetrievalHit, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT c.id, c.document_id, c.document_version_id, d.name, c.citation_label, c.content, c.metadata,
 		        1 - (c.embedding <=> CAST($1 AS vector)) AS dense_score
@@ -1193,7 +1246,7 @@ func (s *knowledgeService) searchDense(ctx context.Context, collectionID int64, 
 	return hits, rows.Err()
 }
 
-func (s *knowledgeService) searchLexical(ctx context.Context, collectionID int64, normalizedQuery, rawQuery string, limit int) ([]RetrievalHit, error) {
+func (s *KnowledgeService) searchLexical(ctx context.Context, collectionID int64, normalizedQuery, rawQuery string, limit int) ([]RetrievalHit, error) {
 	if strings.TrimSpace(normalizedQuery) == "" {
 		return nil, nil
 	}
@@ -1268,7 +1321,7 @@ func (s *knowledgeService) searchLexical(ctx context.Context, collectionID int64
 }
 
 func loadDocumentsFromBytes(ctx context.Context, name, fileMD5 string, data []byte) ([]schema.Document, error) {
-	tmpFile, err := os.CreateTemp("", "tinyclaw-rag-*"+filepath.Ext(name))
+	tmpFile, err := os.CreateTemp("", "tinyclaw-knowledge-*"+filepath.Ext(name))
 	if err != nil {
 		return nil, err
 	}
@@ -1301,8 +1354,8 @@ func loadDocumentsFromBytes(ctx context.Context, name, fileMD5 string, data []by
 	}
 
 	splitter := textsplitter.NewRecursiveCharacter(
-		textsplitter.WithChunkSize(conf.RagConfInfo.ChunkSize),
-		textsplitter.WithChunkOverlap(conf.RagConfInfo.ChunkOverlap),
+		textsplitter.WithChunkSize(conf.KnowledgeConfInfo.ChunkSize),
+		textsplitter.WithChunkOverlap(conf.KnowledgeConfInfo.ChunkOverlap),
 		textsplitter.WithSeparators(conf.DefaultSpliter),
 	)
 
@@ -1383,6 +1436,70 @@ func fuseRetrievalHits(denseHits, lexicalHits []RetrievalHit) []RetrievalHit {
 	return result
 }
 
+type retrievalThresholds struct {
+	DenseMin    float64
+	LexicalMin  float64
+	FusedMin    float64
+	RerankerMin float64
+}
+
+func currentRetrievalThresholds() retrievalThresholds {
+	return retrievalThresholds{
+		DenseMin:    conf.KnowledgeConfInfo.DenseScoreThreshold,
+		LexicalMin:  conf.KnowledgeConfInfo.LexicalScoreThreshold,
+		FusedMin:    conf.KnowledgeConfInfo.FusedScoreThreshold,
+		RerankerMin: conf.KnowledgeConfInfo.RerankerScoreThreshold,
+	}
+}
+
+func filterRetrievalHits(hits []RetrievalHit, thresholds retrievalThresholds) []RetrievalHit {
+	if len(hits) == 0 {
+		return nil
+	}
+
+	filtered := make([]RetrievalHit, 0, len(hits))
+	for _, hit := range hits {
+		if !isRelevantRetrievalHit(hit, thresholds) {
+			continue
+		}
+		filtered = append(filtered, hit)
+	}
+
+	sort.Slice(filtered, func(i, j int) bool {
+		if math.Abs(filtered[i].FinalScore-filtered[j].FinalScore) > 1e-9 {
+			return filtered[i].FinalScore > filtered[j].FinalScore
+		}
+		if math.Abs(filtered[i].RerankScore-filtered[j].RerankScore) > 1e-9 {
+			return filtered[i].RerankScore > filtered[j].RerankScore
+		}
+		if math.Abs(filtered[i].RRFScore-filtered[j].RRFScore) > 1e-9 {
+			return filtered[i].RRFScore > filtered[j].RRFScore
+		}
+		if math.Abs(filtered[i].DenseScore-filtered[j].DenseScore) > 1e-9 {
+			return filtered[i].DenseScore > filtered[j].DenseScore
+		}
+		return filtered[i].LexicalScore > filtered[j].LexicalScore
+	})
+
+	if len(filtered) > 8 {
+		filtered = filtered[:8]
+	}
+	return filtered
+}
+
+func isRelevantRetrievalHit(hit RetrievalHit, thresholds retrievalThresholds) bool {
+	if hit.Reranked {
+		return hit.RerankScore >= thresholds.RerankerMin
+	}
+	if hit.DenseScore >= thresholds.DenseMin {
+		return true
+	}
+	if hit.LexicalScore >= thresholds.LexicalMin {
+		return true
+	}
+	return hit.FinalScore >= thresholds.FusedMin
+}
+
 func hitCitations(hits []RetrievalHit) []string {
 	citations := make([]string, 0, len(hits))
 	for _, hit := range hits {
@@ -1415,6 +1532,13 @@ func buildKnowledgePrompt(userInput string, hits []RetrievalHit) string {
 		builder.WriteString("\n\n")
 	}
 	return builder.String()
+}
+
+func noRelevantKnowledgeAnswer() string {
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(conf.BaseConfInfo.Lang)), "zh") {
+		return "知识库里没有足够相关的内容来回答这个问题。请换一种问法，或先补充相关知识文档。"
+	}
+	return "The knowledge base does not contain enough relevant information to answer this question. Please rephrase it or add supporting documents first."
 }
 
 func containsCitation(answer string) bool {
@@ -1457,12 +1581,12 @@ func mustJSON(value interface{}) string {
 	return string(body)
 }
 
-func answerWithKnowledgeV2(ctx context.Context, callLLM *llm.LLM, prompt string, options ...llms.CallOption) (*llms.ContentResponse, error) {
-	if defaultKnowledgeService == nil {
+func answerWithKnowledge(ctx context.Context, callLLM *llm.LLM, prompt string, options ...llms.CallOption) (*llms.ContentResponse, error) {
+	if defaultService == nil {
 		return nil, fmt.Errorf("knowledge service is not enabled")
 	}
 
-	answer, _, err := defaultKnowledgeService.answerWithLLM(ctx, callLLM, prompt)
+	answer, _, err := defaultService.answerWithLLM(ctx, callLLM, prompt)
 	if err != nil {
 		return nil, err
 	}

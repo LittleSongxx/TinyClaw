@@ -19,6 +19,7 @@ type User struct {
 	UpdateTime   int64            `json:"update_time"`
 	CreateTime   int64            `json:"create_time"`
 	AvailToken   int              `json:"avail_token"`
+	Unlimited    bool             `json:"unlimited"`
 	LLMConfig    string           `json:"llm_config"`
 	LLMConfigRaw *param.LLMConfig `json:"llm_config_raw"`
 }
@@ -30,6 +31,7 @@ type UserQuotaMetric struct {
 	AvailToken     int     `json:"avail_token"`
 	RemainingToken int     `json:"remaining_token"`
 	UsageRate      float64 `json:"usage_rate"`
+	Unlimited      bool    `json:"unlimited"`
 	CreateTime     int64   `json:"create_time"`
 	UpdateTime     int64   `json:"update_time"`
 }
@@ -47,6 +49,7 @@ type UserQuotaSummary struct {
 	TotalRemainToken  int     `json:"total_remaining_token"`
 	TotalQuotaToken   int     `json:"total_quota_token"`
 	AverageUsageRate  float64 `json:"average_usage_rate"`
+	UnlimitedUsers    int     `json:"unlimited_users"`
 }
 
 type UserQuotaStats struct {
@@ -110,6 +113,7 @@ func GetUserByID(userId string) (*User, error) {
 			return nil, fmt.Errorf("UnmarshalJSON failed: %v", err)
 		}
 	}
+	normalizePrivilegedUser(&user)
 
 	return &user, nil
 }
@@ -204,6 +208,7 @@ func GetUserByPage(page, pageSize int, userId string) ([]User, error) {
 				return nil, fmt.Errorf("UnmarshalJSON failed: %v", err)
 			}
 		}
+		normalizePrivilegedUser(&u)
 		users = append(users, u)
 	}
 
@@ -248,25 +253,33 @@ func GetUserQuotaStats(page, pageSize int, userId, sortBy string) (*UserQuotaSta
 		remaining := user.AvailToken - user.Token
 		totalQuota := user.AvailToken
 		usageRate := 0.0
-		if totalQuota > 0 {
+		if user.Unlimited {
+			remaining = -1
+			totalQuota = -1
+		} else if totalQuota > 0 {
 			usageRate = float64(user.Token) / float64(totalQuota)
 		}
 		metrics = append(metrics, UserQuotaMetric{
 			ID:             user.ID,
 			UserID:         user.UserId,
 			Token:          user.Token,
-			AvailToken:     user.AvailToken,
+			AvailToken:     totalQuota,
 			RemainingToken: remaining,
 			UsageRate:      usageRate,
+			Unlimited:      user.Unlimited,
 			CreateTime:     user.CreateTime,
 			UpdateTime:     user.UpdateTime,
 		})
 		summary.TotalUsers++
 		summary.TotalUsedToken += user.Token
+		if user.Unlimited {
+			summary.UnlimitedUsers++
+			continue
+		}
 		summary.TotalRemainToken += remaining
 		summary.TotalQuotaToken += totalQuota
 	}
-	if summary.TotalUsers > 0 {
+	if summary.TotalQuotaToken > 0 {
 		summary.AverageUsageRate = float64(summary.TotalUsedToken) / float64(max(summary.TotalQuotaToken, 1))
 	}
 
@@ -336,6 +349,7 @@ func getUsersForQuotaStats(userId string) ([]User, error) {
 		if err := rows.Scan(&user.ID, &user.UserId, &user.LLMConfig, &user.Token, &user.AvailToken, &user.UpdateTime, &user.CreateTime); err != nil {
 			return nil, err
 		}
+		normalizePrivilegedUser(&user)
 		users = append(users, user)
 	}
 	return users, rows.Err()
@@ -356,6 +370,9 @@ func sortUserQuotaMetrics(items []UserQuotaMetric, sortBy string) {
 	switch sortBy {
 	case "low_remaining":
 		sort.SliceStable(items, func(i, j int) bool {
+			if items[i].Unlimited != items[j].Unlimited {
+				return !items[i].Unlimited
+			}
 			if items[i].RemainingToken == items[j].RemainingToken {
 				return items[i].Token > items[j].Token
 			}
@@ -363,6 +380,9 @@ func sortUserQuotaMetrics(items []UserQuotaMetric, sortBy string) {
 		})
 	case "usage_rate":
 		sort.SliceStable(items, func(i, j int) bool {
+			if items[i].Unlimited != items[j].Unlimited {
+				return !items[i].Unlimited
+			}
 			if items[i].UsageRate == items[j].UsageRate {
 				return items[i].Token > items[j].Token
 			}
@@ -397,9 +417,14 @@ func buildQuotaDistribution(items []UserQuotaMetric) []UserQuotaBucket {
 		{Label: "75-90%", Min: 75, Max: 90},
 		{Label: "90-100%", Min: 90, Max: 100},
 		{Label: "100%+", Min: 100, Max: 101},
+		{Label: "∞", Min: -1, Max: -1},
 	}
 
 	for _, item := range items {
+		if item.Unlimited {
+			buckets[6].Count++
+			continue
+		}
 		percent := int(item.UsageRate * 100)
 		switch {
 		case percent < 25:
@@ -417,6 +442,14 @@ func buildQuotaDistribution(items []UserQuotaMetric) []UserQuotaBucket {
 		}
 	}
 	return buckets
+}
+
+func normalizePrivilegedUser(user *User) {
+	if user == nil || !conf.IsPrivilegedUser(user.UserId) {
+		return
+	}
+	user.Unlimited = true
+	user.AvailToken = -1
 }
 
 func max(a, b int) int {

@@ -1,4 +1,4 @@
-package rag
+package knowledge
 
 import (
 	"bytes"
@@ -31,7 +31,7 @@ type teiEmbedRequest struct {
 }
 
 func newTEIEmbedder() (embeddings.Embedder, error) {
-	baseURL := strings.TrimSpace(conf.RagConfInfo.EmbeddingBaseURL)
+	baseURL := strings.TrimSpace(conf.KnowledgeConfInfo.EmbeddingBaseURL)
 	if baseURL == "" {
 		return nil, fmt.Errorf("embedding_base_url is required when embedding_type=huggingface")
 	}
@@ -39,12 +39,12 @@ func newTEIEmbedder() (embeddings.Embedder, error) {
 	return &teiEmbedder{
 		client: &teiClient{
 			baseURL: strings.TrimRight(baseURL, "/"),
-			modelID: strings.TrimSpace(conf.RagConfInfo.EmbeddingModelID),
+			modelID: strings.TrimSpace(conf.KnowledgeConfInfo.EmbeddingModelID),
 			httpClient: &http.Client{
 				Transport: http.DefaultTransport,
 			},
 		},
-		queryInstruction: strings.TrimSpace(conf.RagConfInfo.EmbeddingQueryInstruction),
+		queryInstruction: strings.TrimSpace(conf.KnowledgeConfInfo.EmbeddingQueryInstruction),
 	}, nil
 }
 

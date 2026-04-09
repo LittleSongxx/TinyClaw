@@ -38,7 +38,7 @@ export default function Sidebar() {
         { path: "/communicate", label: t("chat"), icon: MessageSquare },
         { path: "/nodes", label: t("nodes"), icon: Monitor },
         { path: "/runs", label: t("runs"), icon: Activity },
-        { path: "/rag", label: t("rag"), icon: DatabaseIcon },
+        { path: "/knowledge", label: t("knowledge"), icon: DatabaseIcon },
         { path: "/log", label: t("log"), icon: ScrollText },
     ];
 

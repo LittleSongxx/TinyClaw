@@ -13,9 +13,9 @@ import (
 	"github.com/LittleSongxx/TinyClaw/gateway"
 	"github.com/LittleSongxx/TinyClaw/http"
 	"github.com/LittleSongxx/TinyClaw/i18n"
+	"github.com/LittleSongxx/TinyClaw/knowledge"
 	"github.com/LittleSongxx/TinyClaw/logger"
 	"github.com/LittleSongxx/TinyClaw/metrics"
-	"github.com/LittleSongxx/TinyClaw/rag"
 	"github.com/LittleSongxx/TinyClaw/register"
 	"github.com/LittleSongxx/TinyClaw/robot"
 	"github.com/LittleSongxx/TinyClaw/skill"
@@ -29,7 +29,7 @@ func main() {
 	db.InitTable()
 	conf.InitTools()
 	skill.LogDefaultCatalog(context.Background())
-	rag.InitRag()
+	knowledge.Init()
 	gateway.Init()
 	http.InitHTTP()
 	metrics.RegisterMetrics()

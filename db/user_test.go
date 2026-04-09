@@ -66,3 +66,41 @@ func TestInsertAndGetUser(t *testing.T) {
 	}
 
 }
+
+func TestPrivilegedUserHasUnlimitedQuota(t *testing.T) {
+	userID := "privileged-user"
+	original := conf.BaseConfInfo.PrivilegedUserIds
+	conf.BaseConfInfo.PrivilegedUserIds = map[string]bool{userID: true}
+	t.Cleanup(func() {
+		conf.BaseConfInfo.PrivilegedUserIds = original
+	})
+
+	if _, err := InsertUser(userID, "{}"); err != nil {
+		t.Fatalf("InsertUser failed: %v", err)
+	}
+
+	user, err := GetUserByID(userID)
+	if err != nil {
+		t.Fatalf("GetUserByID failed: %v", err)
+	}
+	if user == nil {
+		t.Fatalf("user not found")
+	}
+	if !user.Unlimited {
+		t.Fatalf("expected privileged user to be marked unlimited")
+	}
+	if user.AvailToken != -1 {
+		t.Fatalf("expected unlimited quota sentinel, got %d", user.AvailToken)
+	}
+
+	stats, err := GetUserQuotaStats(1, 10, userID, "low_remaining")
+	if err != nil {
+		t.Fatalf("GetUserQuotaStats failed: %v", err)
+	}
+	if stats.Summary.UnlimitedUsers != 1 {
+		t.Fatalf("expected 1 unlimited user, got %d", stats.Summary.UnlimitedUsers)
+	}
+	if len(stats.List) != 1 || !stats.List[0].Unlimited {
+		t.Fatalf("expected unlimited metric in list: %+v", stats.List)
+	}
+}

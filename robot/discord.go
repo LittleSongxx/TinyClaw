@@ -429,11 +429,7 @@ func onInteractionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 func (d *DiscordRobot) sendChatMessage() {
 	d.Robot.TalkingPreCheck(func() {
-		if conf.RagConfInfo.Store != nil {
-			d.executeChain()
-		} else {
-			d.executeLLM()
-		}
+		d.executeLLM()
 	})
 }
 

@@ -48,14 +48,14 @@ TinyClaw 现在的主线定位，是一个基于 Go 的 AI Agent / Bot 平台，
 当前推荐把部署拆成两块：
 
 1. `Docker Compose`
-作用：运行 TinyClaw 主服务、Admin、RAG 依赖、MCP 相关基础设施。
+作用：运行 TinyClaw 主服务、Admin、Knowledge 依赖、MCP 相关基础设施。
 
 2. `tinyclaw-node`
 作用：运行在真实 Windows / macOS / Linux 主机上，向 Gateway 注册自身能力。
 
 这个边界很重要：
 
-- 如果你只是想跑 Bot、RAG、MCP、Admin，Compose 就够了
+- 如果你只是想跑 Bot、Knowledge、MCP、Admin，Compose 就够了
 - 如果你想操作真实桌面，不要把 `tinyclaw-node` 当成普通容器服务来替代宿主机
 
 ## 目录结构
@@ -223,7 +223,7 @@ go run ./cmd/tinyclaw-node \
 - Web API 说明：[static/doc/web_api_ZH.md](static/doc/web_api_ZH.md)
 - Admin 说明：[static/doc/admin_ZH.md](static/doc/admin_ZH.md)
 - MCP / Skills：[static/doc/functioncall_ZH.md](static/doc/functioncall_ZH.md)
-- RAG 说明：[static/doc/rag_ZH.md](static/doc/rag_ZH.md)
+- Knowledge 说明：[static/doc/knowledge_ZH.md](static/doc/knowledge_ZH.md)
 - 参数说明：[static/doc/param_conf_ZH.md](static/doc/param_conf_ZH.md)
 
 ## 开发与构建

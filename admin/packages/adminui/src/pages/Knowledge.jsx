@@ -35,7 +35,7 @@ async function fileToBase64(file) {
     return btoa(binary);
 }
 
-export default function Rag() {
+export default function Knowledge() {
     const { t } = useTranslation();
     const fileInputRef = useRef(null);
     const [botId, setBotId] = useState(null);
@@ -100,7 +100,7 @@ export default function Rag() {
                 pageSize: docPageSize,
                 name: docSearch,
             });
-            const res = await fetch(`/bot/rag/documents/list?${params.toString()}`);
+            const res = await fetch(`/bot/knowledge/documents/list?${params.toString()}`);
             const data = await res.json();
             if (data.code !== 0) {
                 showToast(data.message || "Failed to fetch documents");
@@ -121,7 +121,7 @@ export default function Rag() {
                 pageSize: jobPageSize,
                 status: jobStatus,
             });
-            const res = await fetch(`/bot/rag/jobs/list?${params.toString()}`);
+            const res = await fetch(`/bot/knowledge/jobs/list?${params.toString()}`);
             const data = await res.json();
             if (data.code !== 0) {
                 showToast(data.message || "Failed to fetch jobs");
@@ -141,7 +141,7 @@ export default function Rag() {
                 page: retrievalPage,
                 pageSize: retrievalPageSize,
             });
-            const res = await fetch(`/bot/rag/retrieval/runs/list?${params.toString()}`);
+            const res = await fetch(`/bot/knowledge/retrieval/runs/list?${params.toString()}`);
             const data = await res.json();
             if (data.code !== 0) {
                 showToast(data.message || "Failed to fetch retrieval runs");
@@ -167,7 +167,7 @@ export default function Rag() {
                 id: botId,
                 file_name: name,
             });
-            const res = await fetch(`/bot/rag/documents/get?${params.toString()}`);
+            const res = await fetch(`/bot/knowledge/documents/get?${params.toString()}`);
             const data = await res.json();
             if (data.code !== 0) {
                 showToast(data.message || "Failed to fetch document content");
@@ -188,7 +188,7 @@ export default function Rag() {
             return;
         }
         try {
-            const res = await fetch(`/bot/rag/documents/create?id=${botId}`, {
+            const res = await fetch(`/bot/knowledge/documents/create?id=${botId}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -221,7 +221,7 @@ export default function Rag() {
         }
         try {
             const dataBase64 = await fileToBase64(file);
-            const res = await fetch(`/bot/rag/documents/create?id=${botId}`, {
+            const res = await fetch(`/bot/knowledge/documents/create?id=${botId}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -257,7 +257,7 @@ export default function Rag() {
                 id: botId,
                 file_name: docToDelete,
             });
-            const res = await fetch(`/bot/rag/documents/delete?${params.toString()}`, {
+            const res = await fetch(`/bot/knowledge/documents/delete?${params.toString()}`, {
                 method: "POST",
             });
             const data = await res.json();
@@ -280,7 +280,7 @@ export default function Rag() {
             return;
         }
         try {
-            const res = await fetch(`/bot/rag/retrieval/debug?id=${botId}`, {
+            const res = await fetch(`/bot/knowledge/retrieval/debug?id=${botId}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ query }),
@@ -303,7 +303,7 @@ export default function Rag() {
                 id: botId,
                 run_id: runId,
             });
-            const res = await fetch(`/bot/rag/retrieval/runs/get?${params.toString()}`);
+            const res = await fetch(`/bot/knowledge/retrieval/runs/get?${params.toString()}`);
             const data = await res.json();
             if (data.code !== 0) {
                 showToast(data.message || "Failed to fetch retrieval run");
@@ -334,8 +334,8 @@ export default function Rag() {
 
             <div className="mb-6 flex items-center justify-between">
                 <div>
-                    <h2 className="text-2xl font-bold text-gray-800">{t("rag_manage")}</h2>
-                    <p className="mt-1 text-sm text-gray-500">{t("rag_manage_desc")}</p>
+                    <h2 className="text-2xl font-bold text-gray-800">{t("knowledge_manage")}</h2>
+                    <p className="mt-1 text-sm text-gray-500">{t("knowledge_manage_desc")}</p>
                 </div>
                 <div className="flex gap-2">
                     <input

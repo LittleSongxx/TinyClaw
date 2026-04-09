@@ -16,7 +16,7 @@ PACKAGE_DIR="${STAGE_ROOT}/${PACKAGE_NAME}"
 BUILD_LOG="${SCRIPT_LOG_DIR}/${SCRIPT_RUN_ID}-package-node-build.log"
 ZIP_LOG="${SCRIPT_LOG_DIR}/${SCRIPT_RUN_ID}-package-node-zip.log"
 INSTALLER_LOG="${SCRIPT_LOG_DIR}/${SCRIPT_RUN_ID}-package-node-installer.log"
-NODE_VERSION_RAW="$(sed -n 's/^const nodeBinaryVersion = "v\(.*\)"/\1/p' cmd/tinyclaw-node/runtime.go | head -n 1)"
+NODE_VERSION_RAW="$(sed -n 's/^const nodeBinaryVersion = "v\(.*\)"/\1/p' cmd/tinyclaw-node/runtime.go | head -n 1 | tr -d '\r')"
 PRODUCT_VERSION="${NODE_VERSION_RAW:-0.2.0}"
 SETUP_NAME="TinyClawNodeSetup.exe"
 

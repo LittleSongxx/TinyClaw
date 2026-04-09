@@ -407,11 +407,7 @@ func (t *TelegramRobot) sendChatMessage() {
 
 	// Reply to the chat content
 	t.Robot.TalkingPreCheck(func() {
-		if conf.RagConfInfo.Store != nil {
-			t.executeChain()
-		} else {
-			t.executeLLM()
-		}
+		t.executeLLM()
 	})
 }
 

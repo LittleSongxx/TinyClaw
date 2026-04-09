@@ -162,7 +162,7 @@ func DeleteCron(w http.ResponseWriter, r *http.Request) {
 	// 构造目标 URL：/cron/delete?id=...
 	targetURL := strings.TrimSuffix(botInfo.Address, "/") + "/cron/delete?id=" + id
 
-	// 转发 GET 请求（与您示例中的 DeleteRagFile 保持一致）
+	// Forward the request in the same way as other simple delete proxies.
 	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodGet, targetURL, bytes.NewBuffer(nil)))
 	if err != nil {
 		logger.ErrorCtx(ctx, "request delete cron error", "err", err)

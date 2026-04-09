@@ -114,6 +114,10 @@ docker_compose() {
     profile_args+=(--profile cloudflared)
   fi
 
+  if [[ "${ENABLE_FULL_STACK:-false}" == "true" ]]; then
+    profile_args+=(--profile full)
+  fi
+
   resolve_docker_backend
 
   if [[ "${DOCKER_PATH_MODE}" == "windows" ]]; then
@@ -127,7 +131,7 @@ docker_compose() {
       compose_args+=(--env-file "$(to_docker_path "${RUNTIME_FILE}")")
     fi
 
-    "${DOCKER_BIN}" compose \
+  "${DOCKER_BIN}" compose \
       "${compose_args[@]}" \
       "${profile_args[@]}" \
       "$@"

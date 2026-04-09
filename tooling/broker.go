@@ -73,7 +73,9 @@ func (b *Broker) List(ctx context.Context) ([]ToolSpec, error) {
 		if err != nil {
 			return nil, err
 		}
-		specs = append(specs, items...)
+		for _, item := range items {
+			specs = append(specs, normalizeToolSpec(item))
+		}
 	}
 	return specs, nil
 }
@@ -108,7 +110,9 @@ func (b *Broker) ListExecutable(ctx context.Context) ([]ToolSpec, error) {
 		if err != nil {
 			return nil, err
 		}
-		specs = append(specs, items...)
+		for _, item := range items {
+			specs = append(specs, normalizeToolSpec(item))
+		}
 	}
 	return specs, nil
 }

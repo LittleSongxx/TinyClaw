@@ -100,15 +100,19 @@ http_status() {
   echo "${2:-000}"
 }
 
-if [[ -n "${POSTGRES_DSN:-}" && -n "${REDIS_ADDR:-}" && -n "${MINIO_ENDPOINT:-}" ]]; then
+if [[ -n "${POSTGRES_DSN:-}" ]]; then
   read -r postgres_host postgres_port < <(split_host_port "${POSTGRES_DSN}" "5432")
   log "Waiting for PostgreSQL"
   wait_for_tcp "PostgreSQL" "${postgres_host}" "${postgres_port}"
+fi
 
+if [[ -n "${REDIS_ADDR:-}" ]]; then
   read -r redis_host redis_port < <(split_host_port "${REDIS_ADDR}" "6379")
   log "Waiting for Redis"
   wait_for_tcp "Redis" "${redis_host}" "${redis_port}"
+fi
 
+if [[ -n "${MINIO_ENDPOINT:-}" ]]; then
   read -r minio_host minio_port < <(split_host_port "${MINIO_ENDPOINT}" "9000")
   minio_scheme="http"
   if [[ "${MINIO_USE_SSL:-false}" == "true" ]]; then
@@ -121,11 +125,6 @@ fi
 if [[ "${EMBEDDING_TYPE:-}" == "huggingface" && -n "${EMBEDDING_BASE_URL:-}" ]]; then
   log "Waiting for HF embeddings"
   wait_for_http "HF embeddings" "${EMBEDDING_BASE_URL%/}/health" "200"
-fi
-
-if [[ "${VECTOR_DB_TYPE:-}" == "milvus" ]]; then
-  log "Waiting for Milvus"
-  wait_for_http "Milvus" "http://milvus:9091/healthz" "200"
 fi
 
 if [[ "${USE_TOOLS:-false}" == "true" ]]; then

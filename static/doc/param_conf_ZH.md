@@ -14,7 +14,7 @@ deploy/docker/.env
 
 1. 复制 `deploy/docker/.env.example` 为 `deploy/docker/.env`
 2. 填写平台和模型凭据
-3. 按需补齐 MCP 密钥与 RAG 参数
+3. 按需补齐 MCP 密钥与 Knowledge 参数
 4. 执行 `./scripts/start.sh`
 
 ## 参数命名规则
@@ -105,7 +105,7 @@ LOG_LEVEL=info
 - 本地技能目录默认从 `skills/` 加载
 - 当前维护中的 Docker 方案默认保持 `USE_TOOLS=true`
 
-### 5. RAG v2 与向量检索
+### 5. Knowledge 与向量检索
 
 | 变量 | 说明 |
 |---|---|
@@ -114,24 +114,19 @@ LOG_LEVEL=info
 | `EMBEDDING_MODEL_ID` | embedding 模型 ID |
 | `EMBEDDING_QUERY_INSTRUCTION` | query 侧 embedding 指令 |
 | `EMBEDDING_DIMENSIONS` | 向量维度 |
-| `VECTOR_DB_TYPE` | 向量库类型 |
-| `MILVUS_URL` | Milvus 地址 |
-| `SPACE` | 分片 / 命名空间字段 |
 | `CHUNK_SIZE` | 文档切块大小 |
 | `CHUNK_OVERLAP` | 切块重叠大小 |
 | `DEFAULT_KNOWLEDGE_BASE` | 默认知识库名 |
 | `DEFAULT_COLLECTION` | 默认 collection 名 |
-| `KNOWLEDGE_AUTO_MIGRATE` | 是否自动建表 / 建结构 |
+| `KNOWLEDGE_AUTO_MIGRATE` | 是否自动把旧文件迁移到统一知识库 |
 | `RERANKER_BASE_URL` | 可选 reranker 地址 |
 
-当前 Docker 默认值围绕：
+当前 Docker 默认值围绕统一 knowledge 栈：
 
 ```env
 EMBEDDING_TYPE=huggingface
 EMBEDDING_BASE_URL=http://hf-embeddings:80
 EMBEDDING_MODEL_ID=BAAI/bge-small-zh-v1.5
-VECTOR_DB_TYPE=milvus
-MILVUS_URL=milvus:19530
 ```
 
 ### 6. 底层依赖服务
@@ -144,12 +139,18 @@ MILVUS_URL=milvus:19530
 | `POSTGRES_DSN` | PostgreSQL 连接串 |
 | `REDIS_ADDR` | Redis 地址 |
 | `REDIS_PASSWORD` | Redis 密码 |
-| `REDIS_DB` | Redis 逻辑库 |
+| `REDIS_DB` | Redis 逻辑库，开启异步 ingestion 时使用 |
 | `MINIO_ENDPOINT` | MinIO 地址 |
 | `MINIO_ACCESS_KEY` | MinIO Access Key |
 | `MINIO_SECRET_KEY` | MinIO Secret Key |
 | `MINIO_BUCKET` | 知识库文件存储桶 |
 | `MINIO_USE_SSL` | MinIO 是否启用 TLS |
+
+说明：
+
+- `POSTGRES_DSN + MINIO_ENDPOINT` 构成统一 knowledge 主路径。
+- `REDIS_*` 是可选的；如果未配置，文档入库会走同步处理。
+- `etcd + milvus` 只在 `ENABLE_FULL_STACK=true` 时作为可选扩展容器启动，不再是默认主链路。
 
 ## 常见配置示例
 
@@ -186,5 +187,5 @@ GITHUB_PERSONAL_ACCESS_TOKEN=your-github-pat
 
 - Admin：`static/doc/admin_ZH.md`
 - MCP / Skills：`static/doc/functioncall_ZH.md`
-- RAG：`static/doc/rag_ZH.md`
+- Knowledge：`static/doc/knowledge_ZH.md`
 - Web API：`static/doc/web_api_ZH.md`

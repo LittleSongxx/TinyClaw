@@ -34,15 +34,16 @@ function QuotaStats() {
 
     const summaryCards = useMemo(() => {
         const summary = stats?.summary || {};
+        const hasUnlimitedUsers = (summary.unlimited_users ?? 0) > 0;
         return [
             { key: "total_users", label: t("user_num"), value: summary.total_users ?? 0 },
-            { key: "quota", label: t("total_quota_token"), value: summary.total_quota_token ?? 0 },
+            { key: "quota", label: t("total_quota_token"), value: hasUnlimitedUsers ? "∞" : (summary.total_quota_token ?? 0) },
             { key: "used", label: t("total_used_token"), value: summary.total_used_token ?? 0 },
-            { key: "remaining", label: t("total_remaining_token"), value: summary.total_remaining_token ?? 0 },
+            { key: "remaining", label: t("total_remaining_token"), value: hasUnlimitedUsers ? "∞" : (summary.total_remaining_token ?? 0) },
             {
                 key: "usage_rate",
                 label: t("average_usage_rate"),
-                value: `${Math.round((summary.average_usage_rate ?? 0) * 100)}%`,
+                value: hasUnlimitedUsers ? "-" : `${Math.round((summary.average_usage_rate ?? 0) * 100)}%`,
             },
         ];
     }, [stats, t]);
@@ -259,10 +260,10 @@ function QuotaStats() {
                                 <tr key={item.user_id} className="hover:bg-slate-50">
                                     <td className="px-4 py-3 text-sm text-slate-900">{item.user_id}</td>
                                     <td className="px-4 py-3 text-sm text-slate-700">{item.token}</td>
-                                    <td className="px-4 py-3 text-sm text-slate-700">{item.avail_token}</td>
-                                    <td className="px-4 py-3 text-sm text-slate-700">{item.remaining_token}</td>
+                                    <td className="px-4 py-3 text-sm text-slate-700">{formatMetricQuota(item)}</td>
+                                    <td className="px-4 py-3 text-sm text-slate-700">{formatMetricRemaining(item)}</td>
                                     <td className="px-4 py-3 text-sm text-slate-700">
-                                        {Math.round((item.usage_rate || 0) * 100)}%
+                                        {formatMetricUsage(item)}
                                     </td>
                                     <td className="px-4 py-3 text-sm text-slate-700">{formatUnix(item.update_time)}</td>
                                 </tr>
@@ -297,9 +298,9 @@ function MetricListCard({ title, items }) {
                         <div className="font-medium text-slate-900">{item.user_id}</div>
                         <div className="mt-2 grid gap-1 text-sm text-slate-600">
                             <div>used: {item.token}</div>
-                            <div>quota: {item.avail_token}</div>
-                            <div>remaining: {item.remaining_token}</div>
-                            <div>usage: {Math.round((item.usage_rate || 0) * 100)}%</div>
+                            <div>quota: {formatMetricQuota(item)}</div>
+                            <div>remaining: {formatMetricRemaining(item)}</div>
+                            <div>usage: {formatMetricUsage(item)}</div>
                         </div>
                     </div>
                 ))}
@@ -313,6 +314,27 @@ function formatUnix(value) {
         return "-";
     }
     return new Date(value * 1000).toLocaleString();
+}
+
+function formatMetricQuota(item) {
+    if (item?.unlimited) {
+        return "∞";
+    }
+    return item?.avail_token ?? "-";
+}
+
+function formatMetricRemaining(item) {
+    if (item?.unlimited) {
+        return "∞";
+    }
+    return item?.remaining_token ?? "-";
+}
+
+function formatMetricUsage(item) {
+    if (item?.unlimited) {
+        return "-";
+    }
+    return `${Math.round((item?.usage_rate || 0) * 100)}%`;
 }
 
 export default QuotaStats;
