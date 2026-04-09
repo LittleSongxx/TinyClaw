@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/node"
 )
 
@@ -119,6 +120,8 @@ func TestNodeProviderReturnsPendingApprovalPayload(t *testing.T) {
 			argNodeID: "node-1",
 			"text":    "hello",
 		},
+		SessionID: "session-1",
+		UserID:    "user-1",
 	})
 	if err != nil {
 		t.Fatalf("execute tool: %v", err)
@@ -128,6 +131,47 @@ func TestNodeProviderReturnsPendingApprovalPayload(t *testing.T) {
 	}
 	if !strings.Contains(result.Output, `"approval_id"`) {
 		t.Fatalf("expected approval id in payload, got %s", result.Output)
+	}
+	if !strings.Contains(result.Output, `"approval_modes"`) || !strings.Contains(result.Output, `"allow_once"`) {
+		t.Fatalf("expected approval modes in payload, got %s", result.Output)
+	}
+	if !strings.Contains(result.Output, `"session_id":"session-1"`) {
+		t.Fatalf("expected session id in payload, got %s", result.Output)
+	}
+}
+
+func TestNodeProviderSkipsApprovalForPrivilegedUser(t *testing.T) {
+	oldPrivileged := conf.BaseConfInfo.PrivilegedUserIds
+	conf.BaseConfInfo.PrivilegedUserIds = map[string]bool{"owner-user": true}
+	defer func() {
+		conf.BaseConfInfo.PrivilegedUserIds = oldPrivileged
+	}()
+
+	manager := node.NewManager()
+	err := manager.RegisterNode(context.Background(), node.NodeDescriptor{
+		ID: "node-1",
+		Capabilities: []node.NodeCapability{
+			{Name: "input.keyboard.type"},
+		},
+	}, &fakeNodeTransport{})
+	if err != nil {
+		t.Fatalf("register node: %v", err)
+	}
+
+	provider := NewNodeProvider(manager)
+	result, err := provider.ExecuteTool(context.Background(), ToolInvocation{
+		Name:   toolNodeKeyboardType,
+		UserID: "owner-user",
+		Arguments: map[string]interface{}{
+			argNodeID: "node-1",
+			"text":    "hello",
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute tool: %v", err)
+	}
+	if strings.Contains(result.Output, `"pending_approval":true`) {
+		t.Fatalf("expected privileged user to bypass approval, got %s", result.Output)
 	}
 }
 
@@ -156,5 +200,75 @@ func TestBuildNodeToolSpecSupportsActiveWindowAndElementLocators(t *testing.T) {
 		if !strings.Contains(string(findJSON), key) {
 			t.Fatalf("expected %s in ui.find schema, got %s", key, string(findJSON))
 		}
+	}
+
+	wslExecSpec, ok := buildNodeToolSpec("wsl.exec")
+	if !ok {
+		t.Fatal("expected wsl.exec tool spec")
+	}
+	wslExecJSON, err := json.Marshal(wslExecSpec.InputSchema)
+	if err != nil {
+		t.Fatalf("marshal wsl.exec schema: %v", err)
+	}
+	for _, key := range []string{"command", "args", "cwd", "env"} {
+		if !strings.Contains(string(wslExecJSON), key) {
+			t.Fatalf("expected %s in wsl.exec schema, got %s", key, string(wslExecJSON))
+		}
+	}
+}
+
+func TestNodeProviderListsWSLToolsAndNodeMetadata(t *testing.T) {
+	manager := node.NewManager()
+	err := manager.RegisterNode(context.Background(), node.NodeDescriptor{
+		ID:       "node-wsl",
+		Name:     "Desktop / WSL Ubuntu-22.04",
+		Platform: "wsl",
+		Metadata: map[string]string{
+			"kind":       "wsl",
+			"wsl_distro": "Ubuntu-22.04",
+		},
+		Capabilities: []node.NodeCapability{
+			{Name: "wsl.exec"},
+			{Name: "wsl.fs.list"},
+			{Name: "wsl.fs.read"},
+			{Name: "wsl.fs.write"},
+		},
+	}, &fakeNodeTransport{})
+	if err != nil {
+		t.Fatalf("register node: %v", err)
+	}
+
+	provider := NewNodeProvider(manager)
+	specs, err := provider.ListTools(context.Background())
+	if err != nil {
+		t.Fatalf("list tools: %v", err)
+	}
+
+	names := make(map[string]bool, len(specs))
+	for _, spec := range specs {
+		names[spec.Name] = true
+	}
+	for _, name := range []string{toolNodeWSLExec, toolNodeWSLFSList, toolNodeWSLFSRead, toolNodeWSLFSWrite} {
+		if !names[name] {
+			t.Fatalf("expected WSL tool %s to be exposed, got %+v", name, specs)
+		}
+	}
+
+	result := provider.listDevices(context.Background())
+	var payload struct {
+		Nodes []struct {
+			ID       string            `json:"id"`
+			Platform string            `json:"platform"`
+			Metadata map[string]string `json:"metadata"`
+		} `json:"nodes"`
+	}
+	if err := json.Unmarshal([]byte(result.Output), &payload); err != nil {
+		t.Fatalf("decode list devices payload: %v", err)
+	}
+	if len(payload.Nodes) != 1 {
+		t.Fatalf("expected one node in payload, got %+v", payload.Nodes)
+	}
+	if payload.Nodes[0].Platform != "wsl" || payload.Nodes[0].Metadata["wsl_distro"] != "Ubuntu-22.04" {
+		t.Fatalf("unexpected node payload: %+v", payload.Nodes[0])
 	}
 }

@@ -651,6 +651,9 @@ func (r *RobotInfo) checkGroupAllow(chatId string) bool {
 
 // checkUserTokenExceed check use token exceeded
 func (r *RobotInfo) checkUserTokenExceed(chatId string, msgId string, userId string) bool {
+	if conf.IsPrivilegedUser(userId) {
+		return false
+	}
 	if conf.BaseConfInfo.TokenPerUser <= 0 {
 		return false
 	}
@@ -658,6 +661,9 @@ func (r *RobotInfo) checkUserTokenExceed(chatId string, msgId string, userId str
 	userInfo, err := db.GetUserByID(userId)
 	if err != nil {
 		logger.WarnCtx(r.Ctx, "get user info fail", "err", err)
+		return false
+	}
+	if userInfo == nil || userInfo.AvailToken < 0 {
 		return false
 	}
 
@@ -847,6 +853,12 @@ func (r *RobotInfo) ExecCmd(cmd string, defaultFunc func(), modeFunc func(string
 	_, _, userID := r.GetChatIdAndMsgIdAndUserID()
 	logger.InfoCtx(r.Ctx, "command info", "userID", userID, "cmd", cmd)
 
+	if approved, ok := parseInlineApprovalDecision(cmd); ok {
+		if r.handleLatestApprovalDecision(approved) {
+			return
+		}
+	}
+
 	switch cmd {
 	case param.State, "/" + param.State, "$" + param.State:
 		r.showStateInfo()
@@ -915,27 +927,33 @@ func (r *RobotInfo) ExecCmd(cmd string, defaultFunc func(), modeFunc func(string
 }
 
 func (r *RobotInfo) handleApprovalDecision(approved bool) {
-	chatId, msgId, _ := r.GetChatIdAndMsgIdAndUserID()
+	chatId, msgId, userID := r.GetChatIdAndMsgIdAndUserID()
 	fields := strings.Fields(strings.TrimSpace(r.Robot.getPrompt()))
-	if len(fields) == 0 {
-		usage := "/approve <approval_id>"
-		if !approved {
-			usage = "/reject <approval_id>"
-		}
-		r.SendMsg(chatId, usage, msgId, "", nil)
-		return
-	}
-
-	commandID := fields[0]
+	commandID := ""
 	reason := ""
+	if len(fields) > 0 {
+		commandID = fields[0]
+	}
 	if len(fields) > 1 {
 		reason = strings.Join(fields[1:], " ")
+	}
+	if commandID == "" {
+		if approval := r.latestApprovalForCurrentSession(); approval != nil {
+			commandID = approval.ID
+		}
+	}
+	if commandID == "" {
+		usage := "当前没有待确认的设备操作。回复“确认”或“取消”，也可以使用 /approve <approval_id> / /reject <approval_id>。"
+		r.SendMsg(chatId, usage, msgId, "", nil)
+		return
 	}
 
 	result, err := gateway.DefaultService().DecideApproval(r.Ctx, node.ApprovalDecision{
 		CommandID: commandID,
 		SessionID: r.cs.SessionID,
+		UserID:    userID,
 		Approved:  approved,
+		Mode:      approvalModeFromBool(approved),
 		Reason:    reason,
 		CreatedAt: time.Now().Unix(),
 	})
@@ -955,20 +973,140 @@ func (r *RobotInfo) handleApprovalDecision(approved bool) {
 		return
 	}
 
+	if commandResult != nil && commandResult.Error != "" {
+		content := "设备操作执行失败"
+		if approval != nil && approval.Summary != "" {
+			content = "设备操作执行失败: " + approval.Summary
+		}
+		content += "\n原因: " + friendlyNodeError(commandResult.Error)
+		r.SendMsg(chatId, content, msgId, "", nil)
+		return
+	}
+
 	content := "设备操作已批准并执行"
 	if approval != nil && approval.Summary != "" {
 		content = "已执行设备操作: " + approval.Summary
 	}
-	if commandResult != nil {
-		detail := strings.TrimSpace(commandResult.Output)
-		switch {
-		case commandResult.Error != "":
-			content += "\n结果: " + commandResult.Error
-		case detail != "":
-			content += "\n结果: " + detail
-		}
+	if detail := approvalSuccessDetail(commandResult); detail != "" {
+		content += "\n结果: " + detail
 	}
 	r.SendMsg(chatId, content, msgId, "", nil)
+}
+
+func approvalModeFromBool(approved bool) node.ApprovalMode {
+	if approved {
+		return node.ApprovalModeAllowOnce
+	}
+	return node.ApprovalModeReject
+}
+
+func parseInlineApprovalDecision(text string) (bool, bool) {
+	normalized := strings.ToLower(strings.TrimSpace(text))
+	switch normalized {
+	case "确认", "同意", "批准", "继续", "ok", "okay", "yes", "y":
+		return true, true
+	case "取消", "拒绝", "不同意", "no", "n":
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+func (r *RobotInfo) handleLatestApprovalDecision(approved bool) bool {
+	approval := r.latestApprovalForCurrentSession()
+	if approval == nil {
+		return false
+	}
+	originalPrompt := r.Robot.getPrompt()
+	r.Robot.setPrompt(approval.ID)
+	defer r.Robot.setPrompt(originalPrompt)
+	r.handleApprovalDecision(approved)
+	return true
+}
+
+func (r *RobotInfo) latestApprovalForCurrentSession() *node.ApprovalRequest {
+	if r == nil || r.cs == nil || r.cs.SessionID == "" {
+		return nil
+	}
+	approvals := gateway.DefaultService().ListApprovals(r.Ctx)
+	var latest *node.ApprovalRequest
+	for _, item := range approvals {
+		if item.SessionID != r.cs.SessionID {
+			continue
+		}
+		current := item
+		if latest == nil || current.CreatedAt > latest.CreatedAt {
+			latest = &current
+		}
+	}
+	return latest
+}
+
+func approvalSuccessDetail(result *node.NodeCommandResult) string {
+	if result == nil {
+		return ""
+	}
+	detail := sanitizeNodeDiagnosticText(result.Output)
+	if detail == "" {
+		return ""
+	}
+	switch result.Capability {
+	case "wsl.exec", "system.exec":
+		if len([]rune(detail)) > 280 {
+			runes := []rune(detail)
+			detail = string(runes[:280]) + "..."
+		}
+		return detail
+	default:
+		return ""
+	}
+}
+
+func friendlyNodeError(errText string) string {
+	cleaned := sanitizeNodeDiagnosticText(errText)
+	lower := strings.ToLower(cleaned)
+	switch {
+	case strings.Contains(lower, "ui element not found"):
+		return "未找到目标控件。请先确保目标窗口已在前台，或先让机器人定位到更明确的元素后再试。"
+	case strings.Contains(lower, "target node not found"):
+		return "未找到目标设备节点。"
+	case strings.Contains(lower, "approval request not found"):
+		return "待确认的设备操作已失效，请重新发起。"
+	}
+	if cleaned == "" {
+		return "设备操作失败，请稍后重试。"
+	}
+	lines := strings.Split(cleaned, "\n")
+	return strings.TrimSpace(lines[0])
+}
+
+func sanitizeNodeDiagnosticText(text string) string {
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	filtered := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if idx := strings.Index(trimmed, ":"); strings.HasPrefix(strings.ToLower(trimmed), "exit status ") && idx >= 0 {
+			trimmed = strings.TrimSpace(trimmed[idx+1:])
+		}
+		switch {
+		case trimmed == "":
+			continue
+		case strings.HasPrefix(trimmed, "At "),
+			strings.HasPrefix(trimmed, "所在位置"),
+			strings.HasPrefix(trimmed, "CategoryInfo"),
+			strings.HasPrefix(trimmed, "FullyQualifiedErrorId"),
+			strings.HasPrefix(trimmed, "+"),
+			strings.HasPrefix(trimmed, "•"),
+			strings.HasPrefix(trimmed, "·"):
+			continue
+		default:
+			filtered = append(filtered, trimmed)
+		}
+	}
+	return strings.TrimSpace(strings.Join(filtered, "\n"))
 }
 
 func (r *RobotInfo) cronList() {

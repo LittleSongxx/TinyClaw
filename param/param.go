@@ -298,6 +298,8 @@ type MsgInfo struct {
 	PartContent string
 	SendLen     int
 	Finished    bool
+	Kind        string
+	Payload     map[string]interface{}
 }
 
 type ImgResponse struct {

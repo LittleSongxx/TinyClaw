@@ -9,18 +9,22 @@ import (
 	"regexp"
 	"runtime/debug"
 	"strings"
+	"time"
 
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/gateway"
 	"github.com/LittleSongxx/TinyClaw/i18n"
 	"github.com/LittleSongxx/TinyClaw/logger"
 	"github.com/LittleSongxx/TinyClaw/metrics"
+	"github.com/LittleSongxx/TinyClaw/node"
 	"github.com/LittleSongxx/TinyClaw/param"
 	"github.com/LittleSongxx/TinyClaw/utils"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
+	larkcard "github.com/larksuite/oapi-sdk-go/v3/card"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
+	larkcallback "github.com/larksuite/oapi-sdk-go/v3/event/dispatcher/callback"
 	larkapplication "github.com/larksuite/oapi-sdk-go/v3/service/application/v6"
 	larkcontact "github.com/larksuite/oapi-sdk-go/v3/service/contact/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
@@ -52,7 +56,8 @@ type LarkRobot struct {
 
 func StartLarkRobot(ctx context.Context) {
 	eventHandler := dispatcher.NewEventDispatcher("", "").
-		OnP2MessageReceiveV1(LarkMessageHandler)
+		OnP2MessageReceiveV1(LarkMessageHandler).
+		OnP2CardActionTrigger(LarkApprovalCardHandler)
 
 	cli = larkws.NewClient(conf.BaseConfInfo.LarkAPPID, conf.BaseConfInfo.LarkAppSecret,
 		larkws.WithEventHandler(eventHandler),
@@ -275,6 +280,8 @@ func (l *LarkRobot) sendVideo() {
 
 func (l *LarkRobot) sendChatMessage() {
 	l.Robot.TalkingPreCheck(func() {
+		chatId, msgId, _ := l.Robot.GetChatIdAndMsgIdAndUserID()
+		l.Robot.SendMsg(chatId, i18n.GetMessage("thinking", nil), msgId, tgbotapi.ModeMarkdown, nil)
 		if conf.RagConfInfo.Store != nil {
 			l.executeChain()
 		} else {
@@ -297,6 +304,13 @@ func (l *LarkRobot) sendTextStream(messageChan *MsgChan) {
 	var msg *param.MsgInfo
 	chatId, messageId, _ := l.Robot.GetChatIdAndMsgIdAndUserID()
 	for msg = range messageChan.NormalMessageChan {
+		if msg.Kind == "approval_request" {
+			if err := l.sendApprovalPrompt(msg, messageId); err != nil {
+				logger.Warn("send approval prompt fail", "err", err)
+				l.Robot.SendMsg(chatId, msg.Content, messageId, tgbotapi.ModeMarkdown, nil)
+			}
+			continue
+		}
 		if len(msg.Content) == 0 {
 			msg.Content = "get nothing from llm!"
 		}
@@ -319,6 +333,255 @@ func (l *LarkRobot) sendTextStream(messageChan *MsgChan) {
 			}
 		}
 	}
+}
+
+func (l *LarkRobot) sendApprovalPrompt(msg *param.MsgInfo, replyToMessageID string) error {
+	if msg == nil {
+		return errors.New("approval message is empty")
+	}
+	approvalID := strings.TrimSpace(stringValueFromAny(msg.Payload["approval_id"]))
+	summary := strings.TrimSpace(stringValueFromAny(msg.Payload["summary"]))
+	sessionID := strings.TrimSpace(stringValueFromAny(msg.Payload["session_id"]))
+	if approvalID == "" || summary == "" {
+		return errors.New("approval payload is incomplete")
+	}
+
+	card := buildLarkApprovalCard(approvalID, sessionID, summary, approvalModesFromAny(msg.Payload["approval_modes"]), true, "", "")
+	content, err := card.JSON()
+	if err != nil {
+		return err
+	}
+	resp, err := l.Client.Im.Message.Reply(l.Robot.Ctx, larkim.NewReplyMessageReqBuilder().
+		MessageId(replyToMessageID).
+		Body(larkim.NewReplyMessageReqBodyBuilder().
+			MsgType(larkim.MsgTypeInteractive).
+			Content(content).
+			Build()).
+		Build())
+	if err != nil || !resp.Success() {
+		logger.Warn("send lark approval card fail", "err", err, "resp", resp)
+		if err != nil {
+			return err
+		}
+		return errors.New("send approval card failed")
+	}
+	return nil
+}
+
+func buildLarkApprovalCard(approvalID, sessionID, summary string, modes []string, pending bool, status string, detail string) *larkcard.MessageCard {
+	template := larkcard.TemplateOrange
+	title := "等待确认的设备操作"
+	body := "**设备操作审批**\n"
+	body += "- 审批编号: `" + approvalID + "`\n"
+	body += "- 操作: " + summary + "\n"
+	if pending {
+		body += "- 状态: 待处理\n"
+		body += "- 你也可以继续回复“确认”或“取消”作为文字兜底。"
+	} else {
+		if status == "" {
+			status = "已处理"
+		}
+		body += "- 状态: " + status + "\n"
+		if detail != "" {
+			body += "- 结果: " + detail
+		}
+		switch status {
+		case "已批准并执行":
+			template = larkcard.TemplateGreen
+			title = "设备操作已执行"
+		case "已拒绝":
+			template = larkcard.TemplateRed
+			title = "设备操作已拒绝"
+		default:
+			template = larkcard.TemplateWathet
+			title = "设备操作已更新"
+		}
+	}
+
+	elements := []larkcard.MessageCardElement{
+		larkcard.NewMessageCardMarkdown().Content(body).Build(),
+	}
+	if pending {
+		actions := []larkcard.MessageCardActionElement{
+			larkcard.NewMessageCardEmbedButton().
+				Text(larkcard.NewMessageCardPlainText().Content("本次允许").Build()).
+				Type(larkcard.MessageCardButtonTypePrimary).
+				Value(map[string]interface{}{
+					"tinyclaw_action": "approval",
+					"approval_id":     approvalID,
+					"mode":            string(node.ApprovalModeAllowOnce),
+					"session_id":      sessionID,
+				}).
+				Build(),
+		}
+		if containsApprovalMode(modes, string(node.ApprovalModeAllowSession)) {
+			actions = append(actions, larkcard.NewMessageCardEmbedButton().
+				Text(larkcard.NewMessageCardPlainText().Content("本会话允许").Build()).
+				Type(larkcard.MessageCardButtonTypeDefault).
+				Value(map[string]interface{}{
+					"tinyclaw_action": "approval",
+					"approval_id":     approvalID,
+					"mode":            string(node.ApprovalModeAllowSession),
+					"session_id":      sessionID,
+				}).
+				Build())
+		}
+		actions = append(actions, larkcard.NewMessageCardEmbedButton().
+			Text(larkcard.NewMessageCardPlainText().Content("拒绝").Build()).
+			Type(larkcard.MessageCardButtonTypeDanger).
+			Value(map[string]interface{}{
+				"tinyclaw_action": "approval",
+				"approval_id":     approvalID,
+				"mode":            string(node.ApprovalModeReject),
+				"session_id":      sessionID,
+			}).
+			Build())
+		elements = append(elements, larkcard.NewMessageCardAction().
+			Actions(actions).
+			Layout(larkcard.MessageCardActionLayoutFlow.Ptr()).
+			Build())
+	}
+
+	return larkcard.NewMessageCard().
+		Header(larkcard.NewMessageCardHeader().
+			Template(template).
+			Title(larkcard.NewMessageCardPlainText().Content(title).Build()).
+			Build()).
+		Elements(elements).
+		Build()
+}
+
+func LarkApprovalCardHandler(ctx context.Context, event *larkcallback.CardActionTriggerEvent) (*larkcallback.CardActionTriggerResponse, error) {
+	if event == nil || event.Event == nil || event.Event.Action == nil {
+		return &larkcallback.CardActionTriggerResponse{
+			Toast: &larkcallback.Toast{
+				Type:    "error",
+				Content: "审批卡片数据无效",
+			},
+		}, nil
+	}
+	if stringValueFromAny(event.Event.Action.Value["tinyclaw_action"]) != "approval" {
+		return &larkcallback.CardActionTriggerResponse{
+			Toast: &larkcallback.Toast{
+				Type:    "error",
+				Content: "不支持的卡片动作",
+			},
+		}, nil
+	}
+
+	approvalID := strings.TrimSpace(stringValueFromAny(event.Event.Action.Value["approval_id"]))
+	mode := node.ApprovalMode(strings.TrimSpace(stringValueFromAny(event.Event.Action.Value["mode"])))
+	sessionID := strings.TrimSpace(stringValueFromAny(event.Event.Action.Value["session_id"]))
+	userID := ""
+	if event.Event.Operator != nil && event.Event.Operator.UserID != nil {
+		userID = strings.TrimSpace(*event.Event.Operator.UserID)
+	}
+	if approvalID == "" || mode == "" {
+		return &larkcallback.CardActionTriggerResponse{
+			Toast: &larkcallback.Toast{
+				Type:    "error",
+				Content: "审批卡片缺少必要参数",
+			},
+		}, nil
+	}
+
+	result, err := gateway.DefaultService().DecideApproval(ctx, node.ApprovalDecision{
+		CommandID: approvalID,
+		SessionID: sessionID,
+		UserID:    userID,
+		Approved:  mode != node.ApprovalModeReject,
+		Mode:      mode,
+		CreatedAt: time.Now().Unix(),
+	})
+	if err != nil {
+		return &larkcallback.CardActionTriggerResponse{
+			Toast: &larkcallback.Toast{
+				Type:    "error",
+				Content: "审批处理失败: " + err.Error(),
+			},
+		}, nil
+	}
+
+	approval, _ := result["approval"].(*node.ApprovalRequest)
+	commandResult, _ := result["result"].(*node.NodeCommandResult)
+	summary := ""
+	sessionID = ""
+	modes := []string(nil)
+	if approval != nil {
+		summary = approval.Summary
+		sessionID = approval.SessionID
+		for _, item := range approval.ApprovalModes {
+			modes = append(modes, string(item))
+		}
+	}
+	if summary == "" {
+		summary = "设备操作"
+	}
+
+	status := "已更新"
+	detail := ""
+	toastContent := "审批已处理"
+	switch mode {
+	case node.ApprovalModeReject:
+		status = "已拒绝"
+		detail = "该操作已被拒绝，不会继续执行。"
+		toastContent = "已拒绝设备操作"
+	default:
+		status = "已批准并执行"
+		if commandResult != nil && commandResult.Error != "" {
+			status = "执行失败"
+			detail = friendlyNodeError(commandResult.Error)
+			toastContent = "设备操作执行失败"
+		} else if detail = approvalSuccessDetail(commandResult); detail == "" {
+			detail = "设备操作已执行。"
+			toastContent = "已批准并执行设备操作"
+		} else {
+			toastContent = "已批准并执行设备操作"
+		}
+	}
+
+	card := buildLarkApprovalCard(approvalID, sessionID, summary, modes, false, status, detail)
+	return &larkcallback.CardActionTriggerResponse{
+		Toast: &larkcallback.Toast{
+			Type:    "info",
+			Content: toastContent,
+		},
+		Card: &larkcallback.Card{
+			Type: "card_json",
+			Data: card,
+		},
+	}, nil
+}
+
+func approvalModesFromAny(raw interface{}) []string {
+	switch values := raw.(type) {
+	case []string:
+		return values
+	case []interface{}:
+		out := make([]string, 0, len(values))
+		for _, value := range values {
+			if text, ok := value.(string); ok && text != "" {
+				out = append(out, text)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func containsApprovalMode(modes []string, target string) bool {
+	for _, mode := range modes {
+		if mode == target {
+			return true
+		}
+	}
+	return false
+}
+
+func stringValueFromAny(raw interface{}) string {
+	value, _ := raw.(string)
+	return value
 }
 
 func (l *LarkRobot) executeLLM() {

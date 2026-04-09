@@ -9,34 +9,77 @@ type NodeCapability struct {
 }
 
 type NodeDescriptor struct {
-	ID           string           `json:"id"`
-	Name         string           `json:"name"`
-	Platform     string           `json:"platform"`
-	Hostname     string           `json:"hostname"`
-	Version      string           `json:"version"`
-	Capabilities []NodeCapability `json:"capabilities,omitempty"`
-	ConnectedAt  int64            `json:"connected_at"`
-	LastSeenAt   int64            `json:"last_seen_at"`
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	Platform     string            `json:"platform"`
+	Hostname     string            `json:"hostname"`
+	Version      string            `json:"version"`
+	Metadata     map[string]string `json:"metadata,omitempty"`
+	Capabilities []NodeCapability  `json:"capabilities,omitempty"`
+	ConnectedAt  int64             `json:"connected_at"`
+	LastSeenAt   int64             `json:"last_seen_at"`
 }
 
 type NodeCommandRequest struct {
 	ID              string                 `json:"id"`
 	NodeID          string                 `json:"node_id,omitempty"`
 	SessionID       string                 `json:"session_id,omitempty"`
+	UserID          string                 `json:"user_id,omitempty"`
 	Capability      string                 `json:"capability"`
 	Arguments       map[string]interface{} `json:"arguments,omitempty"`
 	TimeoutSec      int                    `json:"timeout_sec,omitempty"`
 	RequireApproval bool                   `json:"require_approval,omitempty"`
+	ApprovalMode    ApprovalMode           `json:"approval_mode,omitempty"`
+	ActionID        string                 `json:"action_id,omitempty"`
+	BindingHint     map[string]interface{} `json:"binding_hint,omitempty"`
+}
+
+type ApprovalMode string
+
+const (
+	ApprovalModeAllowOnce    ApprovalMode = "allow_once"
+	ApprovalModeAllowSession ApprovalMode = "allow_session"
+	ApprovalModeReject       ApprovalMode = "reject"
+)
+
+type ApprovalBinding struct {
+	SessionID      string `json:"session_id,omitempty"`
+	UserID         string `json:"user_id,omitempty"`
+	NodeID         string `json:"node_id,omitempty"`
+	Capability     string `json:"capability,omitempty"`
+	ArgsDigest     string `json:"args_digest,omitempty"`
+	WindowBinding  string `json:"window_binding,omitempty"`
+	ElementBinding string `json:"element_binding,omitempty"`
+	CreatedAt      int64  `json:"created_at"`
+	ExpiresAt      int64  `json:"expires_at"`
+}
+
+type ApprovalGrant struct {
+	ID         string          `json:"id"`
+	SessionID  string          `json:"session_id,omitempty"`
+	UserID     string          `json:"user_id,omitempty"`
+	NodeID     string          `json:"node_id"`
+	Capability string          `json:"capability"`
+	Mode       ApprovalMode    `json:"mode"`
+	Summary    string          `json:"summary,omitempty"`
+	Binding    ApprovalBinding `json:"binding"`
+	CreatedAt  int64           `json:"created_at"`
+	ExpiresAt  int64           `json:"expires_at"`
 }
 
 type ApprovalRequest struct {
-	ID         string                 `json:"id"`
-	SessionID  string                 `json:"session_id,omitempty"`
-	NodeID     string                 `json:"node_id"`
-	Capability string                 `json:"capability"`
-	Arguments  map[string]interface{} `json:"arguments,omitempty"`
-	Summary    string                 `json:"summary,omitempty"`
-	CreatedAt  int64                  `json:"created_at"`
+	ID            string                 `json:"id"`
+	ActionID      string                 `json:"action_id,omitempty"`
+	SessionID     string                 `json:"session_id,omitempty"`
+	UserID        string                 `json:"user_id,omitempty"`
+	NodeID        string                 `json:"node_id"`
+	Capability    string                 `json:"capability"`
+	Arguments     map[string]interface{} `json:"arguments,omitempty"`
+	Summary       string                 `json:"summary,omitempty"`
+	Binding       ApprovalBinding        `json:"binding"`
+	ApprovalModes []ApprovalMode         `json:"approval_modes,omitempty"`
+	CreatedAt     int64                  `json:"created_at"`
+	ExpiresAt     int64                  `json:"expires_at"`
 }
 
 type NodeCommandResult struct {
@@ -52,14 +95,34 @@ type NodeCommandResult struct {
 }
 
 type ApprovalDecision struct {
-	ID        string `json:"id"`
-	CommandID string `json:"command_id"`
-	SessionID string `json:"session_id,omitempty"`
-	NodeID    string `json:"node_id"`
-	Approved  bool   `json:"approved"`
-	Reason    string `json:"reason,omitempty"`
-	CreatedAt int64  `json:"created_at"`
+	ID        string       `json:"id"`
+	CommandID string       `json:"command_id"`
+	SessionID string       `json:"session_id,omitempty"`
+	UserID    string       `json:"user_id,omitempty"`
+	NodeID    string       `json:"node_id"`
+	Approved  bool         `json:"approved"`
+	Mode      ApprovalMode `json:"mode,omitempty"`
+	Reason    string       `json:"reason,omitempty"`
+	CreatedAt int64        `json:"created_at"`
 }
+
+type ActionEvent struct {
+	Type       string            `json:"type"`
+	ActionID   string            `json:"action_id,omitempty"`
+	ApprovalID string            `json:"approval_id,omitempty"`
+	SessionID  string            `json:"session_id,omitempty"`
+	UserID     string            `json:"user_id,omitempty"`
+	NodeID     string            `json:"node_id,omitempty"`
+	Capability string            `json:"capability,omitempty"`
+	Summary    string            `json:"summary,omitempty"`
+	Detail     string            `json:"detail,omitempty"`
+	Mode       ApprovalMode      `json:"mode,omitempty"`
+	Success    bool              `json:"success,omitempty"`
+	CreatedAt  int64             `json:"created_at"`
+	Metadata   map[string]string `json:"metadata,omitempty"`
+}
+
+type ActionEventObserver func(ActionEvent)
 
 type Transport interface {
 	Request(ctx context.Context, req NodeCommandRequest) (*NodeCommandResult, error)

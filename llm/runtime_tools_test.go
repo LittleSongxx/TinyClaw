@@ -69,6 +69,13 @@ func TestEnsureRuntimeToolsAppendsNodeTools(t *testing.T) {
 }
 
 func TestExecMcpReqUsesRuntimeToolBroker(t *testing.T) {
+	appi18n.InitI18n()
+	oldPrivileged := conf.BaseConfInfo.PrivilegedUserIds
+	conf.BaseConfInfo.PrivilegedUserIds = map[string]bool{"owner-user": true}
+	defer func() {
+		conf.BaseConfInfo.PrivilegedUserIds = oldPrivileged
+	}()
+
 	manager := node.NewManager()
 	err := manager.RegisterNode(context.Background(), node.NodeDescriptor{
 		ID: "node-1",
@@ -91,6 +98,7 @@ func TestExecMcpReqUsesRuntimeToolBroker(t *testing.T) {
 	client := &LLM{
 		Ctx:        context.Background(),
 		Cs:         &param.ContextState{SessionID: "session-1"},
+		UserId:     "owner-user",
 		ToolBroker: tooling.NewBroker(tooling.NewNodeProvider(manager)),
 	}
 
@@ -120,7 +128,7 @@ func TestFinalizeToolResultHandlesPendingApproval(t *testing.T) {
 		PerMsgLen:   4096,
 	}
 
-	output, err := client.finalizeToolResult("node_keyboard_type", map[string]interface{}{"text": "hello"}, `{"pending_approval":true,"approval_id":"approval-1","summary":"Type text on the paired PC"}`)
+	output, err := client.finalizeToolResult("node_keyboard_type", map[string]interface{}{"text": "hello"}, `{"pending_approval":true,"approval_id":"approval-1","summary":"Type text on the paired PC","approval_modes":["allow_once","allow_session"],"session_id":"session-1"}`)
 	if err != nil {
 		t.Fatalf("finalize tool result: %v", err)
 	}
@@ -130,8 +138,14 @@ func TestFinalizeToolResultHandlesPendingApproval(t *testing.T) {
 
 	select {
 	case msg := <-messageChan:
+		if msg.Kind != "approval_request" {
+			t.Fatalf("expected approval_request kind, got %+v", msg)
+		}
 		if !strings.Contains(msg.Content, "/approve approval-1") {
 			t.Fatalf("expected approval instruction, got %s", msg.Content)
+		}
+		if msg.Payload["approval_id"] != "approval-1" || msg.Payload["session_id"] != "session-1" {
+			t.Fatalf("expected approval payload metadata, got %+v", msg.Payload)
 		}
 	default:
 		t.Fatalf("expected confirmation message to be sent")

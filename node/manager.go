@@ -19,13 +19,27 @@ type Manager struct {
 	mu        sync.RWMutex
 	nodes     map[string]*connectedNode
 	approvals map[string]ApprovalRequest
+	grants    map[string][]ApprovalGrant
+	observer  ActionEventObserver
+	now       func() time.Time
 }
 
 func NewManager() *Manager {
 	return &Manager{
 		nodes:     make(map[string]*connectedNode),
 		approvals: make(map[string]ApprovalRequest),
+		grants:    make(map[string][]ApprovalGrant),
+		now:       time.Now,
 	}
+}
+
+func (m *Manager) SetEventObserver(observer ActionEventObserver) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.observer = observer
 }
 
 func (m *Manager) RegisterNode(ctx context.Context, desc NodeDescriptor, transport Transport) error {
@@ -35,7 +49,7 @@ func (m *Manager) RegisterNode(ctx context.Context, desc NodeDescriptor, transpo
 	if desc.ID == "" {
 		return errors.New("node id is required")
 	}
-	now := time.Now().Unix()
+	now := m.timeNow().Unix()
 	desc.ConnectedAt = now
 	desc.LastSeenAt = now
 
@@ -67,7 +81,7 @@ func (m *Manager) Heartbeat(nodeID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if current, ok := m.nodes[nodeID]; ok {
-		current.desc.LastSeenAt = time.Now().Unix()
+		current.desc.LastSeenAt = m.timeNow().Unix()
 	}
 }
 
@@ -95,55 +109,129 @@ func (m *Manager) Execute(ctx context.Context, req NodeCommandRequest) (*NodeCom
 	if req.ID == "" {
 		req.ID = uuid.NewString()
 	}
+	if req.ActionID == "" {
+		req.ActionID = req.ID
+	}
 
 	target, err := m.pickNode(req)
 	if err != nil {
+		m.emit(ActionEvent{
+			Type:       "action.denied",
+			ActionID:   req.ActionID,
+			SessionID:  req.SessionID,
+			UserID:     req.UserID,
+			Capability: req.Capability,
+			Detail:     err.Error(),
+			CreatedAt:  m.timeNow().Unix(),
+		})
 		return nil, err
 	}
 	req.NodeID = target.desc.ID
-	if req.RequireApproval {
-		approval := ApprovalRequest{
-			ID:         req.ID,
+
+	now := m.timeNow()
+	req, profile, binding, err := normalizeNodeRequest(target.desc, req, now)
+	summary := approvalSummary(req, target.desc)
+	m.emit(ActionEvent{
+		Type:       "action.requested",
+		ActionID:   req.ActionID,
+		SessionID:  req.SessionID,
+		UserID:     req.UserID,
+		NodeID:     req.NodeID,
+		Capability: req.Capability,
+		Summary:    summary,
+		CreatedAt:  now.Unix(),
+	})
+	if err != nil {
+		m.emit(ActionEvent{
+			Type:       "action.denied",
+			ActionID:   req.ActionID,
 			SessionID:  req.SessionID,
+			UserID:     req.UserID,
 			NodeID:     req.NodeID,
 			Capability: req.Capability,
-			Arguments:  cloneArguments(req.Arguments),
-			Summary:    approvalSummary(req),
-			CreatedAt:  time.Now().Unix(),
-		}
-		m.mu.Lock()
-		m.approvals[approval.ID] = approval
-		m.mu.Unlock()
-		return &NodeCommandResult{
-			ID:          req.ID,
-			NodeID:      req.NodeID,
-			Capability:  req.Capability,
-			Success:     false,
-			Output:      "pending approval",
-			StartedAt:   time.Now().Unix(),
-			CompletedAt: time.Now().Unix(),
-			Data: map[string]interface{}{
-				"pending_approval": true,
-				"approval_id":      approval.ID,
-				"summary":          approval.Summary,
-				"arguments":        approval.Arguments,
-			},
-		}, nil
+			Summary:    summary,
+			Detail:     err.Error(),
+			CreatedAt:  m.timeNow().Unix(),
+		})
+		return nil, err
 	}
-	return target.transport.Request(ctx, req)
+
+	if grant := m.matchGrant(req, binding, now); grant != nil {
+		req.ApprovalMode = grant.Mode
+		return m.dispatch(ctx, target, req, summary)
+	}
+
+	modes := allowedApprovalModes(req, profile, binding)
+	if len(modes) == 0 {
+		return m.dispatch(ctx, target, req, summary)
+	}
+
+	approval := ApprovalRequest{
+		ID:            req.ID,
+		ActionID:      req.ActionID,
+		SessionID:     req.SessionID,
+		UserID:        req.UserID,
+		NodeID:        req.NodeID,
+		Capability:    req.Capability,
+		Arguments:     cloneArguments(req.Arguments),
+		Summary:       summary,
+		Binding:       binding,
+		ApprovalModes: append([]ApprovalMode(nil), modes...),
+		CreatedAt:     now.Unix(),
+		ExpiresAt:     now.Add(sessionGrantTTL).Unix(),
+	}
+
+	m.mu.Lock()
+	m.cleanupLocked(now)
+	m.approvals[approval.ID] = approval
+	m.mu.Unlock()
+
+	m.emit(ActionEvent{
+		Type:       "approval.requested",
+		ActionID:   req.ActionID,
+		ApprovalID: approval.ID,
+		SessionID:  approval.SessionID,
+		UserID:     approval.UserID,
+		NodeID:     approval.NodeID,
+		Capability: approval.Capability,
+		Summary:    approval.Summary,
+		CreatedAt:  now.Unix(),
+		Metadata: map[string]string{
+			"approval_modes": joinApprovalModes(approval.ApprovalModes),
+		},
+	})
+
+	return &NodeCommandResult{
+		ID:          req.ID,
+		NodeID:      req.NodeID,
+		Capability:  req.Capability,
+		Success:     false,
+		Output:      "pending approval",
+		StartedAt:   now.Unix(),
+		CompletedAt: now.Unix(),
+		Data: map[string]interface{}{
+			"pending_approval": true,
+			"approval_id":      approval.ID,
+			"summary":          approval.Summary,
+			"arguments":        approval.Arguments,
+			"approval_modes":   approval.ApprovalModes,
+			"session_id":       approval.SessionID,
+		},
+	}, nil
 }
 
 func (m *Manager) ListApprovals(ctx context.Context) []ApprovalRequest {
 	if m == nil {
 		return nil
 	}
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
+	now := m.timeNow()
+	m.mu.Lock()
+	m.cleanupLocked(now)
 	items := make([]ApprovalRequest, 0, len(m.approvals))
 	for _, approval := range m.approvals {
 		items = append(items, approval)
 	}
+	m.mu.Unlock()
 	return items
 }
 
@@ -155,18 +243,155 @@ func (m *Manager) DecideApproval(ctx context.Context, decision ApprovalDecision)
 		return nil, nil, errors.New("approval command id is required")
 	}
 
+	now := m.timeNow()
+	mode := approvalMode(decision)
+	if mode == "" {
+		mode = ApprovalModeReject
+	}
+
+	var approval ApprovalRequest
 	m.mu.Lock()
-	approval, ok := m.approvals[decision.CommandID]
+	m.cleanupLocked(now)
+	current, ok := m.approvals[decision.CommandID]
 	if ok {
 		delete(m.approvals, decision.CommandID)
 	}
+	if ok {
+		approval = current
+	}
 	m.mu.Unlock()
 	if !ok {
+		m.emit(ActionEvent{
+			Type:      "action.denied",
+			ActionID:  decision.CommandID,
+			SessionID: decision.SessionID,
+			UserID:    decision.UserID,
+			NodeID:    decision.NodeID,
+			Detail:    "approval request not found",
+			CreatedAt: now.Unix(),
+		})
 		return nil, nil, errors.New("approval request not found")
 	}
 
-	if !decision.Approved {
+	if approval.ExpiresAt > 0 && approval.ExpiresAt <= now.Unix() {
+		m.emit(ActionEvent{
+			Type:       "action.denied",
+			ActionID:   approval.ActionID,
+			ApprovalID: approval.ID,
+			SessionID:  approval.SessionID,
+			UserID:     decision.UserID,
+			NodeID:     approval.NodeID,
+			Capability: approval.Capability,
+			Summary:    approval.Summary,
+			Detail:     "approval request expired",
+			CreatedAt:  now.Unix(),
+		})
+		return nil, nil, errors.New("approval request expired")
+	}
+	if approval.SessionID != "" && decision.SessionID != "" && approval.SessionID != decision.SessionID {
+		m.emit(ActionEvent{
+			Type:       "action.denied",
+			ActionID:   approval.ActionID,
+			ApprovalID: approval.ID,
+			SessionID:  decision.SessionID,
+			UserID:     decision.UserID,
+			NodeID:     approval.NodeID,
+			Capability: approval.Capability,
+			Summary:    approval.Summary,
+			Detail:     "approval session mismatch",
+			CreatedAt:  now.Unix(),
+		})
+		return &approval, nil, errors.New("approval session mismatch")
+	}
+	if approval.UserID != "" && decision.UserID != "" && approval.UserID != decision.UserID {
+		m.emit(ActionEvent{
+			Type:       "action.denied",
+			ActionID:   approval.ActionID,
+			ApprovalID: approval.ID,
+			SessionID:  approval.SessionID,
+			UserID:     decision.UserID,
+			NodeID:     approval.NodeID,
+			Capability: approval.Capability,
+			Summary:    approval.Summary,
+			Detail:     "approval user mismatch",
+			CreatedAt:  now.Unix(),
+		})
+		return &approval, nil, errors.New("approval user mismatch")
+	}
+
+	m.emit(ActionEvent{
+		Type:       "approval.resolved",
+		ActionID:   approval.ActionID,
+		ApprovalID: approval.ID,
+		SessionID:  approval.SessionID,
+		UserID:     firstNonEmpty(decision.UserID, approval.UserID),
+		NodeID:     approval.NodeID,
+		Capability: approval.Capability,
+		Summary:    approval.Summary,
+		Mode:       mode,
+		CreatedAt:  now.Unix(),
+	})
+
+	if mode == ApprovalModeReject {
+		m.emit(ActionEvent{
+			Type:       "action.denied",
+			ActionID:   approval.ActionID,
+			ApprovalID: approval.ID,
+			SessionID:  approval.SessionID,
+			UserID:     firstNonEmpty(decision.UserID, approval.UserID),
+			NodeID:     approval.NodeID,
+			Capability: approval.Capability,
+			Summary:    approval.Summary,
+			Detail:     "rejected by user",
+			CreatedAt:  now.Unix(),
+		})
 		return &approval, nil, nil
+	}
+
+	if !containsApprovalMode(approval.ApprovalModes, mode) {
+		m.emit(ActionEvent{
+			Type:       "action.denied",
+			ActionID:   approval.ActionID,
+			ApprovalID: approval.ID,
+			SessionID:  approval.SessionID,
+			UserID:     firstNonEmpty(decision.UserID, approval.UserID),
+			NodeID:     approval.NodeID,
+			Capability: approval.Capability,
+			Summary:    approval.Summary,
+			Detail:     "approval mode not allowed",
+			CreatedAt:  now.Unix(),
+		})
+		return &approval, nil, errors.New("approval mode not allowed for this action")
+	}
+
+	if mode == ApprovalModeAllowSession {
+		grant := ApprovalGrant{
+			ID:         approval.ID,
+			SessionID:  approval.SessionID,
+			UserID:     approval.UserID,
+			NodeID:     approval.NodeID,
+			Capability: approval.Capability,
+			Mode:       mode,
+			Summary:    approval.Summary,
+			Binding: ApprovalBinding{
+				SessionID:      approval.Binding.SessionID,
+				UserID:         approval.Binding.UserID,
+				NodeID:         approval.Binding.NodeID,
+				Capability:     approval.Binding.Capability,
+				ArgsDigest:     approval.Binding.ArgsDigest,
+				WindowBinding:  approval.Binding.WindowBinding,
+				ElementBinding: approval.Binding.ElementBinding,
+				CreatedAt:      now.Unix(),
+				ExpiresAt:      now.Add(sessionGrantTTL).Unix(),
+			},
+			CreatedAt: now.Unix(),
+			ExpiresAt: now.Add(sessionGrantTTL).Unix(),
+		}
+		m.mu.Lock()
+		existing := m.grants[grant.SessionID]
+		existing = append(existing, grant)
+		m.grants[grant.SessionID] = existing
+		m.mu.Unlock()
 	}
 
 	target, err := m.pickNode(NodeCommandRequest{
@@ -174,6 +399,18 @@ func (m *Manager) DecideApproval(ctx context.Context, decision ApprovalDecision)
 		Capability: approval.Capability,
 	})
 	if err != nil {
+		m.emit(ActionEvent{
+			Type:       "action.denied",
+			ActionID:   approval.ActionID,
+			ApprovalID: approval.ID,
+			SessionID:  approval.SessionID,
+			UserID:     firstNonEmpty(decision.UserID, approval.UserID),
+			NodeID:     approval.NodeID,
+			Capability: approval.Capability,
+			Summary:    approval.Summary,
+			Detail:     err.Error(),
+			CreatedAt:  now.Unix(),
+		})
 		return &approval, nil, err
 	}
 
@@ -181,12 +418,169 @@ func (m *Manager) DecideApproval(ctx context.Context, decision ApprovalDecision)
 		ID:              approval.ID,
 		NodeID:          approval.NodeID,
 		SessionID:       approval.SessionID,
+		UserID:          approval.UserID,
 		Capability:      approval.Capability,
 		Arguments:       cloneArguments(approval.Arguments),
 		RequireApproval: false,
+		ApprovalMode:    mode,
+		ActionID:        firstNonEmpty(approval.ActionID, approval.ID),
+		BindingHint: map[string]interface{}{
+			"args_digest":     approval.Binding.ArgsDigest,
+			"window_binding":  approval.Binding.WindowBinding,
+			"element_binding": approval.Binding.ElementBinding,
+		},
 	}
-	result, err := target.transport.Request(ctx, req)
+	result, err := m.dispatch(ctx, target, req, approval.Summary)
 	return &approval, result, err
+}
+
+func (m *Manager) dispatch(ctx context.Context, target *connectedNode, req NodeCommandRequest, summary string) (*NodeCommandResult, error) {
+	m.emit(ActionEvent{
+		Type:       "action.started",
+		ActionID:   req.ActionID,
+		SessionID:  req.SessionID,
+		UserID:     req.UserID,
+		NodeID:     req.NodeID,
+		Capability: req.Capability,
+		Summary:    summary,
+		Mode:       req.ApprovalMode,
+		CreatedAt:  m.timeNow().Unix(),
+	})
+
+	result, err := target.transport.Request(ctx, req)
+	now := m.timeNow().Unix()
+	if err != nil {
+		detail := err.Error()
+		if result != nil && result.Error != "" {
+			detail = result.Error
+		}
+		m.emit(ActionEvent{
+			Type:       "action.denied",
+			ActionID:   req.ActionID,
+			SessionID:  req.SessionID,
+			UserID:     req.UserID,
+			NodeID:     req.NodeID,
+			Capability: req.Capability,
+			Summary:    summary,
+			Detail:     detail,
+			Mode:       req.ApprovalMode,
+			CreatedAt:  now,
+		})
+		return result, err
+	}
+	if result == nil {
+		m.emit(ActionEvent{
+			Type:       "action.denied",
+			ActionID:   req.ActionID,
+			SessionID:  req.SessionID,
+			UserID:     req.UserID,
+			NodeID:     req.NodeID,
+			Capability: req.Capability,
+			Summary:    summary,
+			Detail:     "empty node response",
+			Mode:       req.ApprovalMode,
+			CreatedAt:  now,
+		})
+		return nil, errors.New("empty node response")
+	}
+	if !result.Success || result.Error != "" {
+		detail := firstNonEmpty(result.Error, result.Output)
+		m.emit(ActionEvent{
+			Type:       "action.denied",
+			ActionID:   req.ActionID,
+			SessionID:  req.SessionID,
+			UserID:     req.UserID,
+			NodeID:     req.NodeID,
+			Capability: req.Capability,
+			Summary:    summary,
+			Detail:     detail,
+			Mode:       req.ApprovalMode,
+			CreatedAt:  now,
+		})
+		return result, nil
+	}
+	m.emit(ActionEvent{
+		Type:       "action.completed",
+		ActionID:   req.ActionID,
+		SessionID:  req.SessionID,
+		UserID:     req.UserID,
+		NodeID:     req.NodeID,
+		Capability: req.Capability,
+		Summary:    summary,
+		Detail:     firstNonEmpty(result.Output, "ok"),
+		Mode:       req.ApprovalMode,
+		Success:    true,
+		CreatedAt:  now,
+	})
+	return result, nil
+}
+
+func (m *Manager) matchGrant(req NodeCommandRequest, binding ApprovalBinding, now time.Time) *ApprovalGrant {
+	if req.SessionID == "" {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.cleanupLocked(now)
+
+	items := m.grants[req.SessionID]
+	for index := range items {
+		item := &items[index]
+		if item.SessionID != req.SessionID || item.UserID != req.UserID || item.NodeID != req.NodeID || item.Capability != req.Capability {
+			continue
+		}
+		if !bindingMatches(item.Binding, binding) {
+			continue
+		}
+		item.ExpiresAt = now.Add(sessionGrantTTL).Unix()
+		item.Binding.ExpiresAt = item.ExpiresAt
+		m.grants[req.SessionID] = items
+		copyItem := *item
+		return &copyItem
+	}
+	return nil
+}
+
+func (m *Manager) cleanupLocked(now time.Time) {
+	nowUnix := now.Unix()
+	for id, approval := range m.approvals {
+		if approval.ExpiresAt > 0 && approval.ExpiresAt <= nowUnix {
+			delete(m.approvals, id)
+		}
+	}
+	for sessionID, items := range m.grants {
+		filtered := items[:0]
+		for _, item := range items {
+			if item.ExpiresAt > 0 && item.ExpiresAt <= nowUnix {
+				continue
+			}
+			filtered = append(filtered, item)
+		}
+		if len(filtered) == 0 {
+			delete(m.grants, sessionID)
+			continue
+		}
+		m.grants[sessionID] = filtered
+	}
+}
+
+func (m *Manager) emit(event ActionEvent) {
+	if m == nil {
+		return
+	}
+	m.mu.RLock()
+	observer := m.observer
+	m.mu.RUnlock()
+	if observer != nil {
+		observer(event)
+	}
+}
+
+func (m *Manager) timeNow() time.Time {
+	if m != nil && m.now != nil {
+		return m.now()
+	}
+	return time.Now()
 }
 
 func (m *Manager) pickNode(req NodeCommandRequest) (*connectedNode, error) {
@@ -229,15 +623,54 @@ func cloneArguments(arguments map[string]interface{}) map[string]interface{} {
 	return cloned
 }
 
-func approvalSummary(req NodeCommandRequest) string {
+func containsApprovalMode(items []ApprovalMode, target ApprovalMode) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
+}
+
+func bindingMatches(left, right ApprovalBinding) bool {
+	return left.SessionID == right.SessionID &&
+		left.UserID == right.UserID &&
+		left.NodeID == right.NodeID &&
+		left.Capability == right.Capability &&
+		left.ArgsDigest == right.ArgsDigest &&
+		left.WindowBinding == right.WindowBinding &&
+		left.ElementBinding == right.ElementBinding
+}
+
+func joinApprovalModes(items []ApprovalMode) string {
+	if len(items) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(items))
+	for _, item := range items {
+		parts = append(parts, string(item))
+	}
+	return strings.Join(parts, ",")
+}
+
+func approvalSummary(req NodeCommandRequest, desc NodeDescriptor) string {
 	target := approvalTargetSummary(req.Arguments)
 	switch req.Capability {
-	case "input.keyboard.type":
-		text, _ := req.Arguments["text"].(string)
-		if target != "" {
-			return "Type text on the paired PC into " + target + ": " + truncateText(text, 60)
+	case "system.exec":
+		command := previewSensitiveText(buildApprovalCommandLine(req.Arguments), resultRedactionHash, 32)
+		if dir := stringArg(req.Arguments, "dir"); dir != "" {
+			return "Execute command on the paired PC in " + truncateText(dir, 40) + ": " + command
 		}
-		return "Type text on the paired PC: " + truncateText(text, 60)
+		return "Execute command on the paired PC: " + command
+	case "fs.write":
+		targetPath := truncateText(stringArg(req.Arguments, "path"), 60)
+		return "Write file on the paired PC: " + targetPath
+	case "input.keyboard.type":
+		text := previewSensitiveText(stringArg(req.Arguments, "text"), resultRedactionHash, 24)
+		if target != "" {
+			return "Type text on the paired PC into " + target + ": " + text
+		}
+		return "Type text on the paired PC: " + text
 	case "input.keyboard.key":
 		key, _ := req.Arguments["key"].(string)
 		if target != "" {
@@ -246,10 +679,11 @@ func approvalSummary(req NodeCommandRequest) string {
 		return "Press a key on the paired PC: " + key
 	case "input.keyboard.hotkey":
 		parts := approvalKeyParts(req.Arguments["keys"])
+		keys := previewSensitiveText(strings.Join(parts, " + "), resultRedactionTruncate, 40)
 		if target != "" {
-			return "Trigger a hotkey on the paired PC for " + target + ": " + strings.Join(parts, " + ")
+			return "Trigger a hotkey on the paired PC for " + target + ": " + keys
 		}
-		return "Trigger a hotkey on the paired PC: " + strings.Join(parts, " + ")
+		return "Trigger a hotkey on the paired PC: " + keys
 	case "input.mouse.click", "input.mouse.double_click", "input.mouse.right_click":
 		if target != "" {
 			return "Click on the paired PC: " + target
@@ -260,6 +694,24 @@ func approvalSummary(req NodeCommandRequest) string {
 			return "Drag on the paired PC from or through " + target
 		}
 		return "Drag the mouse on the paired PC screen"
+	case "window.focus":
+		return "Focus a desktop window on the paired PC: " + firstNonEmpty(target, "specified window")
+	case "ui.focus":
+		return "Focus a desktop UI element on the paired PC: " + firstNonEmpty(target, "specified element")
+	case "wsl.exec":
+		command := previewSensitiveText(buildApprovalCommandLine(req.Arguments), resultRedactionHash, 32)
+		distro := wslDistroName(desc)
+		if distro != "" {
+			return "Execute WSL command on " + distro + ": " + command
+		}
+		return "Execute WSL command: " + command
+	case "wsl.fs.write":
+		pathText := normalizeApprovalPath(stringArg(req.Arguments, "path"))
+		distro := wslDistroName(desc)
+		if distro != "" {
+			return "Write file in " + distro + ": " + truncateText(pathText, 60)
+		}
+		return "Write file in WSL: " + truncateText(pathText, 60)
 	default:
 		if target != "" {
 			return "Approve PC action: " + req.Capability + " -> " + target
@@ -319,7 +771,7 @@ func describeElementLocator(locator map[string]interface{}) string {
 		truncateText(stringValue(locator["automation_id"]), 40),
 		truncateText(stringValue(locator["path"]), 40),
 	}
-	role := truncateText(stringValue(locator["role"]), 24)
+	role := truncateText(firstNonEmptyString(locator, "role", "control_type"), 24)
 	className := truncateText(stringValue(locator["class_name"]), 24)
 	for _, candidate := range candidates {
 		if candidate == "" {
@@ -364,4 +816,29 @@ func truncateText(text string, maxLen int) string {
 		return text
 	}
 	return text[:maxLen] + "..."
+}
+
+func previewSensitiveText(text string, strategy string, maxLen int) string {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return ""
+	}
+	switch strategy {
+	case resultRedactionHash:
+		preview := truncateText(trimmed, maxLen)
+		return preview + " [sha1:" + shortHashString(trimmed) + "]"
+	case resultRedactionTruncate:
+		return truncateText(trimmed, maxLen)
+	default:
+		return trimmed
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }

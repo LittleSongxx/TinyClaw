@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/node"
 )
 
@@ -30,6 +31,10 @@ const (
 	toolNodeUIInspect      = "node_ui_inspect"
 	toolNodeUIFind         = "node_ui_find"
 	toolNodeUIFocus        = "node_ui_focus"
+	toolNodeWSLExec        = "node_wsl_exec"
+	toolNodeWSLFSList      = "node_wsl_fs_list"
+	toolNodeWSLFSRead      = "node_wsl_fs_read"
+	toolNodeWSLFSWrite     = "node_wsl_fs_write"
 	argNodeID              = "node_id"
 	argTimeoutSec          = "timeout_sec"
 )
@@ -55,6 +60,10 @@ var capabilityToolMap = map[string]string{
 	"ui.inspect":               toolNodeUIInspect,
 	"ui.find":                  toolNodeUIFind,
 	"ui.focus":                 toolNodeUIFocus,
+	"wsl.exec":                 toolNodeWSLExec,
+	"wsl.fs.list":              toolNodeWSLFSList,
+	"wsl.fs.read":              toolNodeWSLFSRead,
+	"wsl.fs.write":             toolNodeWSLFSWrite,
 }
 
 var toolCapabilityMap = map[string]string{
@@ -76,6 +85,10 @@ var toolCapabilityMap = map[string]string{
 	toolNodeUIInspect:      "ui.inspect",
 	toolNodeUIFind:         "ui.find",
 	toolNodeUIFocus:        "ui.focus",
+	toolNodeWSLExec:        "wsl.exec",
+	toolNodeWSLFSList:      "wsl.fs.list",
+	toolNodeWSLFSRead:      "wsl.fs.read",
+	toolNodeWSLFSWrite:     "wsl.fs.write",
 }
 
 type NodeProvider struct {
@@ -156,10 +169,11 @@ func (p *NodeProvider) ExecuteTool(ctx context.Context, call ToolInvocation) (*T
 	req := node.NodeCommandRequest{
 		NodeID:          stringArgument(arguments, argNodeID, call.NodeID),
 		SessionID:       call.SessionID,
+		UserID:          call.UserID,
 		Capability:      capability,
 		Arguments:       arguments,
 		TimeoutSec:      intArgument(arguments, argTimeoutSec),
-		RequireApproval: requiresApproval(capability),
+		RequireApproval: !conf.IsPrivilegedUser(call.UserID),
 	}
 	delete(req.Arguments, argNodeID)
 	delete(req.Arguments, argTimeoutSec)
@@ -193,6 +207,7 @@ func (p *NodeProvider) listDevices(ctx context.Context) *ToolResult {
 				"platform":     current.Platform,
 				"hostname":     current.Hostname,
 				"version":      current.Version,
+				"metadata":     current.Metadata,
 				"last_seen_at": current.LastSeenAt,
 				"capabilities": capabilities,
 			})
@@ -495,6 +510,65 @@ func buildNodeToolSpec(capability string) (ToolSpec, bool) {
 				"element",
 			),
 		}, true
+	case "wsl.exec":
+		return ToolSpec{
+			Name:        toolNodeWSLExec,
+			Category:    CategoryNode,
+			Description: "Execute an explicit argv command inside a WSL virtual node. Put the executable in command and the remaining argv items in args. Do not use shell wrappers like bash -c.",
+			InputSchema: objectSchema(
+				map[string]interface{}{
+					argNodeID:     nodeIDProperty(),
+					"command":     stringProperty("Executable to run inside the selected WSL distro, such as git, ls, npm, go, or python."),
+					"args":        arrayProperty("Optional argv items passed to the executable in order. Use this instead of shell wrappers."),
+					"cwd":         stringProperty("Optional Linux working directory. When omitted, the node uses the distro default directory or the distro home."),
+					"env":         mapProperty("Optional environment variables to export before running the command."),
+					argTimeoutSec: intProperty("Optional command timeout in seconds."),
+				},
+				"command",
+			),
+		}, true
+	case "wsl.fs.list":
+		return ToolSpec{
+			Name:        toolNodeWSLFSList,
+			Category:    CategoryNode,
+			Description: "List files or folders inside the selected WSL virtual node.",
+			InputSchema: objectSchema(
+				map[string]interface{}{
+					argNodeID: nodeIDProperty(),
+					"path":    stringProperty("Linux directory path inside the selected WSL distro. Defaults to . when omitted."),
+				},
+			),
+		}, true
+	case "wsl.fs.read":
+		return ToolSpec{
+			Name:        toolNodeWSLFSRead,
+			Category:    CategoryNode,
+			Description: "Read a file from the selected WSL virtual node.",
+			InputSchema: objectSchema(
+				map[string]interface{}{
+					argNodeID: nodeIDProperty(),
+					"path":    stringProperty("Linux file path inside the selected WSL distro."),
+				},
+				"path",
+			),
+		}, true
+	case "wsl.fs.write":
+		return ToolSpec{
+			Name:        toolNodeWSLFSWrite,
+			Category:    CategoryNode,
+			Description: "Write a file inside the selected WSL virtual node. Use this when the user wants a Linux-side file created or changed.",
+			InputSchema: objectSchema(
+				map[string]interface{}{
+					argNodeID:  nodeIDProperty(),
+					"path":     stringProperty("Linux file path inside the selected WSL distro."),
+					"content":  stringProperty("Text content to write. Use base64 only when encoding is explicitly set to base64."),
+					"append":   boolProperty("Append instead of replacing the file."),
+					"encoding": stringProperty("Optional content encoding, such as base64."),
+				},
+				"path",
+				"content",
+			),
+		}, true
 	default:
 		return ToolSpec{}, false
 	}
@@ -621,15 +695,6 @@ func intArgument(arguments map[string]interface{}, key string) int {
 	}
 }
 
-func requiresApproval(capability string) bool {
-	switch capability {
-	case "input.keyboard.type", "input.keyboard.key", "input.keyboard.hotkey", "input.mouse.click", "input.mouse.double_click", "input.mouse.right_click", "input.mouse.drag":
-		return true
-	default:
-		return false
-	}
-}
-
 func formatNodeResult(result *node.NodeCommandResult) string {
 	if result == nil {
 		return `{"success":false,"error":"empty node response"}`
@@ -642,6 +707,8 @@ func formatNodeResult(result *node.NodeCommandResult) string {
 			"summary":          result.Data["summary"],
 			"capability":       result.Capability,
 			"arguments":        result.Data["arguments"],
+			"approval_modes":   result.Data["approval_modes"],
+			"session_id":       result.Data["session_id"],
 			"node_id":          result.NodeID,
 		}
 		content, _ := json.Marshal(payload)

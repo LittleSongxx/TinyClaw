@@ -2,12 +2,15 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/LittleSongxx/TinyClaw/agent"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/db"
+	"github.com/LittleSongxx/TinyClaw/logger"
 	"github.com/LittleSongxx/TinyClaw/node"
 	"github.com/LittleSongxx/TinyClaw/param"
 	"github.com/LittleSongxx/TinyClaw/session"
@@ -77,15 +80,7 @@ func Init() *Service {
 			nodes,
 		)
 
-		defaultService = &Service{
-			cfg:       conf.RuntimeConfInfo,
-			sessions:  store,
-			nodes:     nodes,
-			tools:     tools,
-			agent:     runtime,
-			approvals: newMemoryApprovalStore(),
-			adapters:  make(map[string]ChannelAdapter),
-		}
+		defaultService = NewService(conf.RuntimeConfInfo, store, tools, nodes, runtime, newMemoryApprovalStore())
 	})
 	return defaultService
 }
@@ -101,7 +96,7 @@ func NewService(cfg *conf.RuntimeConfig, sessions session.Store, tools *tooling.
 	if approvals == nil {
 		approvals = newMemoryApprovalStore()
 	}
-	return &Service{
+	service := &Service{
 		cfg:       cfg,
 		sessions:  sessions,
 		tools:     tools,
@@ -110,6 +105,10 @@ func NewService(cfg *conf.RuntimeConfig, sessions session.Store, tools *tooling.
 		approvals: approvals,
 		adapters:  make(map[string]ChannelAdapter),
 	}
+	if nodes != nil {
+		nodes.SetEventObserver(service.recordActionEvent)
+	}
+	return service
 }
 
 func (s *Service) RegisterAdapter(adapter ChannelAdapter) {
@@ -212,6 +211,62 @@ func (s *Service) ToolBroker() *tooling.Broker {
 		return nil
 	}
 	return s.tools
+}
+
+func (s *Service) recordActionEvent(event node.ActionEvent) {
+	if s == nil {
+		return
+	}
+	if event.CreatedAt == 0 {
+		event.CreatedAt = time.Now().Unix()
+	}
+
+	payload, err := json.Marshal(event)
+	if err != nil {
+		logger.Warn("marshal node action event fail", "err", err, "event_type", event.Type)
+		return
+	}
+
+	logger.Info("node action event",
+		"type", event.Type,
+		"action_id", event.ActionID,
+		"approval_id", event.ApprovalID,
+		"session_id", event.SessionID,
+		"user_id", event.UserID,
+		"node_id", event.NodeID,
+		"capability", event.Capability,
+		"success", event.Success,
+		"detail", event.Detail,
+	)
+
+	if s.sessions == nil || event.SessionID == "" {
+		return
+	}
+
+	metadata := map[string]string{
+		"kind":       "node_action_event",
+		"event_type": event.Type,
+		"action_id":  event.ActionID,
+		"node_id":    event.NodeID,
+		"capability": event.Capability,
+	}
+	if event.ApprovalID != "" {
+		metadata["approval_id"] = event.ApprovalID
+	}
+	if event.Mode != "" {
+		metadata["approval_mode"] = string(event.Mode)
+	}
+	if event.Detail != "" {
+		metadata["detail"] = event.Detail
+	}
+	if _, appendErr := s.sessions.Append(context.Background(), event.SessionID, session.Message{
+		Role:      session.RoleSystem,
+		Content:   string(payload),
+		CreatedAt: event.CreatedAt,
+		Metadata:  metadata,
+	}); appendErr != nil {
+		logger.Warn("append node action event fail", "err", appendErr, "session_id", event.SessionID, "event_type", event.Type)
+	}
 }
 
 func (s *Service) ListSessionMeta(limit int) ([]db.SessionMeta, error) {

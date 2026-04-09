@@ -184,6 +184,10 @@ func NewLLM(opts ...Option) *LLM {
 }
 
 func (l *LLM) DirectSendMsg(content string, ignoreLen bool) {
+	l.DirectSendStructuredMsg("", content, nil, ignoreLen)
+}
+
+func (l *LLM) DirectSendStructuredMsg(kind string, content string, payload map[string]interface{}, ignoreLen bool) {
 	if !ignoreLen && len([]byte(content)) > l.PerMsgLen {
 		content = string([]byte(content)[:l.PerMsgLen])
 	}
@@ -192,6 +196,8 @@ func (l *LLM) DirectSendMsg(content string, ignoreLen bool) {
 		l.MessageChan <- &param.MsgInfo{
 			Content:  content,
 			Finished: true,
+			Kind:     kind,
+			Payload:  payload,
 		}
 	}
 
@@ -455,6 +461,7 @@ func (l *LLM) ExecMcpReq(ctx context.Context, funcName string, property map[stri
 			Arguments: property,
 			SessionID: l.sessionID(),
 			NodeID:    toolNodeID(property),
+			UserID:    l.UserId,
 		})
 		switch {
 		case err == nil:
@@ -505,14 +512,19 @@ func (l *LLM) finalizeToolResult(funcName string, property map[string]interface{
 	if approvalPayload, ok := parsePendingApprovalPayload(trimmed); ok {
 		approvalID, _ := approvalPayload["approval_id"].(string)
 		summary, _ := approvalPayload["summary"].(string)
+		approvalModes := approvalModesFromPayload(approvalPayload)
 		msg := i18n.GetMessage("approval_required", map[string]interface{}{
 			"approval_id": approvalID,
 			"summary":     summary,
+			"mode_hint":   approvalModeHintText(approvalModes),
 		})
 		if msg == "" {
-			msg = fmt.Sprintf("该设备操作需要确认：%s\n回复 /approve %s 执行，或回复 /reject %s 取消。", summary, approvalID, approvalID)
+			msg = fmt.Sprintf("该设备操作需要确认：%s\n回复“确认”继续，回复“取消”终止。\n也可以使用 /approve %s 或 /reject %s。", summary, approvalID, approvalID)
+			if containsApprovalModeText(approvalModes, "allow_session") {
+				msg += "\n如果使用飞书卡片，也可以选择“本会话允许”。"
+			}
 		}
-		l.DirectSendMsg(msg, true)
+		l.DirectSendStructuredMsg("approval_request", msg, approvalPayload, true)
 
 		placeholder := i18n.GetMessage("approval_waiting", nil)
 		if placeholder == "" {
@@ -574,6 +586,10 @@ func (l *LLM) ensureRuntimeTools() {
 		if spec.Category == tooling.CategoryNode {
 			l.RuntimeToolGuidance = append(l.RuntimeToolGuidance,
 				`你可以使用 node_* 工具直接操作真实配对的 PC 节点（Windows、macOS 或 Linux）。当用户明确要求截图、打开应用、打开网页、读写文件或执行桌面命令时，应优先调用相应 node 工具，而不是只给出文字说明。用户提到“当前窗口”“这个应用”“记事本界面”等窗口语义时，截图优先使用 active_window。涉及按钮、输入框、复选框、菜单项等控件时，优先先用 node_ui_find 或 node_ui_inspect 找到稳定元素，再执行点击或输入；只有在找不到稳定元素时才退回坐标。若用户没有指定 node_id，可以留空让系统自动选择兼容设备。对明显具有破坏性的操作，应先确认。`)
+			if conf.IsPrivilegedUser(l.UserId) {
+				l.RuntimeToolGuidance = append(l.RuntimeToolGuidance,
+					`当前用户是受信任管理员。对于常规 Windows/WSL 操作，例如打开应用、聚焦窗口、输入文本、截图、查看或修改当前项目文件、执行常见开发命令，应尽量一次性连续完成，不要把同一个小任务拆成多轮确认，也不要在回复中输出原始堆栈、PowerShell 诊断或低价值技术噪音。只有在删除数据、批量覆盖文件、安装或卸载软件、修改系统设置、执行明显高风险脚本、涉及密码密钥付款等高风险场景下，才额外征求确认。`)
+			}
 			break
 		}
 	}
@@ -661,6 +677,46 @@ func parsePendingApprovalPayload(raw string) (map[string]interface{}, bool) {
 	}
 	pending, _ := payload["pending_approval"].(bool)
 	return payload, pending
+}
+
+func approvalModesFromPayload(payload map[string]interface{}) []string {
+	if len(payload) == 0 {
+		return nil
+	}
+	raw, ok := payload["approval_modes"]
+	if !ok {
+		return nil
+	}
+	switch values := raw.(type) {
+	case []string:
+		return values
+	case []interface{}:
+		out := make([]string, 0, len(values))
+		for _, value := range values {
+			if text, ok := value.(string); ok && text != "" {
+				out = append(out, text)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func approvalModeHintText(modes []string) string {
+	if containsApprovalModeText(modes, "allow_session") {
+		return "你也可以在飞书卡片中选择“本会话允许”。"
+	}
+	return ""
+}
+
+func containsApprovalModeText(modes []string, target string) bool {
+	for _, mode := range modes {
+		if mode == target {
+			return true
+		}
+	}
+	return false
 }
 
 func parseImageToolPayload(raw string) (*param.MCPResp, map[string]interface{}, bool) {
@@ -751,8 +807,19 @@ func sanitizeToolResponseForUser(text string) string {
 	filtered := make([]string, 0, len(lines))
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
+		if idx := strings.Index(trimmed, ":"); strings.HasPrefix(strings.ToLower(trimmed), "exit status ") && idx >= 0 {
+			trimmed = strings.TrimSpace(trimmed[idx+1:])
+		}
 		switch {
 		case trimmed == "":
+			continue
+		case strings.HasPrefix(trimmed, "At "),
+			strings.HasPrefix(trimmed, "所在位置"),
+			strings.HasPrefix(trimmed, "CategoryInfo"),
+			strings.HasPrefix(trimmed, "FullyQualifiedErrorId"),
+			strings.HasPrefix(trimmed, "+"),
+			strings.HasPrefix(trimmed, "•"),
+			strings.HasPrefix(trimmed, "·"):
 			continue
 		case strings.Contains(trimmed, "Base64 图像"),
 			strings.Contains(trimmed, "MCP 返回的图像数据"),
