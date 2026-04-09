@@ -214,6 +214,21 @@ NODE_PAIRING_TOKEN=replace-with-a-strong-node-token
 
 ### 第三步：在真实主机运行节点
 
+Windows 推荐方式：
+
+```bash
+./scripts/package_tinyclaw_node_windows.sh amd64
+```
+
+然后在 Windows 上安装 `build/release/TinyClawNodeSetup.exe`，打开 `TinyClaw Node Settings`，填写：
+
+- `gateway_ws=ws://127.0.0.1:36060/gateway/nodes/ws`
+- `node_token` 与主服务保持一致
+- 勾选 Windows desktop node
+- 按需启用 `Ubuntu-22.04` 等 WSL distro
+
+Linux / macOS 开发调试方式：
+
 ```bash
 go run ./cmd/tinyclaw-node \
   --gateway_ws ws://127.0.0.1:36060/gateway/nodes/ws \
@@ -237,23 +252,40 @@ curl http://127.0.0.1:36060/gateway/nodes/list
 - `screen.snapshot`
 - `browser.open`
 - `app.launch`
+- `input.keyboard.type`
+- `input.keyboard.key`
+- `input.keyboard.hotkey`
+- `input.mouse.move`
+- `input.mouse.click`
+- `input.mouse.double_click`
+- `input.mouse.right_click`
+- `input.mouse.drag`
+- `window.list`
+- `window.focus`
+- `ui.inspect`
+- `ui.find`
+- `ui.focus`
 
-现阶段还没有完全补齐：
+如果启用了 WSL 虚拟节点，还会额外提供：
 
-- `input.keyboard`
-- `input.mouse`
-- 窗口定位
-- 更完整的浏览器 DOM 自动化统一抽象
+- `wsl.exec`
+- `wsl.fs.list`
+- `wsl.fs.read`
+- `wsl.fs.write`
+
+当前更完整的浏览器 DOM 自动化仍建议走 Playwright MCP。
 
 ## 10. 设备控制安全建议
 
 建议至少做到：
 
 - `GATEWAY_SHARED_SECRET` 和 `NODE_PAIRING_TOKEN` 使用强随机值
+- 可信管理员才加入 `PRIVILEGED_USER_IDS`
 - 不要把 Gateway 直接裸露在公网
 - 如果必须远程访问，放在 VPN / Tailscale / 内网穿透保护之后
 - 先只给受信任主机配对
 - 先从只读类能力开始测试，例如 `fs.read`、`screen.snapshot`
+- 对 `wsl.exec` / `wsl.fs.write` 尽量使用前缀白名单，而不是完全放开
 
 ## 11. 常见排查
 
@@ -274,6 +306,16 @@ curl http://127.0.0.1:36060/gateway/nodes/list
 - Linux 宿主机缺少 `gnome-screenshot` / `grim` / `scrot`
 - macOS 没开辅助功能权限
 - Windows 会话没有活动桌面
+- WSL distro 名称配置不对，导致虚拟节点没有注册上来
+
+### 聊天里设备操作一直要确认
+
+优先检查：
+
+- 当前用户是否属于 `PRIVILEGED_USER_IDS`
+- 操作是否属于默认需要审批的能力，例如 `input.*`、`wsl.exec`、`wsl.fs.write`
+- 飞书里是否直接回复了“确认”或“取消”
+- 是否在用 `/approve <approval_id>` 或 `/reject <approval_id>`
 
 ### Session 没看到历史
 

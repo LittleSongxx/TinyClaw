@@ -19,8 +19,8 @@ TinyClaw 现在的主线定位，是一个基于 Go 的 AI Agent / Bot 平台，
 - 主程序仍然坚持 Go 原生实现
 - `Gateway` 已经接入现有 `Web` 与 `Lark` 入口
 - `Session` 已替代“只按 user_id 拼上下文”的单一模型
-- `tinyclaw-node` 已经可以主动连接 Gateway
-- PC 节点一期支持：
+- `tinyclaw-node` 已经可以主动连接 Gateway，并按配置同时注册 Windows 节点和 WSL 虚拟节点
+- 当前通用 PC 节点支持：
   - `system.exec`
   - `fs.list`
   - `fs.read`
@@ -28,8 +28,20 @@ TinyClaw 现在的主线定位，是一个基于 Go 的 AI Agent / Bot 平台，
   - `screen.snapshot`
   - `browser.open`
   - `app.launch`
-
-后续再继续补 `input.keyboard`、`input.mouse`、窗口定位等桌面自动化能力。
+- 当前 Windows 桌面自动化支持：
+  - `input.keyboard.*`
+  - `input.mouse.*`
+  - `window.list`
+  - `window.focus`
+  - `ui.inspect`
+  - `ui.find`
+  - `ui.focus`
+- 当前 WSL 虚拟节点支持：
+  - `wsl.exec`
+  - `wsl.fs.list`
+  - `wsl.fs.read`
+  - `wsl.fs.write`
+- Windows 侧已经提供正式安装包 `TinyClawNodeSetup.exe`，普通用户不再需要手动敲 PowerShell 才能完成安装和配置
 
 ## 推荐部署方式
 
@@ -61,6 +73,7 @@ TinyClaw/
 ├─ http/                  HTTP API 与 Gateway 接入点
 ├─ admin/                 管理后台
 ├─ deploy/docker/         Docker 部署文件
+├─ deploy/windows-node/   Windows 节点安装器、配置脚本与 NSIS 配置
 ├─ docs/                  中文项目文档
 ├─ data/                  运行数据与 session transcript
 └─ log/                   日志
@@ -87,6 +100,7 @@ cp deploy/docker/.env.example deploy/docker/.env
 - 模型凭据：`ALIYUN_TOKEN`
 - Gateway 安全：`GATEWAY_SHARED_SECRET`
 - Node 配对：`NODE_PAIRING_TOKEN`
+- 可信管理员直通设备操作：`PRIVILEGED_USER_IDS`
 - Session transcript 路径：`SESSION_TRANSCRIPT_DIR`
 
 一个最小示例：
@@ -137,20 +151,26 @@ GITHUB_PERSONAL_ACCESS_TOKEN=
 
 ### 5. 在真实 PC 上启动节点
 
-Linux / macOS:
+Windows 推荐方式：
+
+```bash
+./scripts/package_tinyclaw_node_windows.sh amd64
+```
+
+然后在 Windows 上安装 `build/release/TinyClawNodeSetup.exe`，通过 `TinyClaw Node Settings` 填写：
+
+- `gateway_ws=ws://127.0.0.1:36060/gateway/nodes/ws`
+- `node_token` 与主服务侧 `NODE_PAIRING_TOKEN` 保持一致
+- 勾选 Windows desktop node
+- 按需启用 `Ubuntu-22.04` 等 WSL distro，并填写 `default_cwd`
+
+Linux / macOS 开发调试：
 
 ```bash
 export NODE_PAIRING_TOKEN=replace-with-the-same-token
 go run ./cmd/tinyclaw-node \
   --gateway_ws ws://127.0.0.1:36060/gateway/nodes/ws \
   --node_token "$NODE_PAIRING_TOKEN"
-```
-
-Windows PowerShell:
-
-```powershell
-$env:NODE_PAIRING_TOKEN="replace-with-the-same-token"
-go run ./cmd/tinyclaw-node --gateway_ws ws://127.0.0.1:36060/gateway/nodes/ws --node_token $env:NODE_PAIRING_TOKEN
 ```
 
 ## 当前新增接口

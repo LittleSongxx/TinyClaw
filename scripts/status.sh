@@ -3,28 +3,32 @@ set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
-cd "${REPO_ROOT}"
+SCRIPT_HINT_CMD="./scripts/status.sh"
 
+cd "${REPO_ROOT}"
 source_env_file "${ENV_FILE}"
-docker_compose ps
 
 if [[ -f "${RUNTIME_FILE}" ]]; then
   source_env_file "${RUNTIME_FILE}"
-  echo
-  cat "${RUNTIME_FILE}"
+fi
+
+script_section "Compose Services"
+if ! compose_status_table; then
+  script_error "Failed to query Compose services."
+  exit 1
 fi
 
 echo
+script_section "Runtime"
 if [[ -n "${HOST_HTTP_PORT:-}" ]]; then
-  printf 'HTTP_URL=http://127.0.0.1:%s\n' "${HOST_HTTP_PORT}"
+  script_kv "HTTP" "http://127.0.0.1:${HOST_HTTP_PORT}"
 fi
 if [[ -n "${HOST_ADMIN_PORT:-}" ]]; then
-  printf 'ADMIN_URL=http://127.0.0.1:%s\n' "${HOST_ADMIN_PORT}"
+  script_kv "Admin" "http://127.0.0.1:${HOST_ADMIN_PORT}"
 fi
-printf 'AUTO_START=enabled (restart: unless-stopped)\n'
-printf 'VERIFY_SCRIPT=./scripts/verify.sh\n'
+script_kv "Auto-start" "enabled (restart: unless-stopped)"
+script_kv "Verify" "./scripts/verify.sh"
 
 if [[ -f "${PUBLIC_URL_FILE}" ]]; then
-  echo
-  printf 'QQ_WEBHOOK=%s\n' "$(cat "${PUBLIC_URL_FILE}")"
+  script_kv "QQ Webhook" "$(cat "${PUBLIC_URL_FILE}")"
 fi

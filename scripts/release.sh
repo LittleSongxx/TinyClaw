@@ -2,76 +2,62 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+
+SCRIPT_HINT_CMD="./scripts/release.sh"
+SCRIPT_RUN_ID="${SCRIPT_RUN_ID:-$(date +%Y%m%d-%H%M%S)}"
+
 BUILD_ROOT="${REPO_ROOT}/build"
 OUTPUT_DIR="${BUILD_ROOT}/output"
 RELEASE_DIR="${BUILD_ROOT}/release"
 
 cd "${REPO_ROOT}"
+ensure_script_log_dir
 
-# Clean up old files
+script_section "Preparing Release Workspace"
 rm -rf "${OUTPUT_DIR}" "${RELEASE_DIR}"
 mkdir -p "${OUTPUT_DIR}" "${RELEASE_DIR}"
+script_ok "Release workspace is ready"
 
-# Build the admin binary (locally for the specified platform)
 build_admin_local() {
-    local os=$1
-    local arch=$2
-    local ext=""
-    [[ "$os" == "windows" ]] && ext=".exe"
+  local os="$1"
+  local arch="$2"
+  local log_file="${SCRIPT_LOG_DIR}/${SCRIPT_RUN_ID}-release-admin-${os}-${arch}.log"
 
-    local output_name="TinyClawAdmin"
-    echo "=============================="
-    echo "Building admin [$os/$arch] using go build..."
-    echo "=============================="
-
-    GOOS=$os GOARCH=$arch CGO_ENABLED=1 go build -o "${OUTPUT_DIR}/${output_name}" ./admin
+  run_with_log "Building TinyClawAdmin for ${os}/${arch}" "${log_file}" \
+    env GOOS="${os}" GOARCH="${arch}" CGO_ENABLED=1 go build -o "${OUTPUT_DIR}/TinyClawAdmin" ./admin
 }
 
-# Build main binary + package everything
 compile_and_package_local() {
-    local os=$1
-    local arch=$2
-    local ext=""
-    [[ "$os" == "windows" ]] && ext=".exe"
+  local os="$1"
+  local arch="$2"
+  local build_log="${SCRIPT_LOG_DIR}/${SCRIPT_RUN_ID}-release-${os}-${arch}.log"
+  local package_log="${SCRIPT_LOG_DIR}/${SCRIPT_RUN_ID}-release-package-${os}-${arch}.log"
+  local release_name="TinyClaw-${os}-${arch}.tar.gz"
 
-    echo "=============================="
-    echo "Building TinyClaw [$os/$arch] using go build..."
-    echo "=============================="
+  script_section "Packaging ${os}/${arch}"
+  run_with_log "Building TinyClaw for ${os}/${arch}" "${build_log}" \
+    env GOOS="${os}" GOARCH="${arch}" CGO_ENABLED=1 go build -o "${OUTPUT_DIR}/TinyClaw" ./cmd/tinyclaw
 
-    local bot_output="TinyClaw"
+  build_admin_local "${os}" "${arch}"
 
-    # Build main bot binary
-    GOOS=$os GOARCH=$arch CGO_ENABLED=1 go build -o "${OUTPUT_DIR}/${bot_output}" ./cmd/tinyclaw
+  mkdir -p "${OUTPUT_DIR}/conf" "${OUTPUT_DIR}/data"
+  cp -r ./conf/i18n "${OUTPUT_DIR}/conf/"
+  cp -r ./conf/mcp "${OUTPUT_DIR}/conf/"
+  cp -r ./conf/img "${OUTPUT_DIR}/conf/"
 
-    # Build admin binary
-    build_admin_local $os $arch
-
-    # Copy config files
-    mkdir -p "${OUTPUT_DIR}/conf/"
-    cp -r ./conf/i18n "${OUTPUT_DIR}/conf/"
-    cp -r ./conf/mcp "${OUTPUT_DIR}/conf/"
-    cp -r ./conf/img "${OUTPUT_DIR}/conf/"
-    mkdir -p "${OUTPUT_DIR}/data/"
-
-    # Copy admin UI files
-    mkdir -p "${OUTPUT_DIR}/adminui/"
-    cp -r ./admin/adminui/* "${OUTPUT_DIR}/adminui/"
-
-    # Package everything into a tarball
-    local release_name="TinyClaw-${os}-${arch}.tar.gz"
+  run_with_log "Creating ${release_name}" "${package_log}" \
     tar zcf "${RELEASE_DIR}/${release_name}" -C "${OUTPUT_DIR}" .
 
-    echo "✅ Packaged ${release_name}"
+  script_ok "Packaged ${release_name}"
+  script_kv "Archive" "${RELEASE_DIR}/${release_name}"
 }
 
-# Platforms to compile
-#compile_and_package linux amd64
-#compile_and_package windows amd64
 compile_and_package_local darwin amd64
 compile_and_package_local darwin arm64
 
-# Final cleanup
 rm -rf "${OUTPUT_DIR}"
-echo "✅ Compilation and packaging complete. Output is in ${RELEASE_DIR}"
+
+script_section "Done"
+script_ok "Release packaging completed"
+script_kv "Release dir" "${RELEASE_DIR}"

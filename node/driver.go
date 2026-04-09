@@ -26,28 +26,7 @@ func NewLocalDriver() *LocalDriver {
 }
 
 func (d *LocalDriver) Capabilities() []NodeCapability {
-	return []NodeCapability{
-		{Name: "system.exec", Category: "system", Description: "Execute a command on the paired PC node"},
-		{Name: "fs.list", Category: "fs", Description: "List files in a directory on the paired PC node"},
-		{Name: "fs.read", Category: "fs", Description: "Read a file from the paired PC node"},
-		{Name: "fs.write", Category: "fs", Description: "Write a file on the paired PC node"},
-		{Name: "screen.snapshot", Category: "screen", Description: "Capture a screenshot on the paired PC node"},
-		{Name: "browser.open", Category: "browser", Description: "Open a URL with the default browser"},
-		{Name: "app.launch", Category: "app", Description: "Launch an application on the paired PC node"},
-		{Name: "input.keyboard.type", Category: "input", Description: "Type text into the active window on the paired PC node"},
-		{Name: "input.keyboard.key", Category: "input", Description: "Press a key on the paired PC node"},
-		{Name: "input.keyboard.hotkey", Category: "input", Description: "Trigger a hotkey combination on the paired PC node"},
-		{Name: "input.mouse.move", Category: "input", Description: "Move the mouse cursor on the paired PC node"},
-		{Name: "input.mouse.click", Category: "input", Description: "Click the mouse on the paired PC node"},
-		{Name: "input.mouse.double_click", Category: "input", Description: "Double click the mouse on the paired PC node"},
-		{Name: "input.mouse.right_click", Category: "input", Description: "Right click the mouse on the paired PC node"},
-		{Name: "input.mouse.drag", Category: "input", Description: "Drag the mouse on the paired PC node"},
-		{Name: "window.list", Category: "window", Description: "List desktop windows on the paired PC node"},
-		{Name: "window.focus", Category: "window", Description: "Focus a desktop window on the paired PC node"},
-		{Name: "ui.inspect", Category: "ui", Description: "Inspect the currently focused desktop UI element or a point on screen"},
-		{Name: "ui.find", Category: "ui", Description: "Find desktop UI elements inside the current window on the paired PC node"},
-		{Name: "ui.focus", Category: "ui", Description: "Focus a desktop UI element on the paired PC node"},
-	}
+	return nodeCapabilitiesForRuntime()
 }
 
 func (d *LocalDriver) Execute(ctx context.Context, req NodeCommandRequest) (*NodeCommandResult, error) {
@@ -292,12 +271,15 @@ func (d *LocalDriver) writeFile(req NodeCommandRequest, startedAt int64) (*NodeC
 }
 
 func (d *LocalDriver) snapshot(ctx context.Context, req NodeCommandRequest, startedAt int64) (*NodeCommandResult, error) {
-	target := filepath.Join(os.TempDir(), "tinyclaw-screenshot-"+strconv.FormatInt(time.Now().UnixNano(), 10)+".png")
+	target, captureTarget, err := desktopTempFilePath("tinyclaw-screenshot-" + strconv.FormatInt(time.Now().UnixNano(), 10) + ".png")
+	if err != nil {
+		return nil, err
+	}
 	scope := stringArg(req.Arguments, "scope")
 	if scope == "" {
 		scope = "virtual_desktop"
 	}
-	meta, err := captureScreenshot(ctx, target, scope, req.Arguments)
+	meta, err := captureScreenshot(ctx, target, captureTarget, scope, req.Arguments)
 	if err != nil {
 		return nil, err
 	}
@@ -387,7 +369,7 @@ func (d *LocalDriver) keyboardType(ctx context.Context, req NodeCommandRequest, 
 	if text == "" {
 		return nil, errors.New("input.keyboard.type requires text")
 	}
-	if runtime.GOOS != "windows" {
+	if !supportsWindowsDesktopAutomation() {
 		return nil, errors.New("input.keyboard.type is only supported on windows for now")
 	}
 	if data, err := typeIntoWindowsElement(ctx, req.Arguments); err != nil {
@@ -437,7 +419,7 @@ func (d *LocalDriver) keyboardKey(ctx context.Context, req NodeCommandRequest, s
 	if key == "" {
 		return nil, errors.New("input.keyboard.key requires key")
 	}
-	if runtime.GOOS != "windows" {
+	if !supportsWindowsDesktopAutomation() {
 		return nil, errors.New("input.keyboard.key is only supported on windows for now")
 	}
 	var focusedElement map[string]interface{}
@@ -489,7 +471,7 @@ func (d *LocalDriver) keyboardHotkey(ctx context.Context, req NodeCommandRequest
 	if len(keys) == 0 {
 		return nil, errors.New("input.keyboard.hotkey requires keys")
 	}
-	if runtime.GOOS != "windows" {
+	if !supportsWindowsDesktopAutomation() {
 		return nil, errors.New("input.keyboard.hotkey is only supported on windows for now")
 	}
 
@@ -520,7 +502,7 @@ Add-Type -AssemblyName System.Windows.Forms
 }
 
 func (d *LocalDriver) mouseMove(ctx context.Context, req NodeCommandRequest, startedAt int64) (*NodeCommandResult, error) {
-	if runtime.GOOS != "windows" {
+	if !supportsWindowsDesktopAutomation() {
 		return nil, errors.New("input.mouse.move is only supported on windows for now")
 	}
 	x, okX := rawCoordinate(req.Arguments, "x")
@@ -549,7 +531,7 @@ func (d *LocalDriver) mouseMove(ctx context.Context, req NodeCommandRequest, sta
 }
 
 func (d *LocalDriver) mouseClick(ctx context.Context, req NodeCommandRequest, startedAt int64, mode string) (*NodeCommandResult, error) {
-	if runtime.GOOS != "windows" {
+	if !supportsWindowsDesktopAutomation() {
 		return nil, errors.New("mouse click actions are only supported on windows for now")
 	}
 	button := strings.ToLower(stringArg(req.Arguments, "button"))
@@ -618,7 +600,7 @@ func (d *LocalDriver) mouseClick(ctx context.Context, req NodeCommandRequest, st
 }
 
 func (d *LocalDriver) mouseDrag(ctx context.Context, req NodeCommandRequest, startedAt int64) (*NodeCommandResult, error) {
-	if runtime.GOOS != "windows" {
+	if !supportsWindowsDesktopAutomation() {
 		return nil, errors.New("input.mouse.drag is only supported on windows for now")
 	}
 	fromX, okFromX := rawCoordinate(req.Arguments, "from_x")
@@ -676,7 +658,7 @@ for ($i = 1; $i -le $steps; $i++) {
 }
 
 func (d *LocalDriver) windowList(ctx context.Context, req NodeCommandRequest, startedAt int64) (*NodeCommandResult, error) {
-	if runtime.GOOS != "windows" {
+	if !supportsWindowsDesktopAutomation() {
 		return nil, errors.New("window.list is only supported on windows for now")
 	}
 	items, err := listWindowsDetailed(ctx)
@@ -698,7 +680,7 @@ func (d *LocalDriver) windowList(ctx context.Context, req NodeCommandRequest, st
 }
 
 func (d *LocalDriver) windowFocus(ctx context.Context, req NodeCommandRequest, startedAt int64) (*NodeCommandResult, error) {
-	if runtime.GOOS != "windows" {
+	if !supportsWindowsDesktopAutomation() {
 		return nil, errors.New("window.focus is only supported on windows for now")
 	}
 	title := stringArg(req.Arguments, "title")
@@ -723,7 +705,7 @@ func (d *LocalDriver) windowFocus(ctx context.Context, req NodeCommandRequest, s
 }
 
 func (d *LocalDriver) uiInspect(ctx context.Context, req NodeCommandRequest, startedAt int64) (*NodeCommandResult, error) {
-	if runtime.GOOS != "windows" {
+	if !supportsWindowsDesktopAutomation() {
 		return nil, errors.New("ui.inspect is only supported on windows for now")
 	}
 	data, err := inspectWindowsUI(ctx, req.Arguments)
@@ -742,7 +724,7 @@ func (d *LocalDriver) uiInspect(ctx context.Context, req NodeCommandRequest, sta
 }
 
 func (d *LocalDriver) uiFind(ctx context.Context, req NodeCommandRequest, startedAt int64) (*NodeCommandResult, error) {
-	if runtime.GOOS != "windows" {
+	if !supportsWindowsDesktopAutomation() {
 		return nil, errors.New("ui.find is only supported on windows for now")
 	}
 	data, err := findWindowsUI(ctx, req.Arguments)
@@ -761,7 +743,7 @@ func (d *LocalDriver) uiFind(ctx context.Context, req NodeCommandRequest, starte
 }
 
 func (d *LocalDriver) uiFocus(ctx context.Context, req NodeCommandRequest, startedAt int64) (*NodeCommandResult, error) {
-	if runtime.GOOS != "windows" {
+	if !supportsWindowsDesktopAutomation() {
 		return nil, errors.New("ui.focus is only supported on windows for now")
 	}
 	data, err := focusWindowsElement(ctx, req.Arguments)
@@ -792,10 +774,11 @@ type screenshotMeta struct {
 	Window       *windowMeta `json:"window,omitempty"`
 }
 
-func captureScreenshot(ctx context.Context, target, scope string, args map[string]interface{}) (*screenshotMeta, error) {
+func captureScreenshot(ctx context.Context, target, captureTarget, scope string, args map[string]interface{}) (*screenshotMeta, error) {
+	if supportsWindowsDesktopAutomation() {
+		return captureWindowsScreenshot(ctx, captureTarget, args)
+	}
 	switch runtime.GOOS {
-	case "windows":
-		return captureWindowsScreenshot(ctx, target, args)
 	case "darwin":
 		if err := exec.CommandContext(ctx, "screencapture", "-x", target).Run(); err != nil {
 			return nil, err
@@ -824,6 +807,12 @@ func openURL(ctx context.Context, url string) error {
 	switch runtime.GOOS {
 	case "windows":
 		return exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", url).Start()
+	case "linux":
+		if isWSLRuntime() {
+			_, err := runPowerShell(ctx, `Start-Process '`+escapePowerShellSingleQuoted(url)+`'`)
+			return err
+		}
+		return exec.CommandContext(ctx, "xdg-open", url).Start()
 	case "darwin":
 		return exec.CommandContext(ctx, "open", url).Start()
 	default:
@@ -977,26 +966,42 @@ func inferScreenshotMeta(target, scope string) (*screenshotMeta, error) {
 }
 
 func runPowerShell(ctx context.Context, script string) ([]byte, error) {
-	scriptPath := filepath.Join(os.TempDir(), "tinyclaw-node-"+strconv.FormatInt(time.Now().UnixNano(), 10)+".ps1")
-	content := append([]byte{0xEF, 0xBB, 0xBF}, []byte(script)...)
+	scriptPath, executablePath, err := desktopTempFilePath("tinyclaw-node-" + strconv.FormatInt(time.Now().UnixNano(), 10) + ".ps1")
+	if err != nil {
+		return nil, err
+	}
+	bootstrap := `[Console]::InputEncoding = [System.Text.UTF8Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::UTF8
+$OutputEncoding = [System.Text.UTF8Encoding]::UTF8
+` + "\n" + script
+	content := append([]byte{0xEF, 0xBB, 0xBF}, []byte(bootstrap)...)
 	if err := os.WriteFile(scriptPath, content, 0600); err != nil {
 		return nil, err
 	}
 	defer os.Remove(scriptPath)
 
-	output, err := exec.CommandContext(ctx, "powershell", "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File", scriptPath).CombinedOutput()
+	executable, err := powerShellExecutable()
 	if err != nil {
-		trimmed := strings.TrimSpace(string(output))
-		if trimmed == "" {
-			return nil, err
-		}
-		return nil, fmt.Errorf("%w: %s", err, trimmed)
+		return nil, err
 	}
-	return output, nil
+	output, err := exec.CommandContext(
+		ctx,
+		executable,
+		"-NoProfile",
+		"-STA",
+		"-ExecutionPolicy",
+		"Bypass",
+		"-File",
+		executablePath,
+	).CombinedOutput()
+	if err != nil {
+		return nil, formatCommandError(err, output)
+	}
+	return bytes.TrimPrefix(output, []byte{0xEF, 0xBB, 0xBF}), nil
 }
 
 func decodePowerShellJSON(raw []byte, target interface{}) error {
-	trimmed := bytes.TrimSpace(raw)
+	trimmed := bytes.TrimSpace(bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF}))
 	if len(trimmed) == 0 {
 		return errors.New("empty powershell json output")
 	}
@@ -1012,7 +1017,7 @@ func decodePowerShellJSONObject(raw []byte) (map[string]interface{}, error) {
 }
 
 func decodePowerShellJSONArray(raw []byte) ([]map[string]interface{}, error) {
-	trimmed := bytes.TrimSpace(raw)
+	trimmed := bytes.TrimSpace(bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF}))
 	if len(trimmed) == 0 {
 		return nil, nil
 	}

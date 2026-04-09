@@ -102,6 +102,61 @@ func TestToHotkeySendKeys(t *testing.T) {
 	}
 }
 
+func TestNodeCapabilitiesMatchDesktopAutomationSupport(t *testing.T) {
+	withDesktop := nodeCapabilitiesForRuntime()
+	names := make(map[string]bool, len(withDesktop))
+	for _, capability := range withDesktop {
+		names[capability.Name] = true
+	}
+
+	if !names["screen.snapshot"] || !names["system.exec"] {
+		t.Fatalf("expected base capabilities to always be registered, got %+v", withDesktop)
+	}
+
+	if supportsWindowsDesktopAutomation() {
+		for _, capability := range []string{"input.keyboard.type", "input.mouse.click", "window.list", "ui.find"} {
+			if !names[capability] {
+				t.Fatalf("expected desktop capability %s in %+v", capability, withDesktop)
+			}
+		}
+		return
+	}
+
+	for _, capability := range []string{"input.keyboard.type", "input.mouse.click", "window.list", "ui.find"} {
+		if names[capability] {
+			t.Fatalf("did not expect desktop capability %s in %+v", capability, withDesktop)
+		}
+	}
+}
+
+func TestWSLDesktopScreenshotBridge(t *testing.T) {
+	if !isWSLRuntime() {
+		t.Skip("requires WSL")
+	}
+	if os.Getenv("TINYCLAW_RUN_WSL_INTEGRATION") != "1" {
+		t.Skip("set TINYCLAW_RUN_WSL_INTEGRATION=1 to run WSL integration checks")
+	}
+
+	target, captureTarget, err := desktopTempFilePath("tinyclaw-wsl-screenshot-test.png")
+	if err != nil {
+		t.Fatalf("resolve screenshot target: %v", err)
+	}
+	defer os.Remove(target)
+
+	meta, err := captureScreenshot(context.Background(), target, captureTarget, "primary", map[string]interface{}{
+		"scope": "primary",
+	})
+	if err != nil {
+		t.Fatalf("capture windows screenshot from wsl: %v", err)
+	}
+	if meta == nil || meta.Width <= 0 || meta.Height <= 0 {
+		t.Fatalf("unexpected screenshot meta: %+v", meta)
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("expected screenshot file at %s: %v", target, err)
+	}
+}
+
 func TestStringArgHandlesNumericHandle(t *testing.T) {
 	args := map[string]interface{}{
 		"window_handle": float64(123456),
@@ -112,8 +167,8 @@ func TestStringArgHandlesNumericHandle(t *testing.T) {
 }
 
 func TestLocalDriverExecuteReturnsErrorResultWithoutPanic(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("this regression only manifests on non-windows fallback paths")
+	if supportsWindowsDesktopAutomation() {
+		t.Skip("desktop automation is available in this runtime")
 	}
 	driver := NewLocalDriver()
 	result, err := driver.Execute(context.Background(), NodeCommandRequest{

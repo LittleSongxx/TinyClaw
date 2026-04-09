@@ -1,0 +1,10 @@
+{
+  "gateway_ws": "ws://127.0.0.1:36060/gateway/nodes/ws",
+  "node_token": "",
+  "node_id": "",
+  "node_name": "",
+  "log_dir": "C:\\ProgramData\\TinyClawNode\\logs",
+  "start_at_login": false,
+  "enable_windows_node": true,
+  "wsl_distros": []
+}

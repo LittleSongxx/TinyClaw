@@ -19,6 +19,7 @@ type ToolInvocation struct {
 	Arguments map[string]interface{} `json:"arguments,omitempty"`
 	SessionID string                 `json:"session_id,omitempty"`
 	NodeID    string                 `json:"node_id,omitempty"`
+	UserID    string                 `json:"user_id,omitempty"`
 }
 
 type ToolProvider interface {

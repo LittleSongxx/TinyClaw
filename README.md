@@ -28,10 +28,17 @@ TinyClaw 是一个基于 Go 的 AI Agent / Bot 平台。当前主线架构不再
 
 - `Docker Compose` 负责 TinyClaw 主服务与依赖
 - `tinyclaw-node` 跑在真实 Windows / macOS / Linux 主机上
+- 如果你要同时控制 Windows 桌面和 WSL 工作区，推荐把 `tinyclaw-node` 安装在 Windows 上，再在设置界面里开启一个或多个 WSL 虚拟节点
 - `Gateway` 仍然由主 `app` 服务提供
 - `Session transcript` 默认落在 `data/sessions/`
 
 如果你的目标是“控制真实桌面”，不要把 `tinyclaw-node` 跑在普通容器里替代真实主机。容器里的节点适合协议联调，不适合桌面自动化。
+
+当前节点能力包括：
+
+- 通用 PC 能力：`system.exec`、`fs.list`、`fs.read`、`fs.write`、`screen.snapshot`、`browser.open`、`app.launch`
+- Windows 桌面自动化：键盘、鼠标、窗口和 UI inspect/find/focus
+- WSL 虚拟节点：`wsl.exec`、`wsl.fs.list`、`wsl.fs.read`、`wsl.fs.write`
 
 ## 快速开始
 
@@ -45,6 +52,7 @@ cp deploy/docker/.env.example deploy/docker/.env
 
 - 平台与模型凭据，如 `LARK_APP_ID`、`LARK_APP_SECRET`、`ALIYUN_TOKEN`
 - Gateway / Node 安全参数，如 `GATEWAY_SHARED_SECRET`、`NODE_PAIRING_TOKEN`
+- 可信管理员直通设备操作，如 `PRIVILEGED_USER_IDS`
 - 如果启用默认 MCP，再补 `AMAP_MAPS_API_KEY`、`BOCHA_API_KEY`、`GITHUB_PERSONAL_ACCESS_TOKEN`
 
 2. 启动主服务栈
@@ -61,6 +69,20 @@ cp deploy/docker/.env.example deploy/docker/.env
 ```
 
 4. 在真实 PC 上启动节点
+
+Windows 推荐方式：
+
+```bash
+./scripts/package_tinyclaw_node_windows.sh amd64
+```
+
+然后在 Windows 上安装 `build/release/TinyClawNodeSetup.exe`，通过 `TinyClaw Node Settings` 填写：
+
+- `gateway_ws=ws://127.0.0.1:36060/gateway/nodes/ws`
+- `node_token` 与主服务保持一致
+- 按需启用 Windows 桌面节点和 WSL distro
+
+Linux / macOS 调试方式：
 
 ```bash
 go run ./cmd/tinyclaw-node \
@@ -85,6 +107,7 @@ TinyClaw/
 ├─ http/                  HTTP API 与 Gateway 入口
 ├─ admin/                 管理后台
 ├─ deploy/docker/         Docker 部署文件
+├─ deploy/windows-node/   Windows 节点安装器与配置脚本
 ├─ docs/                  当前主线中文文档
 └─ skills/                本地 SKILL.md 定义
 ```

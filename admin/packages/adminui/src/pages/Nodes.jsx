@@ -53,6 +53,13 @@ function Nodes() {
         [nodes, selectedNodeId]
     );
 
+    const selectedNodeKind = useMemo(() => {
+        if (!selectedNode) {
+            return "";
+        }
+        return selectedNode.metadata?.kind || selectedNode.platform || "";
+    }, [selectedNode]);
+
     const screenshotPreview = useMemo(() => {
         const mimeType = result?.data?.mime_type;
         const base64 = result?.data?.base64;
@@ -63,7 +70,7 @@ function Nodes() {
     }, [result]);
 
     const templates = useMemo(() => {
-        const baseTemplates = [
+        const windowsTemplates = [
             {
                 label: "截取全桌面",
                 capability: "screen.snapshot",
@@ -88,52 +95,92 @@ function Nodes() {
                 requireApproval: false,
                 arguments: { mode: "window_tree", depth: treeDepth },
             },
+            {
+                label: "打开记事本",
+                capability: "app.launch",
+                requireApproval: false,
+                arguments: { command: "notepad.exe" },
+            },
+            {
+                label: "聚焦记事本",
+                capability: "window.focus",
+                requireApproval: false,
+                arguments: { title: "记事本" },
+            },
+            {
+                label: "输入测试文字",
+                capability: "input.keyboard.type",
+                requireApproval: true,
+                arguments: { text: "Hello from TinyClaw" },
+            },
+            {
+                label: "发送 Ctrl+S",
+                capability: "input.keyboard.hotkey",
+                requireApproval: true,
+                arguments: { keys: ["CTRL", "S"] },
+            },
+            {
+                label: "单击屏幕中心",
+                capability: "input.mouse.click",
+                requireApproval: true,
+                arguments: { x: 960, y: 540, button: "left", clicks: 1 },
+            },
+            {
+                label: "查找保存按钮",
+                capability: "ui.find",
+                requireApproval: false,
+                arguments: { name: "保存", role: "button", max_results: 5 },
+            },
         ];
 
-        if (selectedNode?.platform === "windows") {
-            return [
-                ...baseTemplates,
-                {
-                    label: "打开记事本",
-                    capability: "app.launch",
-                    requireApproval: false,
-                    arguments: { command: "notepad.exe" },
-                },
-                {
-                    label: "聚焦记事本",
-                    capability: "window.focus",
-                    requireApproval: false,
-                    arguments: { title: "记事本" },
-                },
-                {
-                    label: "输入测试文字",
-                    capability: "input.keyboard.type",
-                    requireApproval: true,
-                    arguments: { text: "Hello from TinyClaw" },
-                },
-                {
-                    label: "发送 Ctrl+S",
-                    capability: "input.keyboard.hotkey",
-                    requireApproval: true,
-                    arguments: { keys: ["CTRL", "S"] },
-                },
-                {
-                    label: "单击屏幕中心",
-                    capability: "input.mouse.click",
-                    requireApproval: true,
-                    arguments: { x: 960, y: 540, button: "left", clicks: 1 },
-                },
-                {
-                    label: "查找保存按钮",
-                    capability: "ui.find",
-                    requireApproval: false,
-                    arguments: { name: "保存", role: "button", max_results: 5 },
-                },
-            ];
+        const wslTemplates = [
+            {
+                label: "查看当前目录",
+                capability: "wsl.exec",
+                requireApproval: true,
+                arguments: { command: "pwd && ls -la" },
+            },
+            {
+                label: "查看系统信息",
+                capability: "wsl.exec",
+                requireApproval: true,
+                arguments: { command: "uname -a" },
+            },
+            {
+                label: "查看 Git 状态",
+                capability: "wsl.exec",
+                requireApproval: true,
+                arguments: { command: "git status --short --branch" },
+            },
+            {
+                label: "列 Linux 目录",
+                capability: "wsl.fs.list",
+                requireApproval: false,
+                arguments: { path: "." },
+            },
+            {
+                label: "读 ~/.bashrc",
+                capability: "wsl.fs.read",
+                requireApproval: false,
+                arguments: { path: "~/.bashrc" },
+            },
+            {
+                label: "写测试文件",
+                capability: "wsl.fs.write",
+                requireApproval: true,
+                arguments: { path: "/tmp/tinyclaw-note.txt", content: "hello from tinyclaw\n" },
+            },
+        ];
+
+        if (selectedNodeKind === "windows") {
+            return windowsTemplates;
+        }
+
+        if (selectedNodeKind === "wsl") {
+            return wslTemplates;
         }
 
         return [
-            ...baseTemplates,
             {
                 label: "列当前目录",
                 capability: "fs.list",
@@ -141,7 +188,7 @@ function Nodes() {
                 arguments: { path: "." },
             },
         ];
-    }, [selectedNode?.platform, treeDepth]);
+    }, [selectedNodeKind, treeDepth]);
 
     const fetchGatewayState = async (botId) => {
         setLoading(true);
@@ -440,8 +487,11 @@ function Nodes() {
                                             <div className="mt-1 text-xs text-slate-500 break-all">node_id: {item.id}</div>
                                         </div>
                                         <div className="text-xs text-slate-600">
+                                            <div>kind: {item.metadata?.kind || item.platform || "-"}</div>
                                             <div>platform: {item.platform || "-"}</div>
                                             <div>hostname: {item.hostname || "-"}</div>
+                                            {item.metadata?.wsl_distro && <div>wsl distro: {item.metadata.wsl_distro}</div>}
+                                            {item.metadata?.parent_node_id && <div>parent: {item.metadata.parent_node_id}</div>}
                                             <div>last_seen: {formatUnix(item.last_seen_at)}</div>
                                         </div>
                                     </div>
@@ -509,7 +559,11 @@ function Nodes() {
             <section className="grid gap-6 xl:grid-cols-[0.9fr,1.1fr]">
                 <div className="rounded-xl bg-white p-6 shadow space-y-4">
                     <h2 className="text-lg font-semibold text-gray-900">{t("quick_actions")}</h2>
-                    <p className="text-sm text-gray-600">这里保留了节点可视化入口，同时把活动窗口截图、UIA 树和元素调试也接进来了。</p>
+                    <p className="text-sm text-gray-600">
+                        {selectedNodeKind === "wsl"
+                            ? "当前选中的是 WSL 虚拟节点，优先用它做 Git、构建、包管理和 Linux 文件操作。桌面截图、窗口控制和 UIA 调试请切回 Windows 节点。"
+                            : "这里保留了节点可视化入口，同时把活动窗口截图、UIA 树和元素调试也接进来了。"}
+                    </p>
                     <div className="grid gap-3 md:grid-cols-2">
                         {templates.map((template) => (
                             <div key={template.label} className="rounded-xl border border-slate-200 p-4">

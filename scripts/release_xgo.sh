@@ -2,88 +2,76 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+
+SCRIPT_HINT_CMD="./scripts/release_xgo.sh"
+SCRIPT_RUN_ID="${SCRIPT_RUN_ID:-$(date +%Y%m%d-%H%M%S)}"
+
 BUILD_ROOT="${REPO_ROOT}/build"
 OUTPUT_DIR="${BUILD_ROOT}/output"
 RELEASE_DIR="${BUILD_ROOT}/release"
 
 cd "${REPO_ROOT}"
+ensure_script_log_dir
 
-# Clean up old files
+script_section "Preparing Release Workspace"
 rm -rf "${OUTPUT_DIR}" "${RELEASE_DIR}"
 mkdir -p "${OUTPUT_DIR}" "${RELEASE_DIR}"
+script_ok "Release workspace is ready"
 
-# Check if xgo is installed
-if ! command -v xgo &> /dev/null; then
-    echo "Installing xgo..."
+if ! command -v xgo >/dev/null 2>&1; then
+  install_log="${SCRIPT_LOG_DIR}/${SCRIPT_RUN_ID}-install-xgo.log"
+  run_with_log "Installing xgo" "${install_log}" \
     go install src.techknowlogick.com/xgo@latest
 fi
 
-# Build the admin binary (locally for the specified platform)
 build_admin_local() {
-    local os=$1
-    local arch=$2
-    local ext=""
-    [[ "$os" == "windows" ]] && ext=".exe"
+  local os="$1"
+  local arch="$2"
+  local log_file="${SCRIPT_LOG_DIR}/${SCRIPT_RUN_ID}-release-xgo-admin-${os}-${arch}.log"
 
-    local admin_output="TinyClawAdmin"
-
-    echo "=============================="
-    echo "Building admin [$os/$arch] using go build..."
-    echo "=============================="
-    xgo -out "$admin_output" -targets="$os/$arch" --hooksdir=./admin/shell ./admin
+  run_with_log "Building TinyClawAdmin for ${os}/${arch} with xgo" "${log_file}" \
+    xgo -out TinyClawAdmin -targets="${os}/${arch}" --hooksdir=./admin/shell ./admin
 }
 
-# Build main binary + package everything
 compile_and_package() {
-    local os=$1
-    local arch=$2
-    local ext=""
-    [[ "$os" == "windows" ]] && ext=".exe"
+  local os="$1"
+  local arch="$2"
+  local ext=""
+  local build_log="${SCRIPT_LOG_DIR}/${SCRIPT_RUN_ID}-release-xgo-${os}-${arch}.log"
+  local package_log="${SCRIPT_LOG_DIR}/${SCRIPT_RUN_ID}-release-xgo-package-${os}-${arch}.log"
+  local release_name="TinyClaw-${os}-${arch}.tar.gz"
 
-    echo "=============================="
-    echo "Building TinyClaw [$os/$arch] using xgo..."
-    echo "=============================="
+  [[ "${os}" == "windows" ]] && ext=".exe"
 
-    # Build the main bot binary
-    xgo -out TinyClaw -targets="$os/$arch" ./cmd/tinyclaw
+  script_section "Packaging ${os}/${arch}"
+  run_with_log "Building TinyClaw for ${os}/${arch} with xgo" "${build_log}" \
+    xgo -out TinyClaw -targets="${os}/${arch}" ./cmd/tinyclaw
 
-    # Build admin binary
-    build_admin_local $os $arch
+  build_admin_local "${os}" "${arch}"
 
-    local bot_binary="TinyClaw$ext"
-    local admin_binary="TinyClawAdmin$ext"
-    local release_name="TinyClaw-${os}-${arch}.tar.gz"
+  mv "./TinyClaw-${os}"* "${OUTPUT_DIR}/TinyClaw${ext}"
+  mv "./TinyClawAdmin-${os}"* "${OUTPUT_DIR}/TinyClawAdmin${ext}"
 
-    # Move compiled binaries to output
-    mv ./TinyClaw-${os}* "${OUTPUT_DIR}/${bot_binary}"
-    mv ./TinyClawAdmin-${os}* "${OUTPUT_DIR}/${admin_binary}"
+  mkdir -p "${OUTPUT_DIR}/conf" "${OUTPUT_DIR}/data"
+  cp -r ./conf/i18n "${OUTPUT_DIR}/conf/"
+  cp -r ./conf/mcp "${OUTPUT_DIR}/conf/"
+  cp -r ./conf/img "${OUTPUT_DIR}/conf/"
 
-    # Copy config files
-    mkdir -p "${OUTPUT_DIR}/conf/"
-    cp -r ./conf/i18n "${OUTPUT_DIR}/conf/"
-    cp -r ./conf/mcp "${OUTPUT_DIR}/conf/"
-    cp -r ./conf/img "${OUTPUT_DIR}/conf/"
-    mkdir -p "${OUTPUT_DIR}/data/"
-
-    # Copy admin UI files
-    mkdir -p "${OUTPUT_DIR}/adminui/"
-    cp -r ./admin/adminui/* "${OUTPUT_DIR}/adminui/"
-
-    # Package everything into a tarball
+  run_with_log "Creating ${release_name}" "${package_log}" \
     tar zcf "${RELEASE_DIR}/${release_name}" -C "${OUTPUT_DIR}" .
 
-    # Clean up intermediate files
-    rm -rf "${OUTPUT_DIR}"/* ./github.com/*
+  rm -rf "${OUTPUT_DIR}"/* ./github.com/*
+
+  script_ok "Packaged ${release_name}"
+  script_kv "Archive" "${RELEASE_DIR}/${release_name}"
 }
 
-# Platforms to compile (uncomment Windows if needed)
 compile_and_package linux amd64
 compile_and_package windows amd64
-#compile_and_package darwin amd64
-#compile_and_package darwin arm64
 
-# Final cleanup
 rm -rf "${OUTPUT_DIR}"
-echo "✅ Compilation and packaging complete. Output is in ${RELEASE_DIR}"
+
+script_section "Done"
+script_ok "xgo release packaging completed"
+script_kv "Release dir" "${RELEASE_DIR}"

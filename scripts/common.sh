@@ -10,6 +10,7 @@ PUBLIC_URL_FILE="${DEPLOY_DIR}/public_url.txt"
 DATA_DIR="${REPO_ROOT}/data"
 LOG_DIR="${REPO_ROOT}/log"
 WINDOWS_DOCKER="/mnt/c/Program Files/Docker/Docker/resources/bin/docker.exe"
+SCRIPT_LOG_DIR="${LOG_DIR}/scripts"
 
 source_env_file() {
   local env_file="$1"
@@ -42,6 +43,68 @@ resolve_docker_backend() {
 
   echo "Docker daemon is unavailable. Start Docker Desktop and ensure WSL integration is enabled." >&2
   exit 1
+}
+
+ensure_script_log_dir() {
+  mkdir -p "${LOG_DIR}" "${SCRIPT_LOG_DIR}"
+}
+
+script_info() {
+  printf '[info] %s\n' "$1"
+}
+
+script_ok() {
+  printf '[ok] %s\n' "$1"
+}
+
+script_warn() {
+  printf '[warn] %s\n' "$1" >&2
+}
+
+script_error() {
+  printf '[error] %s\n' "$1" >&2
+}
+
+script_section() {
+  printf '\n== %s ==\n' "$1"
+}
+
+script_kv() {
+  printf '  %-14s %s\n' "$1" "$2"
+}
+
+run_with_log() {
+  local title="$1"
+  local logfile="$2"
+  shift 2
+
+  ensure_script_log_dir
+  script_info "${title}"
+
+  if [[ "${SCRIPT_VERBOSE:-false}" == "true" ]]; then
+    if ! "$@"; then
+      script_error "${title}"
+      echo "Tip: rerun with SCRIPT_VERBOSE=true ${SCRIPT_HINT_CMD:-$0}" >&2
+      return 1
+    fi
+  else
+    if ! "$@" >"${logfile}" 2>&1; then
+      script_error "${title}"
+      echo "Last 60 lines from ${logfile}:" >&2
+      tail -n 60 "${logfile}" >&2 || true
+      echo "Full log: ${logfile}" >&2
+      echo "Tip: rerun with SCRIPT_VERBOSE=true ${SCRIPT_HINT_CMD:-$0}" >&2
+      return 1
+    fi
+  fi
+
+  script_ok "${title}"
+}
+
+compose_status_table() {
+  if ! docker_compose ps --format 'table {{.Service}}\t{{.Status}}'; then
+    docker_compose ps
+  fi
 }
 
 docker_compose() {

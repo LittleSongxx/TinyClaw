@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+log() {
+  printf '[boot] %s\n' "$1"
+}
+
 mkdir -p /app/data/mcp/memory /app/data/mcp/arxiv /app/data/sessions
 
 wait_for_http() {
@@ -98,9 +102,11 @@ http_status() {
 
 if [[ -n "${POSTGRES_DSN:-}" && -n "${REDIS_ADDR:-}" && -n "${MINIO_ENDPOINT:-}" ]]; then
   read -r postgres_host postgres_port < <(split_host_port "${POSTGRES_DSN}" "5432")
+  log "Waiting for PostgreSQL"
   wait_for_tcp "PostgreSQL" "${postgres_host}" "${postgres_port}"
 
   read -r redis_host redis_port < <(split_host_port "${REDIS_ADDR}" "6379")
+  log "Waiting for Redis"
   wait_for_tcp "Redis" "${redis_host}" "${redis_port}"
 
   read -r minio_host minio_port < <(split_host_port "${MINIO_ENDPOINT}" "9000")
@@ -108,19 +114,24 @@ if [[ -n "${POSTGRES_DSN:-}" && -n "${REDIS_ADDR:-}" && -n "${MINIO_ENDPOINT:-}"
   if [[ "${MINIO_USE_SSL:-false}" == "true" ]]; then
     minio_scheme="https"
   fi
+  log "Waiting for MinIO"
   wait_for_http "MinIO" "${minio_scheme}://${minio_host}:${minio_port}/minio/health/live" "200"
 fi
 
 if [[ "${EMBEDDING_TYPE:-}" == "huggingface" && -n "${EMBEDDING_BASE_URL:-}" ]]; then
+  log "Waiting for HF embeddings"
   wait_for_http "HF embeddings" "${EMBEDDING_BASE_URL%/}/health" "200"
 fi
 
 if [[ "${VECTOR_DB_TYPE:-}" == "milvus" ]]; then
+  log "Waiting for Milvus"
   wait_for_http "Milvus" "http://milvus:9091/healthz" "200"
 fi
 
 if [[ "${USE_TOOLS:-false}" == "true" ]]; then
+  log "Waiting for Playwright MCP"
   wait_for_http "Playwright MCP" "http://playwright-mcp:8931/mcp" "200,400,405"
 fi
 
+log "Starting TinyClaw"
 exec /app/TinyClaw

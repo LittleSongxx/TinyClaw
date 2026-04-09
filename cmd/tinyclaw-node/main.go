@@ -2,130 +2,66 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"flag"
+	"fmt"
 	"os"
 	"os/signal"
-	"runtime"
+	"path/filepath"
 	"sync"
-	"time"
 
-	"github.com/LittleSongxx/TinyClaw/gateway"
 	"github.com/LittleSongxx/TinyClaw/logger"
-	"github.com/LittleSongxx/TinyClaw/node"
 	"github.com/gorilla/websocket"
 )
 
 func main() {
-	logger.InitLogger()
-
-	gatewayWS := flag.String("gateway_ws", "ws://127.0.0.1:36060/gateway/nodes/ws", "gateway node websocket endpoint")
-	nodeID := flag.String("node_id", "", "node id")
-	nodeName := flag.String("node_name", "", "node name")
-	nodeToken := flag.String("node_token", os.Getenv("NODE_PAIRING_TOKEN"), "node pairing token")
-	flag.Parse()
-
-	if *nodeID == "" {
-		hostname, _ := os.Hostname()
-		*nodeID = hostname
-		if *nodeName == "" {
-			*nodeName = hostname
-		}
+	opts, explicit, err := parseCLIOptions()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
 	}
 
-	driver := node.NewLocalDriver()
-	descriptor := &node.NodeDescriptor{
-		ID:           *nodeID,
-		Name:         *nodeName,
-		Platform:     runtime.GOOS,
-		Hostname:     hostName(),
-		Version:      "v0.1.0",
-		Capabilities: driver.Capabilities(),
+	if opts.Configure {
+		if err := runConfigureMode(opts.ConfigPath); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	for {
-		if err := runNode(ctx, *gatewayWS, *nodeToken, descriptor, driver); err != nil {
-			logger.Warn("tinyclaw-node disconnected, retrying", "err", err)
-		}
-
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(3 * time.Second):
-		}
-	}
-}
-
-func runNode(ctx context.Context, gatewayWS, token string, descriptor *node.NodeDescriptor, driver *node.LocalDriver) error {
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, gatewayWS, nil)
+	cfg, err := resolveProcessConfig(ctx, opts, explicit)
 	if err != nil {
-		return err
-	}
-	defer conn.Close()
-	var writeMu sync.Mutex
-
-	connectFrame := gateway.NewConnectFrame("node", token, descriptor)
-	if err := writeJSON(&writeMu, conn, connectFrame); err != nil {
-		return err
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
-	heartbeatTicker := time.NewTicker(15 * time.Second)
-	defer heartbeatTicker.Stop()
+	logger.InitLoggerWithFile(filepath.Join(cfg.LogDir, "tiny_claw.log"))
 
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-heartbeatTicker.C:
-				frame, err := gateway.NewEventFrame("node.heartbeat", map[string]interface{}{
-					"node_id": descriptor.ID,
-				})
-				if err == nil {
-					_ = writeJSON(&writeMu, conn, frame)
-				}
-			}
-		}
-	}()
-
-	for {
-		var request gateway.RequestFrame
-		if err := conn.ReadJSON(&request); err != nil {
-			return err
-		}
-		if request.Action != "node.command" {
-			response, respErr := gateway.NewResponseFrame(request.ID, false, nil, "unsupported node action")
-			if respErr == nil {
-				_ = writeJSON(&writeMu, conn, response)
-			}
-			continue
-		}
-
-		var command node.NodeCommandRequest
-		if err := json.Unmarshal(request.Payload, &command); err != nil {
-			response, respErr := gateway.NewResponseFrame(request.ID, false, nil, err.Error())
-			if respErr == nil {
-				_ = writeJSON(&writeMu, conn, response)
-			}
-			continue
-		}
-		if command.ID == "" {
-			command.ID = request.ID
-		}
-		command.NodeID = descriptor.ID
-
-		result, execErr := driver.Execute(ctx, command)
-		response, respErr := gateway.NewResponseFrame(request.ID, execErr == nil, result, errorText(execErr))
-		if respErr != nil {
-			return respErr
-		}
-		if err := writeJSON(&writeMu, conn, response); err != nil {
-			return err
-		}
+	instances, err := buildNodeInstances(ctx, cfg)
+	if err != nil {
+		logger.Error("build node instances failed", "err", err)
+		os.Exit(1)
 	}
+
+	logger.Info("tinyclaw-node starting",
+		"gateway_ws", cfg.GatewayWS,
+		"instances", len(instances),
+		"windows_enabled", cfg.EnableWindowsNode,
+	)
+
+	var waitGroup sync.WaitGroup
+	for _, instance := range instances {
+		waitGroup.Add(1)
+		go func(current nodeInstance) {
+			defer waitGroup.Done()
+			runNodeLoop(ctx, cfg.GatewayWS, cfg.NodeToken, current)
+		}(instance)
+	}
+
+	<-ctx.Done()
+	logger.Info("tinyclaw-node shutting down")
+	waitGroup.Wait()
 }
 
 func hostName() string {

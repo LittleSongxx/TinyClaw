@@ -87,8 +87,9 @@ type BaseConf struct {
 	KeyFile string `json:"key_file"`
 	CaFile  string `json:"ca_file"`
 
-	AllowedUserIds  map[string]bool `json:"allowed_user_ids"`
-	AllowedGroupIds map[string]bool `json:"allowed_group_ids"`
+	AllowedUserIds    map[string]bool `json:"allowed_user_ids"`
+	AllowedGroupIds   map[string]bool `json:"allowed_group_ids"`
+	PrivilegedUserIds map[string]bool `json:"privileged_user_ids"`
 }
 
 var (
@@ -99,7 +100,7 @@ var (
 func InitConf() {
 	BaseConfInfo.StartTime = time.Now().Unix()
 	if loadConf() {
-		logConf("", "")
+		logConf("", "", "")
 		return
 	}
 
@@ -174,9 +175,11 @@ func InitConf() {
 
 	allowedUserIds := flag.String("allowed_user_ids", "", "allowed user ids")
 	allowedGroupIds := flag.String("allowed_group_ids", "", "allowed group ids")
+	privilegedUserIds := flag.String("privileged_user_ids", "", "privileged user ids")
 
 	BaseConfInfo.AllowedUserIds = make(map[string]bool)
 	BaseConfInfo.AllowedGroupIds = make(map[string]bool)
+	BaseConfInfo.PrivilegedUserIds = make(map[string]bool)
 
 	InitLLMConf()
 	InitPhotoConf()
@@ -325,6 +328,10 @@ func InitConf() {
 		*allowedGroupIds = os.Getenv("ALLOWED_GROUP_IDS")
 	}
 
+	if os.Getenv("PRIVILEGED_USER_IDS") != "" {
+		*privilegedUserIds = os.Getenv("PRIVILEGED_USER_IDS")
+	}
+
 	if os.Getenv("LLM_PROXY") != "" {
 		BaseConfInfo.LLMProxy = os.Getenv("LLM_PROXY")
 	}
@@ -461,12 +468,12 @@ func InitConf() {
 	EnvVideoConf()
 	EnvRegisterConf()
 
-	logConf(*allowedUserIds, *allowedGroupIds)
+	logConf(*allowedUserIds, *allowedGroupIds, *privilegedUserIds)
 	SaveConf()
 
 }
 
-func logConf(allowedUserIds, allowedGroupIds string) {
+func logConf(allowedUserIds, allowedGroupIds, privilegedUserIds string) {
 	for _, userIdStr := range strings.Split(allowedUserIds, ",") {
 		if userIdStr == "" {
 			continue
@@ -479,6 +486,14 @@ func logConf(allowedUserIds, allowedGroupIds string) {
 			continue
 		}
 		BaseConfInfo.AllowedGroupIds[groupIdStr] = true
+	}
+
+	for _, userIdStr := range strings.Split(privilegedUserIds, ",") {
+		userIdStr = strings.TrimSpace(userIdStr)
+		if userIdStr == "" {
+			continue
+		}
+		BaseConfInfo.PrivilegedUserIds[userIdStr] = true
 	}
 
 	logger.Info("CONF", "TelegramBotToken", maskSecret(BaseConfInfo.TelegramBotToken))
@@ -514,6 +529,7 @@ func logConf(allowedUserIds, allowedGroupIds string) {
 	logger.Info("CONF", "DBConf", maskMaybeDSN(BaseConfInfo.DBConf))
 	logger.Info("CONF", "AllowedUserIdsCount", len(BaseConfInfo.AllowedUserIds))
 	logger.Info("CONF", "AllowedGroupIdsCount", len(BaseConfInfo.AllowedGroupIds))
+	logger.Info("CONF", "PrivilegedUserIdsCount", len(BaseConfInfo.PrivilegedUserIds))
 	logger.Info("CONF", "LLMProxy", BaseConfInfo.LLMProxy)
 	logger.Info("CONF", "RobotProxy", BaseConfInfo.RobotProxy)
 	logger.Info("CONF", "Lang", BaseConfInfo.Lang)
@@ -632,6 +648,17 @@ func logConf(allowedUserIds, allowedGroupIds string) {
 	logger.Info("LLM_CONF", "TopLogProbs", LLMConfInfo.TopLogProbs)
 
 	logger.Info("TOOLS_CONF", "McpConfPath", *ToolsConfInfo.McpConfPath)
+}
+
+func IsPrivilegedUser(userID string) bool {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return false
+	}
+	if BaseConfInfo == nil || len(BaseConfInfo.PrivilegedUserIds) == 0 {
+		return false
+	}
+	return BaseConfInfo.PrivilegedUserIds[userID]
 }
 
 func GetAbsPath(relPath string) string {

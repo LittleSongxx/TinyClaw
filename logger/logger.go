@@ -4,8 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -20,6 +22,11 @@ type LoggerInfo struct {
 
 type QQLoggerInfo struct {
 	logger zerolog.Logger
+}
+
+type Options struct {
+	LogFilePath  string
+	EnableStdout bool
 }
 
 var (
@@ -42,8 +49,27 @@ var QQLogger = new(QQLoggerInfo)
 
 // InitLogger init logger
 func InitLogger() {
+	InitLoggerWithOptions(Options{})
+}
+
+func InitLoggerWithFile(logFilePath string) {
+	InitLoggerWithOptions(Options{LogFilePath: logFilePath})
+}
+
+func InitLoggerWithOptions(options Options) {
+	logFilePath := strings.TrimSpace(options.LogFilePath)
+	if logFilePath == "" {
+		logFilePath = strings.TrimSpace(os.Getenv("LOG_FILE"))
+	}
+	if logFilePath == "" {
+		logFilePath = "./log/tiny_claw.log"
+	}
+	if err := os.MkdirAll(filepath.Dir(logFilePath), 0755); err != nil {
+		fmt.Println("create log dir fail:", err)
+	}
+
 	fileWriter := &lumberjack.Logger{
-		Filename:   "./log/tiny_claw.log",
+		Filename:   logFilePath,
 		MaxSize:    100,
 		MaxBackups: 10,
 		MaxAge:     30,
@@ -56,7 +82,13 @@ func InitLogger() {
 		FormatLevel: Logger.ColorFormatLevel,
 	}
 
-	Logger.logger = zerolog.New(zerolog.MultiLevelWriter(fileWriter, stdoutWriter)).With().
+	writers := []io.Writer{fileWriter}
+	enableStdout := options.EnableStdout || os.Getenv("LOG_STDOUT") != "0"
+	if enableStdout {
+		writers = append(writers, stdoutWriter)
+	}
+
+	Logger.logger = zerolog.New(zerolog.MultiLevelWriter(writers...)).With().
 		Timestamp().
 		Logger()
 	QQLogger.logger = Logger.logger
