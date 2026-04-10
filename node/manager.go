@@ -431,14 +431,14 @@ func (m *Manager) DecideApproval(ctx context.Context, decision ApprovalDecision)
 
 	if mode == ApprovalModeAllowSession {
 		grant := ApprovalGrant{
-			ID:         approval.ID,
+			ID:          approval.ID,
 			WorkspaceID: approval.WorkspaceID,
-			SessionID:  approval.SessionID,
-			UserID:     approval.UserID,
-			NodeID:     approval.NodeID,
-			Capability: approval.Capability,
-			Mode:       mode,
-			Summary:    approval.Summary,
+			SessionID:   approval.SessionID,
+			UserID:      approval.UserID,
+			NodeID:      approval.NodeID,
+			Capability:  approval.Capability,
+			Mode:        mode,
+			Summary:     approval.Summary,
 			Binding: ApprovalBinding{
 				WorkspaceID:    approval.Binding.WorkspaceID,
 				SessionID:      approval.Binding.SessionID,
@@ -463,8 +463,8 @@ func (m *Manager) DecideApproval(ctx context.Context, decision ApprovalDecision)
 
 	target, err := m.pickNode(NodeCommandRequest{
 		WorkspaceID: approval.WorkspaceID,
-		NodeID:     approval.NodeID,
-		Capability: approval.Capability,
+		NodeID:      approval.NodeID,
+		Capability:  approval.Capability,
 	})
 	if err != nil {
 		m.emit(ActionEvent{

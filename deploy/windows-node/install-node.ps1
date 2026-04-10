@@ -69,7 +69,8 @@ function Initialize-Config {
 
     $config = Get-Content -LiteralPath $TemplatePath -Raw -Encoding UTF8 | ConvertFrom-Json
     $machineName = [Environment]::MachineName
-    $config.node_id = $machineName
+    $config.workspace_id = "default"
+    $config.device_id = $machineName
     $config.node_name = $machineName
     $config.log_dir = "$env:ProgramData\TinyClawNode\logs"
     $config.wsl_distros = @()

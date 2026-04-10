@@ -16,9 +16,9 @@ type SessionConf struct {
 }
 
 type NodeRuntimeConf struct {
-	Enabled                  bool   `json:"enabled"`
-	LegacyNodeTokenPresent   bool   `json:"-"`
-	DefaultCommandTimeoutSec int    `json:"default_command_timeout_sec"`
+	Enabled                  bool `json:"enabled"`
+	LegacyNodeTokenPresent   bool `json:"-"`
+	DefaultCommandTimeoutSec int  `json:"default_command_timeout_sec"`
 }
 
 type RuntimeConfig struct {

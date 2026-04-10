@@ -1,7 +1,11 @@
 {
   "gateway_ws": "ws://127.0.0.1:36060/gateway/nodes/ws",
-  "node_token": "",
-  "node_id": "",
+  "workspace_id": "default",
+  "device_id": "",
+  "device_token": "",
+  "private_key": "",
+  "public_key": "",
+  "pairing_code": "",
   "node_name": "",
   "log_dir": "C:\\ProgramData\\TinyClawNode\\logs",
   "start_at_login": false,

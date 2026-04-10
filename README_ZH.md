@@ -107,8 +107,8 @@ cp deploy/docker/.env.example deploy/docker/.env
 - 平台凭据：`LARK_APP_ID`、`LARK_APP_SECRET`
 - 模型凭据：`ALIYUN_TOKEN`
 - Gateway 安全：`GATEWAY_SHARED_SECRET`
-- Node 配对：`NODE_PAIRING_TOKEN`
-- 可信管理员直通设备操作：`PRIVILEGED_USER_IDS`
+- Node 配对：通过 `devices.bootstrap` 生成短期 pairing code，节点审批后写入 `device_token`；`doctor.run` 可检查配置健康度
+- Workspace 管理员：迁移阶段会把 `PRIVILEGED_USER_IDS` 写入默认 workspace owner，运行时授权使用 actor token + workspace role
 - Session transcript 路径：`SESSION_TRANSCRIPT_DIR`
 
 一个最小示例：
@@ -132,7 +132,6 @@ LARK_APP_SECRET=your_lark_app_secret
 ALIYUN_TOKEN=your_qwen_api_key
 
 GATEWAY_SHARED_SECRET=replace-with-a-strong-secret
-NODE_PAIRING_TOKEN=replace-with-a-strong-node-token
 SESSION_TRANSCRIPT_DIR=/app/data/sessions
 ```
 
@@ -174,17 +173,21 @@ Windows 推荐方式：
 然后在 Windows 上安装 `build/release/TinyClawNodeSetup.exe`，通过 `TinyClaw Node Settings` 填写：
 
 - `gateway_ws=ws://127.0.0.1:36060/gateway/nodes/ws`
-- `node_token` 与主服务侧 `NODE_PAIRING_TOKEN` 保持一致
+- `workspace_id=default`
+- `device_id`；节点密钥会自动生成并持久化
+- 初次配对时填写 10 分钟有效的 `pairing_code`；管理员审批后保存一次性展示的 `device_token`
 - 勾选 Windows desktop node
 - 按需启用 `Ubuntu-22.04` 等 WSL distro，并填写 `default_cwd`
 
 Linux / macOS 开发调试：
 
 ```bash
-export NODE_PAIRING_TOKEN=replace-with-the-same-token
+export TINYCLAW_PAIRING_CODE=pair_10_minute_code
 go run ./cmd/tinyclaw-node \
   --gateway_ws ws://127.0.0.1:36060/gateway/nodes/ws \
-  --node_token "$NODE_PAIRING_TOKEN"
+  --workspace_id default \
+  --device_id "$(hostname)" \
+  --pairing_code "$TINYCLAW_PAIRING_CODE"
 ```
 
 ## 当前新增接口

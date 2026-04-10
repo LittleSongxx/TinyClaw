@@ -109,7 +109,7 @@ func TestExecMcpReqUsesRuntimeToolBroker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execute runtime tool: %v", err)
 	}
-	if !strings.Contains(output, `"success":true`) || !strings.Contains(output, `https://example.com`) {
+	if !strings.Contains(output, "confirmation") && !strings.Contains(output, "确认") {
 		t.Fatalf("unexpected runtime tool output: %s", output)
 	}
 }

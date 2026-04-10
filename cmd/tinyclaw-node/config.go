@@ -19,20 +19,20 @@ import (
 )
 
 type processConfig struct {
-	GatewayWS         string            `json:"gateway_ws"`
-	WorkspaceID       string            `json:"workspace_id"`
-	DeviceID          string            `json:"device_id"`
-	DeviceToken       string            `json:"device_token"`
-	PrivateKey        string            `json:"private_key"`
-	PublicKey         string            `json:"public_key"`
-	PairingCode       string            `json:"pairing_code,omitempty"`
-	NodeName          string            `json:"node_name"`
-	DeprecatedNodeID  string            `json:"-"`
-	DeprecatedNodeToken string          `json:"-"`
-	LogDir            string            `json:"log_dir"`
-	StartAtLogin      bool              `json:"start_at_login"`
-	EnableWindowsNode bool              `json:"enable_windows_node"`
-	WSLDistros        []wslDistroConfig `json:"wsl_distros"`
+	GatewayWS           string            `json:"gateway_ws"`
+	WorkspaceID         string            `json:"workspace_id"`
+	DeviceID            string            `json:"device_id"`
+	DeviceToken         string            `json:"device_token"`
+	PrivateKey          string            `json:"private_key"`
+	PublicKey           string            `json:"public_key"`
+	PairingCode         string            `json:"pairing_code,omitempty"`
+	NodeName            string            `json:"node_name"`
+	DeprecatedNodeID    string            `json:"-"`
+	DeprecatedNodeToken string            `json:"-"`
+	LogDir              string            `json:"log_dir"`
+	StartAtLogin        bool              `json:"start_at_login"`
+	EnableWindowsNode   bool              `json:"enable_windows_node"`
+	WSLDistros          []wslDistroConfig `json:"wsl_distros"`
 }
 
 type wslDistroConfig struct {
@@ -44,29 +44,29 @@ type wslDistroConfig struct {
 }
 
 type fileProcessConfig struct {
-	GatewayWS         *string           `json:"gateway_ws"`
-	WorkspaceID       *string           `json:"workspace_id"`
-	DeviceID          *string           `json:"device_id"`
-	DeviceToken       *string           `json:"device_token"`
-	PrivateKey        *string           `json:"private_key"`
-	PublicKey         *string           `json:"public_key"`
-	PairingCode       *string           `json:"pairing_code"`
-	DeprecatedNodeToken *string         `json:"node_token"`
-	DeprecatedNodeID  *string           `json:"node_id"`
-	NodeName          *string           `json:"node_name"`
-	LogDir            *string           `json:"log_dir"`
-	StartAtLogin      *bool             `json:"start_at_login"`
-	EnableWindowsNode *bool             `json:"enable_windows_node"`
-	WSLDistros        []wslDistroConfig `json:"wsl_distros"`
+	GatewayWS           *string           `json:"gateway_ws"`
+	WorkspaceID         *string           `json:"workspace_id"`
+	DeviceID            *string           `json:"device_id"`
+	DeviceToken         *string           `json:"device_token"`
+	PrivateKey          *string           `json:"private_key"`
+	PublicKey           *string           `json:"public_key"`
+	PairingCode         *string           `json:"pairing_code"`
+	DeprecatedNodeToken *string           `json:"node_token"`
+	DeprecatedNodeID    *string           `json:"node_id"`
+	NodeName            *string           `json:"node_name"`
+	LogDir              *string           `json:"log_dir"`
+	StartAtLogin        *bool             `json:"start_at_login"`
+	EnableWindowsNode   *bool             `json:"enable_windows_node"`
+	WSLDistros          []wslDistroConfig `json:"wsl_distros"`
 }
 
 type cliOptions struct {
-	ConfigPath string
-	Configure  bool
-	GatewayWS  string
+	ConfigPath  string
+	Configure   bool
+	GatewayWS   string
 	WorkspaceID string
-	DeviceID   string
-	NodeName   string
+	DeviceID    string
+	NodeName    string
 	DeviceToken string
 	PairingCode string
 }
@@ -91,12 +91,12 @@ func parseCLIOptions() (cliOptions, map[string]bool, error) {
 	})
 
 	return cliOptions{
-		ConfigPath: *configPath,
-		Configure:  *configure,
-		GatewayWS:  *gatewayWS,
+		ConfigPath:  *configPath,
+		Configure:   *configure,
+		GatewayWS:   *gatewayWS,
 		WorkspaceID: *workspaceID,
-		DeviceID:   *deviceID,
-		NodeName:   *nodeName,
+		DeviceID:    *deviceID,
+		NodeName:    *nodeName,
 		DeviceToken: *deviceToken,
 		PairingCode: *pairingCode,
 	}, explicit, nil
@@ -116,10 +116,19 @@ func resolveProcessConfig(ctx context.Context, opts cliOptions, explicit map[str
 	applyCLIOverrides(&cfg, opts, explicit)
 	cfg.WSLDistros = mergeDetectedWSLDistros(ctx, cfg.WSLDistros)
 	normalizeProcessConfig(&cfg)
-
 	if cfg.DeprecatedNodeToken != "" || strings.TrimSpace(os.Getenv("NODE_PAIRING_TOKEN")) != "" {
 		return processConfig{}, errors.New("static node_token/NODE_PAIRING_TOKEN is no longer supported; run Device Pairing and configure device_token/private_key/public_key")
 	}
+	if cfg.PrivateKey == "" || cfg.PublicKey == "" {
+		cfg.PrivateKey, cfg.PublicKey = generateDeviceKeyPair()
+		if cfg.PrivateKey == "" || cfg.PublicKey == "" {
+			return processConfig{}, errors.New("failed to generate device keypair")
+		}
+		if err := saveProcessConfig(opts.ConfigPath, cfg); err != nil {
+			return processConfig{}, err
+		}
+	}
+
 	if cfg.GatewayWS == "" {
 		return processConfig{}, errors.New("gateway_ws is required")
 	}
@@ -140,23 +149,34 @@ func resolveProcessConfig(ctx context.Context, opts cliOptions, explicit map[str
 
 func defaultProcessConfig(ctx context.Context) processConfig {
 	cfg := processConfig{
-		GatewayWS:         envOrFallback("NODE_GATEWAY_WS", "ws://127.0.0.1:36060/gateway/nodes/ws"),
-		WorkspaceID:       envOrFallback("TINYCLAW_WORKSPACE_ID", "default"),
-		DeviceID:          strings.TrimSpace(os.Getenv("TINYCLAW_DEVICE_ID")),
-		DeviceToken:       strings.TrimSpace(os.Getenv("TINYCLAW_DEVICE_TOKEN")),
-		PrivateKey:        strings.TrimSpace(os.Getenv("TINYCLAW_DEVICE_PRIVATE_KEY")),
-		PublicKey:         strings.TrimSpace(os.Getenv("TINYCLAW_DEVICE_PUBLIC_KEY")),
-		PairingCode:       strings.TrimSpace(os.Getenv("TINYCLAW_PAIRING_CODE")),
+		GatewayWS:           envOrFallback("NODE_GATEWAY_WS", "ws://127.0.0.1:36060/gateway/nodes/ws"),
+		WorkspaceID:         envOrFallback("TINYCLAW_WORKSPACE_ID", "default"),
+		DeviceID:            strings.TrimSpace(os.Getenv("TINYCLAW_DEVICE_ID")),
+		DeviceToken:         strings.TrimSpace(os.Getenv("TINYCLAW_DEVICE_TOKEN")),
+		PrivateKey:          strings.TrimSpace(os.Getenv("TINYCLAW_DEVICE_PRIVATE_KEY")),
+		PublicKey:           strings.TrimSpace(os.Getenv("TINYCLAW_DEVICE_PUBLIC_KEY")),
+		PairingCode:         strings.TrimSpace(os.Getenv("TINYCLAW_PAIRING_CODE")),
 		DeprecatedNodeToken: strings.TrimSpace(os.Getenv("NODE_PAIRING_TOKEN")),
-		LogDir:            defaultLogDir(),
-		EnableWindowsNode: true,
-	}
-	if cfg.PrivateKey == "" || cfg.PublicKey == "" {
-		cfg.PrivateKey, cfg.PublicKey = generateDeviceKeyPair()
+		LogDir:              defaultLogDir(),
+		EnableWindowsNode:   true,
 	}
 	cfg.WSLDistros = mergeDetectedWSLDistros(ctx, nil)
 	normalizeProcessConfig(&cfg)
 	return cfg
+}
+
+func saveProcessConfig(path string, cfg processConfig) error {
+	if strings.TrimSpace(path) == "" {
+		path = defaultConfigPath()
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	body, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, body, 0600)
 }
 
 func loadProcessConfig(path string) (*fileProcessConfig, error) {

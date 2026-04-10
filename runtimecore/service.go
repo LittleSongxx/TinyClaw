@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/LittleSongxx/TinyClaw/authz"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/db"
 	"github.com/LittleSongxx/TinyClaw/gateway"
@@ -60,10 +61,19 @@ func (s *Service) Run(req RunRequest) (*RunResult, error) {
 	case ModeMCP:
 		return s.runStructured(req, ModeMCP)
 	case ModeWorkflow:
-		if !conf.FeatureConfInfo.WorkflowEnabled() {
-			return nil, fmt.Errorf("workflow mode is experimental and disabled; use task mode or set ENABLE_EXPERIMENTAL_WORKFLOW=true")
+		if strings.TrimSpace(req.FlowID) == "" {
+			return nil, fmt.Errorf("workflow mode requires flow_id; ModeWorkflow no longer aliases to task mode")
 		}
-		return s.runStructured(req, ModeTask)
+		workspaceID := authz.DefaultWorkspaceID
+		if req.Cs != nil && req.Cs.WorkspaceID != "" {
+			workspaceID = req.Cs.WorkspaceID
+		}
+		principal := authz.NewPrincipal(workspaceID, req.UserID, authz.RoleOperator, []string{"flows.run"})
+		run, err := gateway.DefaultService().TaskFlowEngine().Run(authz.WithPrincipal(ctx, principal), req.FlowID, map[string]interface{}{"input": req.Input})
+		if err != nil {
+			return nil, err
+		}
+		return &RunResult{Mode: ModeWorkflow, Output: run.RunID}, nil
 	case ModeTask, "":
 		return s.runStructured(req, ModeTask)
 	default:
@@ -239,13 +249,18 @@ func (s *Service) runStructured(req RunRequest, mode Mode) (*RunResult, error) {
 }
 
 func (s *Service) runChat(req RunRequest) (*RunResult, error) {
+	workspaceID := authz.WorkspaceIDFromContext(req.Ctx)
+	if req.Cs != nil && req.Cs.WorkspaceID != "" {
+		workspaceID = req.Cs.WorkspaceID
+	}
 	run := &db.AgentRun{
-		UserId: req.UserID,
-		ChatId: req.ChatID,
-		MsgId:  req.MsgID,
-		Mode:   string(ModeChat),
-		Input:  req.Input,
-		Status: "running",
+		WorkspaceID: workspaceID,
+		UserId:      req.UserID,
+		ChatId:      req.ChatID,
+		MsgId:       req.MsgID,
+		Mode:        string(ModeChat),
+		Input:       req.Input,
+		Status:      "running",
 	}
 
 	runID, err := db.InsertAgentRun(run)
@@ -256,12 +271,13 @@ func (s *Service) runChat(req RunRequest) (*RunResult, error) {
 	}
 
 	step := &db.AgentStep{
-		RunID:     run.ID,
-		StepIndex: 1,
-		Kind:      "executor",
-		Name:      "chat",
-		Input:     req.Input,
-		Status:    "running",
+		WorkspaceID: run.WorkspaceID,
+		RunID:       run.ID,
+		StepIndex:   1,
+		Kind:        "executor",
+		Name:        "chat",
+		Input:       req.Input,
+		Status:      "running",
 	}
 	if run.ID != 0 {
 		stepID, stepInsertErr := db.InsertAgentStep(step)

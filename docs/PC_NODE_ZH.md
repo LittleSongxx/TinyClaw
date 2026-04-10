@@ -36,30 +36,24 @@
 
 ### 主服务侧
 
-至少准备：
-
-```env
-NODE_PAIRING_TOKEN=replace-with-a-strong-node-token
-```
-
-建议同时配置：
+至少准备一个管理侧签名密钥：
 
 ```env
 GATEWAY_SHARED_SECRET=replace-with-a-strong-secret
-PRIVILEGED_USER_IDS=your-feishu-or-platform-user-id
 ```
 
-其中：
+节点不再使用静态共享 token。Owner/Admin 需要先通过 `devices.bootstrap` 生成 10 分钟有效的 pairing code，节点提交 pairing request 后，再由 Owner/Admin 审批并签发一次性展示的 `device_token`。
 
-- `NODE_PAIRING_TOKEN` 用于节点配对
-- `PRIVILEGED_USER_IDS` 可让可信管理员跳过高风险设备审批
+`PRIVILEGED_USER_IDS` 只作为旧数据迁移输入保留。运行时授权统一依赖 workspace membership、role、scope 和 Node Command Policy。
 
 ### 节点侧
 
 节点需要：
 
 - 能访问 Gateway 的网络
-- 与主服务相同的 `NODE_PAIRING_TOKEN`
+- 已确认的 `workspace_id`
+- 节点本地生成并持久化的 `private_key/public_key`
+- 首次配对时使用临时 `pairing_code`，审批通过后使用 `device_token`
 - Windows 桌面节点场景下，保持交互式登录会话
 
 ## 4. Windows 节点推荐安装方式
@@ -100,8 +94,12 @@ PRIVILEGED_USER_IDS=your-feishu-or-platform-user-id
 设置界面会写入 `%ProgramData%\TinyClawNode\config.json`。当前关键字段是：
 
 - `gateway_ws`
-- `node_token`
-- `node_id`
+- `workspace_id`
+- `device_id`
+- `device_token`
+- `private_key`
+- `public_key`
+- `pairing_code`
 - `node_name`
 - `log_dir`
 - `start_at_login`
@@ -121,8 +119,12 @@ PRIVILEGED_USER_IDS=your-feishu-or-platform-user-id
 ```json
 {
   "gateway_ws": "ws://127.0.0.1:36060/gateway/nodes/ws",
-  "node_token": "",
-  "node_id": "DESKTOP-1234",
+  "workspace_id": "default",
+  "device_id": "DESKTOP-1234",
+  "device_token": "",
+  "private_key": "",
+  "public_key": "",
+  "pairing_code": "pair_10_minute_code",
   "node_name": "DESKTOP-1234",
   "log_dir": "C:\\ProgramData\\TinyClawNode\\logs",
   "start_at_login": false,
@@ -155,10 +157,12 @@ PRIVILEGED_USER_IDS=your-feishu-or-platform-user-id
 如果你只是做协议或通用能力联调，也可以直接运行：
 
 ```bash
-export NODE_PAIRING_TOKEN=replace-with-a-strong-node-token
+export TINYCLAW_PAIRING_CODE=pair_10_minute_code
 go run ./cmd/tinyclaw-node \
   --gateway_ws ws://127.0.0.1:36060/gateway/nodes/ws \
-  --node_token "$NODE_PAIRING_TOKEN"
+  --workspace_id default \
+  --device_id "$(hostname)" \
+  --pairing_code "$TINYCLAW_PAIRING_CODE"
 ```
 
 Windows 上开发调试也可以直接运行：
@@ -234,7 +238,7 @@ tinyclaw-node.exe --configure --config "$env:ProgramData\TinyClawNode\config.jso
 
 - 在聊天里回复“确认”或“取消”
 - 使用 `/approve <approval_id>` 或 `/reject <approval_id>`
-- 把可信管理员加入 `PRIVILEGED_USER_IDS`
+- 在 workspace policy 中为明确的 role/scope 配置审批豁免
 
 WSL 还支持按前缀白名单跳过审批：
 
@@ -243,7 +247,7 @@ WSL 还支持按前缀白名单跳过审批：
 
 建议：
 
-- 只给受信任用户加入 `PRIVILEGED_USER_IDS`
+- 只给受信任成员分配 `owner/admin/operator` 角色
 - 只对白名单放行高频、安全、可预测的命令
 - 不要把 Gateway 直接裸露到公网
 
@@ -294,7 +298,9 @@ http://127.0.0.1:18080
 
 优先检查：
 
-- `NODE_PAIRING_TOKEN` 是否一致
+- `pairing_code` 是否过期，过期后需要重新生成
+- `device_token` 是否来自审批通过后的一次性展示
+- 设备是否已被 revoke，或平台 metadata 是否发生变化
 - `gateway_ws` 是否正确
 - `http://127.0.0.1:36060/pong` 是否可访问
 - `/gateway/nodes/ws` 是否被代理或防火墙拦截

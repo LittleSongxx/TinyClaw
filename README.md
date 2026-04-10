@@ -51,8 +51,9 @@ cp deploy/docker/.env.example deploy/docker/.env
 至少补齐这几类配置：
 
 - 平台与模型凭据，如 `LARK_APP_ID`、`LARK_APP_SECRET`、`ALIYUN_TOKEN`
-- Gateway / Node 安全参数，如 `GATEWAY_SHARED_SECRET`、`NODE_PAIRING_TOKEN`
-- 可信管理员直通设备操作，如 `PRIVILEGED_USER_IDS`
+- Gateway 安全参数，如 `GATEWAY_SHARED_SECRET`
+- Node 通过 `devices.bootstrap` 生成短期 pairing code，审批后写入 `device_token`
+- Workspace 管理员由默认 workspace membership 和 actor token 决定
 - 如果启用默认 MCP，再补 `AMAP_MAPS_API_KEY`、`BOCHA_API_KEY`、`GITHUB_PERSONAL_ACCESS_TOKEN`
 
 2. 启动主服务栈
@@ -79,15 +80,19 @@ Windows 推荐方式：
 然后在 Windows 上安装 `build/release/TinyClawNodeSetup.exe`，通过 `TinyClaw Node Settings` 填写：
 
 - `gateway_ws=ws://127.0.0.1:36060/gateway/nodes/ws`
-- `node_token` 与主服务保持一致
+- `workspace_id`、`device_id`；节点密钥会自动生成并持久化
+- 初次配对填写 `pairing_code`，审批后保存 `device_token`
 - 按需启用 Windows 桌面节点和 WSL distro
 
 Linux / macOS 调试方式：
 
 ```bash
+export TINYCLAW_PAIRING_CODE=pair_10_minute_code
 go run ./cmd/tinyclaw-node \
   --gateway_ws ws://127.0.0.1:36060/gateway/nodes/ws \
-  --node_token "$NODE_PAIRING_TOKEN"
+  --workspace_id default \
+  --device_id "$(hostname)" \
+  --pairing_code "$TINYCLAW_PAIRING_CODE"
 ```
 
 如果 Gateway 不在本机，把地址替换成实际可访问的主服务地址。

@@ -42,7 +42,7 @@ type TaskFlowRunRecord struct {
 	Error       string                 `json:"error,omitempty"`
 	CreateTime  int64                  `json:"create_time"`
 	UpdateTime  int64                  `json:"update_time"`
-	CompletedAt int64                 `json:"completed_at,omitempty"`
+	CompletedAt int64                  `json:"completed_at,omitempty"`
 }
 
 type TaskFlowNodeRunRecord struct {
@@ -52,13 +52,13 @@ type TaskFlowNodeRunRecord struct {
 	NodeID      string                 `json:"node_id"`
 	NodeType    string                 `json:"node_type"`
 	Status      string                 `json:"status"`
-	Attempt     int                   `json:"attempt"`
+	Attempt     int                    `json:"attempt"`
 	Inputs      map[string]interface{} `json:"inputs,omitempty"`
 	Outputs     map[string]interface{} `json:"outputs,omitempty"`
 	Error       string                 `json:"error,omitempty"`
 	CreateTime  int64                  `json:"create_time"`
 	UpdateTime  int64                  `json:"update_time"`
-	CompletedAt int64                 `json:"completed_at,omitempty"`
+	CompletedAt int64                  `json:"completed_at,omitempty"`
 }
 
 type TaskFlowEventRecord struct {
@@ -293,7 +293,7 @@ func scanTaskFlow(row rowScanner) (*TaskFlowRecord, error) {
 
 func scanTaskFlowVersion(row rowScanner) (*TaskFlowVersionRecord, error) {
 	var (
-		item TaskFlowVersionRecord
+		item    TaskFlowVersionRecord
 		specRaw string
 	)
 	if err := row.Scan(&item.FlowID, &item.WorkspaceID, &item.Version, &specRaw, &item.CreateTime); err != nil {
@@ -308,8 +308,8 @@ func scanTaskFlowVersion(row rowScanner) (*TaskFlowVersionRecord, error) {
 
 func scanTaskFlowRun(row rowScanner) (*TaskFlowRunRecord, error) {
 	var (
-		item TaskFlowRunRecord
-		inputsRaw string
+		item       TaskFlowRunRecord
+		inputsRaw  string
 		outputsRaw string
 	)
 	if err := row.Scan(&item.RunID, &item.WorkspaceID, &item.FlowID, &item.Version, &item.Status, &inputsRaw, &outputsRaw, &item.Error, &item.CreateTime, &item.UpdateTime, &item.CompletedAt); err != nil {

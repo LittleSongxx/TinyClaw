@@ -19,13 +19,13 @@ const (
 
 type SessionKey struct {
 	WorkspaceID string `json:"workspace_id"`
-	Channel   string `json:"channel"`
-	AccountID string `json:"account_id"`
-	PeerID    string `json:"peer_id"`
-	GroupID   string `json:"group_id"`
-	ThreadID  string `json:"thread_id"`
-	Kind      string `json:"kind"`
-	Nonce     string `json:"nonce,omitempty"`
+	Channel     string `json:"channel"`
+	AccountID   string `json:"account_id"`
+	PeerID      string `json:"peer_id"`
+	GroupID     string `json:"group_id"`
+	ThreadID    string `json:"thread_id"`
+	Kind        string `json:"kind"`
+	Nonce       string `json:"nonce,omitempty"`
 }
 
 func (k SessionKey) Scope() string {

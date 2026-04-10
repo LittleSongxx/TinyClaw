@@ -21,7 +21,7 @@ type StaticRegistrar struct {
 	PluginManifest Manifest
 }
 
-func (r StaticRegistrar) ID() string        { return r.PluginManifest.ID }
+func (r StaticRegistrar) ID() string         { return r.PluginManifest.ID }
 func (r StaticRegistrar) Manifest() Manifest { return r.PluginManifest }
 
 type Status struct {
@@ -148,9 +148,9 @@ func (r *Registry) SetEnabled(ctx context.Context, pluginID string, enabled bool
 	_ = json.Unmarshal([]byte(config), &configMap)
 	if err := db.UpsertPluginState(ctx, db.PluginState{
 		WorkspaceID: principal.WorkspaceID,
-		PluginID:   pluginID,
-		Enabled:    enabled,
-		Config:     configMap,
+		PluginID:    pluginID,
+		Enabled:     enabled,
+		Config:      configMap,
 	}); err != nil {
 		return err
 	}

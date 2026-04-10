@@ -44,13 +44,14 @@ const (
 )
 
 type RunMeta struct {
-	UserID   string
-	ChatID   string
-	MsgID    string
-	Input    string
-	Mode     Mode
-	ReplayOf int64
-	SkillID  string
+	WorkspaceID string
+	UserID      string
+	ChatID      string
+	MsgID       string
+	Input       string
+	Mode        Mode
+	ReplayOf    int64
+	SkillID     string
 }
 
 type TaskPlan struct {

@@ -44,21 +44,29 @@ If Windows SmartScreen or UAC prompts for confirmation, allow the installer to c
 The settings UI lets you edit:
 
 - `gateway_ws`
-- `node_token`
+- `workspace_id`
+- `device_id`
+- `device_token`
+- `pairing_code` for initial pairing only
 - `node_name`
-- `node_id`
 - `start_at_login`
 - `enable_windows_node`
 - enabled WSL distros
 - each distro `default_cwd`
+
+`private_key` and `public_key` are kept in the config file, but the node generates and preserves them automatically.
 
 The config file shape is:
 
 ```json
 {
   "gateway_ws": "ws://127.0.0.1:36060/gateway/nodes/ws",
-  "node_token": "",
-  "node_id": "DESKTOP-1234",
+  "workspace_id": "default",
+  "device_id": "DESKTOP-1234",
+  "device_token": "",
+  "private_key": "",
+  "public_key": "",
+  "pairing_code": "",
   "node_name": "DESKTOP-1234",
   "log_dir": "C:\\ProgramData\\TinyClawNode\\logs",
   "start_at_login": false,

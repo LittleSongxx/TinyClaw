@@ -274,14 +274,15 @@ func (r *Runner) failRun(run *db.AgentRun, err error) (*db.AgentRun, error) {
 
 func (r *Runner) startRun(meta RunMeta) *db.AgentRun {
 	run := &db.AgentRun{
-		UserId:   meta.UserID,
-		ChatId:   meta.ChatID,
-		MsgId:    meta.MsgID,
-		Mode:     string(meta.Mode),
-		Input:    meta.Input,
-		ReplayOf: meta.ReplayOf,
-		SkillID:  meta.SkillID,
-		Status:   string(RunStatusRunning),
+		WorkspaceID: meta.WorkspaceID,
+		UserId:      meta.UserID,
+		ChatId:      meta.ChatID,
+		MsgId:       meta.MsgID,
+		Mode:        string(meta.Mode),
+		Input:       meta.Input,
+		ReplayOf:    meta.ReplayOf,
+		SkillID:     meta.SkillID,
+		Status:      string(RunStatusRunning),
 	}
 
 	id, err := db.InsertAgentRun(run)
@@ -305,15 +306,16 @@ func (r *Runner) updateRun(run *db.AgentRun) {
 func (r *Runner) startStep(run *db.AgentRun, stepIndex int, kind StepKind, name, input, toolName string) *db.AgentStep {
 	provider, model := r.stepProviderModel()
 	step := &db.AgentStep{
-		RunID:     run.ID,
-		StepIndex: stepIndex,
-		Kind:      string(kind),
-		Name:      name,
-		Input:     input,
-		Status:    string(StepStatusRunning),
-		ToolName:  toolName,
-		Provider:  provider,
-		Model:     model,
+		WorkspaceID: run.WorkspaceID,
+		RunID:       run.ID,
+		StepIndex:   stepIndex,
+		Kind:        string(kind),
+		Name:        name,
+		Input:       input,
+		Status:      string(StepStatusRunning),
+		ToolName:    toolName,
+		Provider:    provider,
+		Model:       model,
 	}
 
 	id, err := db.InsertAgentStep(step)

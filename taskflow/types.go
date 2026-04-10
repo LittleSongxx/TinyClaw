@@ -25,13 +25,13 @@ const (
 )
 
 type Spec struct {
-	Nodes          []NodeSpec              `json:"nodes"`
-	Edges          []EdgeSpec              `json:"edges,omitempty"`
-	Inputs         map[string]interface{}  `json:"inputs,omitempty"`
-	Outputs        map[string]interface{}  `json:"outputs,omitempty"`
-	MaxConcurrency int                     `json:"max_concurrency,omitempty"`
-	Timeout        string                  `json:"timeout,omitempty"`
-	RetryPolicy    RetryPolicy             `json:"retry_policy,omitempty"`
+	Nodes          []NodeSpec             `json:"nodes"`
+	Edges          []EdgeSpec             `json:"edges,omitempty"`
+	Inputs         map[string]interface{} `json:"inputs,omitempty"`
+	Outputs        map[string]interface{} `json:"outputs,omitempty"`
+	MaxConcurrency int                    `json:"max_concurrency,omitempty"`
+	Timeout        string                 `json:"timeout,omitempty"`
+	RetryPolicy    RetryPolicy            `json:"retry_policy,omitempty"`
 }
 
 type NodeSpec struct {

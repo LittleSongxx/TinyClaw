@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"github.com/LittleSongxx/TinyClaw/authz"
+	"github.com/LittleSongxx/TinyClaw/db"
 	"github.com/LittleSongxx/TinyClaw/node"
 	"github.com/LittleSongxx/TinyClaw/plugins"
+	"github.com/LittleSongxx/TinyClaw/taskflow"
 )
 
 func (s *Service) HandleControlWS(w http.ResponseWriter, r *http.Request) {
@@ -160,6 +162,91 @@ func (s *Service) HandleControlWS(w http.ResponseWriter, r *http.Request) {
 			_ = json.Unmarshal(request.RawParams(), &manifest)
 			execErr := s.PluginRegistry().Validate(ctx, manifest)
 			response, err = NewResponseFrame(request.ID, execErr == nil, map[string]bool{"ok": execErr == nil}, controlErrorText(execErr))
+		case "flows.create", "flows.update":
+			var body struct {
+				FlowID      string        `json:"flow_id"`
+				Name        string        `json:"name"`
+				Description string        `json:"description"`
+				Spec        taskflow.Spec `json:"spec"`
+			}
+			_ = json.Unmarshal(request.RawParams(), &body)
+			result, execErr := taskflow.CreateOrUpdate(ctx, body.FlowID, body.Name, body.Description, body.Spec)
+			if execErr != nil {
+				response, err = NewResponseFrame(request.ID, false, nil, execErr.Error())
+			} else {
+				response, err = NewResponseFrame(request.ID, true, result, "")
+			}
+		case "flows.list":
+			result, execErr := db.ListTaskFlows(ctx, principal.WorkspaceID)
+			if execErr != nil {
+				response, err = NewResponseFrame(request.ID, false, nil, execErr.Error())
+			} else {
+				response, err = NewResponseFrame(request.ID, true, result, "")
+			}
+		case "flows.get":
+			var body struct {
+				FlowID  string `json:"flow_id"`
+				Version int    `json:"version"`
+			}
+			_ = json.Unmarshal(request.RawParams(), &body)
+			result, execErr := db.GetTaskFlowVersion(ctx, principal.WorkspaceID, body.FlowID, body.Version)
+			if execErr != nil {
+				response, err = NewResponseFrame(request.ID, false, nil, execErr.Error())
+			} else {
+				response, err = NewResponseFrame(request.ID, true, result, "")
+			}
+		case "flows.validate":
+			var spec taskflow.Spec
+			_ = json.Unmarshal(request.RawParams(), &spec)
+			execErr := taskflow.Validate(spec)
+			response, err = NewResponseFrame(request.ID, execErr == nil, map[string]bool{"ok": execErr == nil}, controlErrorText(execErr))
+		case "flows.run":
+			var body struct {
+				FlowID string                 `json:"flow_id"`
+				Inputs map[string]interface{} `json:"inputs"`
+			}
+			_ = json.Unmarshal(request.RawParams(), &body)
+			result, execErr := s.TaskFlowEngine().Run(ctx, body.FlowID, body.Inputs)
+			if execErr != nil {
+				response, err = NewResponseFrame(request.ID, false, nil, execErr.Error())
+			} else {
+				response, err = NewResponseFrame(request.ID, true, result, "")
+			}
+		case "flow_runs.get":
+			var body struct {
+				RunID string `json:"run_id"`
+			}
+			_ = json.Unmarshal(request.RawParams(), &body)
+			result, execErr := db.GetTaskFlowRun(ctx, principal.WorkspaceID, body.RunID)
+			if execErr != nil {
+				response, err = NewResponseFrame(request.ID, false, nil, execErr.Error())
+			} else {
+				response, err = NewResponseFrame(request.ID, true, result, "")
+			}
+		case "flow_runs.cancel":
+			var body struct {
+				RunID string `json:"run_id"`
+			}
+			_ = json.Unmarshal(request.RawParams(), &body)
+			run, execErr := db.GetTaskFlowRun(ctx, principal.WorkspaceID, body.RunID)
+			if execErr == nil && run != nil {
+				run.Status = taskflow.StatusCancelled
+				run.CompletedAt = time.Now().Unix()
+				execErr = db.UpsertTaskFlowRun(ctx, *run)
+			}
+			response, err = NewResponseFrame(request.ID, execErr == nil, run, controlErrorText(execErr))
+		case "flow_runs.retry_node":
+			var body struct {
+				RunID  string `json:"run_id"`
+				NodeID string `json:"node_id"`
+			}
+			_ = json.Unmarshal(request.RawParams(), &body)
+			result, execErr := s.TaskFlowEngine().RetryNode(ctx, body.RunID, body.NodeID)
+			if execErr != nil {
+				response, err = NewResponseFrame(request.ID, false, result, execErr.Error())
+			} else {
+				response, err = NewResponseFrame(request.ID, true, result, "")
+			}
 		default:
 			response, err = NewResponseFrame(request.ID, false, nil, "unsupported gateway method")
 		}

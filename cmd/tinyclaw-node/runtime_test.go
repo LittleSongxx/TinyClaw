@@ -10,7 +10,8 @@ import (
 
 func TestBuildNodeInstancesFromDistrosIncludesWindowsAndWSLMetadata(t *testing.T) {
 	cfg := processConfig{
-		NodeID:            "desktop-node",
+		WorkspaceID:       "default",
+		DeviceID:          "desktop-node",
 		NodeName:          "Desktop Node",
 		EnableWindowsNode: true,
 		WSLDistros: []wslDistroConfig{
@@ -92,7 +93,8 @@ func TestBuildNodeInstancesFromDistrosIncludesWindowsAndWSLMetadata(t *testing.T
 
 func TestBuildNodeInstancesFromDistrosErrorsWhenNothingIsEnabled(t *testing.T) {
 	_, err := buildNodeInstancesFromDistros(processConfig{
-		NodeID:            "desktop-node",
+		WorkspaceID:       "default",
+		DeviceID:          "desktop-node",
 		NodeName:          "Desktop Node",
 		EnableWindowsNode: false,
 		WSLDistros: []wslDistroConfig{

@@ -53,14 +53,14 @@ func (s *Service) CreateDeviceBootstrap(ctx context.Context) (*DeviceBootstrap, 
 	}
 	requestID := uuid.NewString()
 	record := db.DevicePairingRequest{
-		RequestID:           requestID,
-		WorkspaceID:         principal.WorkspaceID,
-		BootstrapTokenHash:  db.HashSecret(code),
-		BootstrapCodeHash:   db.HashSecret(code),
-		Status:              db.PairingStatusPending,
-		ExpiresAt:           now.Add(10 * time.Minute).Unix(),
-		CreateTime:          now.Unix(),
-		UpdateTime:          now.Unix(),
+		RequestID:          requestID,
+		WorkspaceID:        principal.WorkspaceID,
+		BootstrapTokenHash: db.HashSecret(code),
+		BootstrapCodeHash:  db.HashSecret(code),
+		Status:             db.PairingStatusPending,
+		ExpiresAt:          now.Add(10 * time.Minute).Unix(),
+		CreateTime:         now.Unix(),
+		UpdateTime:         now.Unix(),
 	}
 	if err := db.InsertDevicePairingRequest(ctx, record); err != nil {
 		return nil, err
@@ -89,6 +89,9 @@ func (s *Service) SubmitDevicePairing(ctx context.Context, req PairingSubmitRequ
 	record, err := db.GetDevicePairingRequestByBootstrap(ctx, db.HashSecret(code))
 	if err != nil {
 		return nil, err
+	}
+	if record == nil {
+		return nil, errors.New("bootstrap code not found")
 	}
 	if record.Status != db.PairingStatusPending {
 		return nil, errors.New("pairing request is not pending")
@@ -266,6 +269,9 @@ func (s *Service) VerifyDeviceConnect(ctx context.Context, connect ConnectFrame)
 	device, err := db.GetDevice(ctx, authz.NormalizeWorkspaceID(connect.WorkspaceID), auth.DeviceID)
 	if err != nil {
 		return nil, err
+	}
+	if device == nil {
+		return nil, errors.New("device not found")
 	}
 	if device.Status != db.DeviceStatusActive {
 		return nil, errors.New("device is not active")

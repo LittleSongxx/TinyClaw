@@ -121,13 +121,13 @@ func buildNodeInstancesFromDistros(cfg processConfig, hostname string, available
 		})
 		items = append(items, nodeInstance{
 			descriptor: &node.NodeDescriptor{
-				ID:       cfg.DeviceID + "-wsl-" + slugifyDistroName(resolvedName),
+				ID:          cfg.DeviceID + "-wsl-" + slugifyDistroName(resolvedName),
 				WorkspaceID: cfg.WorkspaceID,
-				DeviceID:   cfg.DeviceID,
-				Name:     cfg.NodeName + " / WSL " + resolvedName,
-				Platform: "wsl",
-				Hostname: hostname,
-				Version:  nodeBinaryVersion,
+				DeviceID:    cfg.DeviceID,
+				Name:        cfg.NodeName + " / WSL " + resolvedName,
+				Platform:    "wsl",
+				Hostname:    hostname,
+				Version:     nodeBinaryVersion,
 				Metadata: map[string]string{
 					"kind":                               "wsl",
 					"parent_node_id":                     cfg.DeviceID,

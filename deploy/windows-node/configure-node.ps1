@@ -71,8 +71,12 @@ function New-DefaultConfig {
     $machineName = [Environment]::MachineName
     return [ordered]@{
         gateway_ws          = "ws://127.0.0.1:36060/gateway/nodes/ws"
-        node_token          = ""
-        node_id             = $machineName
+        workspace_id        = "default"
+        device_id           = $machineName
+        device_token        = ""
+        private_key         = ""
+        public_key          = ""
+        pairing_code        = ""
         node_name           = $machineName
         log_dir             = Get-DefaultLogDir
         start_at_login      = $false
@@ -163,19 +167,23 @@ function Read-Config {
 
     $raw = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
     $config.gateway_ws = ([string](Get-PropertyValue $raw "gateway_ws" $config.gateway_ws)).Trim()
-    $config.node_token = ([string](Get-PropertyValue $raw "node_token" $config.node_token)).Trim()
-    $config.node_id = ([string](Get-PropertyValue $raw "node_id" $config.node_id)).Trim()
+    $config.workspace_id = ([string](Get-PropertyValue $raw "workspace_id" $config.workspace_id)).Trim()
+    $config.device_token = ([string](Get-PropertyValue $raw "device_token" $config.device_token)).Trim()
+    $config.private_key = ([string](Get-PropertyValue $raw "private_key" $config.private_key)).Trim()
+    $config.public_key = ([string](Get-PropertyValue $raw "public_key" $config.public_key)).Trim()
+    $config.pairing_code = ([string](Get-PropertyValue $raw "pairing_code" $config.pairing_code)).Trim()
+    $config.device_id = ([string](Get-PropertyValue $raw "device_id" (Get-PropertyValue $raw "node_id" $config.device_id))).Trim()
     $config.node_name = ([string](Get-PropertyValue $raw "node_name" $config.node_name)).Trim()
     $config.log_dir = ([string](Get-PropertyValue $raw "log_dir" $config.log_dir)).Trim()
     $config.start_at_login = [bool](Get-PropertyValue $raw "start_at_login" $config.start_at_login)
     $config.enable_windows_node = [bool](Get-PropertyValue $raw "enable_windows_node" $config.enable_windows_node)
     $config.wsl_distros = Merge-WSLDistroConfigs (Get-PropertyValue $raw "wsl_distros" @()) (Get-DetectedWSLDistros)
 
-    if ([string]::IsNullOrWhiteSpace($config.node_id)) {
-        $config.node_id = [Environment]::MachineName
+    if ([string]::IsNullOrWhiteSpace($config.device_id)) {
+        $config.device_id = [Environment]::MachineName
     }
     if ([string]::IsNullOrWhiteSpace($config.node_name)) {
-        $config.node_name = $config.node_id
+        $config.node_name = $config.device_id
     }
     if ([string]::IsNullOrWhiteSpace($config.log_dir)) {
         $config.log_dir = Get-DefaultLogDir
@@ -314,8 +322,8 @@ $script:KnownWSLByName = Get-WSLConfigMap $script:Config.wsl_distros
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "TinyClaw Node Settings"
 $form.StartPosition = "CenterScreen"
-$form.Size = New-Object System.Drawing.Size(940, 690)
-$form.MinimumSize = New-Object System.Drawing.Size(940, 690)
+$form.Size = New-Object System.Drawing.Size(940, 780)
+$form.MinimumSize = New-Object System.Drawing.Size(940, 780)
 
 $titleLabel = New-Object System.Windows.Forms.Label
 $titleLabel.Location = New-Object System.Drawing.Point(20, 15)
@@ -342,84 +350,109 @@ $gatewayTextBox.Size = New-Object System.Drawing.Size(720, 24)
 $gatewayTextBox.Text = [string]$script:Config.gateway_ws
 $form.Controls.Add($gatewayTextBox)
 
+$workspaceLabel = New-Object System.Windows.Forms.Label
+$workspaceLabel.Location = New-Object System.Drawing.Point(20, 123)
+$workspaceLabel.Size = New-Object System.Drawing.Size(130, 20)
+$workspaceLabel.Text = "Workspace ID"
+$form.Controls.Add($workspaceLabel)
+
+$workspaceTextBox = New-Object System.Windows.Forms.TextBox
+$workspaceTextBox.Location = New-Object System.Drawing.Point(160, 121)
+$workspaceTextBox.Size = New-Object System.Drawing.Size(320, 24)
+$workspaceTextBox.Text = [string]$script:Config.workspace_id
+$form.Controls.Add($workspaceTextBox)
+
+$idLabel = New-Object System.Windows.Forms.Label
+$idLabel.Location = New-Object System.Drawing.Point(500, 123)
+$idLabel.Size = New-Object System.Drawing.Size(80, 20)
+$idLabel.Text = "Device ID"
+$form.Controls.Add($idLabel)
+
+$idTextBox = New-Object System.Windows.Forms.TextBox
+$idTextBox.Location = New-Object System.Drawing.Point(580, 121)
+$idTextBox.Size = New-Object System.Drawing.Size(300, 24)
+$idTextBox.Text = [string]$script:Config.device_id
+$form.Controls.Add($idTextBox)
+
 $tokenLabel = New-Object System.Windows.Forms.Label
-$tokenLabel.Location = New-Object System.Drawing.Point(20, 123)
+$tokenLabel.Location = New-Object System.Drawing.Point(20, 156)
 $tokenLabel.Size = New-Object System.Drawing.Size(130, 20)
-$tokenLabel.Text = "Pairing Token"
+$tokenLabel.Text = "Device Token"
 $form.Controls.Add($tokenLabel)
 
 $tokenTextBox = New-Object System.Windows.Forms.TextBox
-$tokenTextBox.Location = New-Object System.Drawing.Point(160, 121)
+$tokenTextBox.Location = New-Object System.Drawing.Point(160, 154)
 $tokenTextBox.Size = New-Object System.Drawing.Size(720, 24)
 $tokenTextBox.UseSystemPasswordChar = $true
-$tokenTextBox.Text = [string]$script:Config.node_token
+$tokenTextBox.Text = [string]$script:Config.device_token
 $form.Controls.Add($tokenTextBox)
 
+$pairingLabel = New-Object System.Windows.Forms.Label
+$pairingLabel.Location = New-Object System.Drawing.Point(20, 189)
+$pairingLabel.Size = New-Object System.Drawing.Size(130, 20)
+$pairingLabel.Text = "Pairing Code"
+$form.Controls.Add($pairingLabel)
+
+$pairingTextBox = New-Object System.Windows.Forms.TextBox
+$pairingTextBox.Location = New-Object System.Drawing.Point(160, 187)
+$pairingTextBox.Size = New-Object System.Drawing.Size(720, 24)
+$pairingTextBox.UseSystemPasswordChar = $true
+$pairingTextBox.Text = [string]$script:Config.pairing_code
+$form.Controls.Add($pairingTextBox)
+
 $nameLabel = New-Object System.Windows.Forms.Label
-$nameLabel.Location = New-Object System.Drawing.Point(20, 156)
+$nameLabel.Location = New-Object System.Drawing.Point(20, 222)
 $nameLabel.Size = New-Object System.Drawing.Size(130, 20)
 $nameLabel.Text = "Node Name"
 $form.Controls.Add($nameLabel)
 
 $nameTextBox = New-Object System.Windows.Forms.TextBox
-$nameTextBox.Location = New-Object System.Drawing.Point(160, 154)
-$nameTextBox.Size = New-Object System.Drawing.Size(320, 24)
+$nameTextBox.Location = New-Object System.Drawing.Point(160, 220)
+$nameTextBox.Size = New-Object System.Drawing.Size(720, 24)
 $nameTextBox.Text = [string]$script:Config.node_name
 $form.Controls.Add($nameTextBox)
 
-$idLabel = New-Object System.Windows.Forms.Label
-$idLabel.Location = New-Object System.Drawing.Point(500, 156)
-$idLabel.Size = New-Object System.Drawing.Size(80, 20)
-$idLabel.Text = "Node ID"
-$form.Controls.Add($idLabel)
-
-$idTextBox = New-Object System.Windows.Forms.TextBox
-$idTextBox.Location = New-Object System.Drawing.Point(580, 154)
-$idTextBox.Size = New-Object System.Drawing.Size(300, 24)
-$idTextBox.Text = [string]$script:Config.node_id
-$form.Controls.Add($idTextBox)
-
 $windowsNodeCheckbox = New-Object System.Windows.Forms.CheckBox
-$windowsNodeCheckbox.Location = New-Object System.Drawing.Point(160, 186)
+$windowsNodeCheckbox.Location = New-Object System.Drawing.Point(160, 252)
 $windowsNodeCheckbox.Size = New-Object System.Drawing.Size(240, 24)
 $windowsNodeCheckbox.Text = "Enable Windows desktop node"
 $windowsNodeCheckbox.Checked = [bool]$script:Config.enable_windows_node
 $form.Controls.Add($windowsNodeCheckbox)
 
 $startupCheckbox = New-Object System.Windows.Forms.CheckBox
-$startupCheckbox.Location = New-Object System.Drawing.Point(410, 186)
+$startupCheckbox.Location = New-Object System.Drawing.Point(410, 252)
 $startupCheckbox.Size = New-Object System.Drawing.Size(220, 24)
 $startupCheckbox.Text = "Start at Windows login"
 $startupCheckbox.Checked = [bool]$script:Config.start_at_login
 $form.Controls.Add($startupCheckbox)
 
 $logLabel = New-Object System.Windows.Forms.Label
-$logLabel.Location = New-Object System.Drawing.Point(20, 218)
+$logLabel.Location = New-Object System.Drawing.Point(20, 284)
 $logLabel.Size = New-Object System.Drawing.Size(130, 20)
 $logLabel.Text = "Log Directory"
 $form.Controls.Add($logLabel)
 
 $logTextBox = New-Object System.Windows.Forms.TextBox
-$logTextBox.Location = New-Object System.Drawing.Point(160, 216)
+$logTextBox.Location = New-Object System.Drawing.Point(160, 282)
 $logTextBox.Size = New-Object System.Drawing.Size(720, 24)
 $logTextBox.Text = [string]$script:Config.log_dir
 $form.Controls.Add($logTextBox)
 
 $wslLabel = New-Object System.Windows.Forms.Label
-$wslLabel.Location = New-Object System.Drawing.Point(20, 255)
+$wslLabel.Location = New-Object System.Drawing.Point(20, 321)
 $wslLabel.Size = New-Object System.Drawing.Size(300, 20)
 $wslLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
 $wslLabel.Text = "WSL Virtual Nodes"
 $form.Controls.Add($wslLabel)
 
 $wslHintLabel = New-Object System.Windows.Forms.Label
-$wslHintLabel.Location = New-Object System.Drawing.Point(20, 279)
+$wslHintLabel.Location = New-Object System.Drawing.Point(20, 345)
 $wslHintLabel.Size = New-Object System.Drawing.Size(860, 34)
 $wslHintLabel.Text = "Each enabled distro becomes a separate virtual node. Set the default Linux working directory for commands when you want the agent to start in a specific repo."
 $form.Controls.Add($wslHintLabel)
 
 $wslGrid = New-Object System.Windows.Forms.DataGridView
-$wslGrid.Location = New-Object System.Drawing.Point(20, 316)
+$wslGrid.Location = New-Object System.Drawing.Point(20, 382)
 $wslGrid.Size = New-Object System.Drawing.Size(860, 250)
 $wslGrid.AllowUserToAddRows = $false
 $wslGrid.AllowUserToDeleteRows = $false
@@ -458,31 +491,31 @@ $form.Controls.Add($wslGrid)
 Populate-WSLGrid -Grid $wslGrid -Items $script:Config.wsl_distros -DetectedDistros $script:DetectedDistros
 
 $statusLabel = New-Object System.Windows.Forms.Label
-$statusLabel.Location = New-Object System.Drawing.Point(20, 578)
+$statusLabel.Location = New-Object System.Drawing.Point(20, 644)
 $statusLabel.Size = New-Object System.Drawing.Size(860, 22)
 $statusLabel.Text = "Config path: $ConfigPath"
 $form.Controls.Add($statusLabel)
 
 $refreshButton = New-Object System.Windows.Forms.Button
-$refreshButton.Location = New-Object System.Drawing.Point(20, 606)
+$refreshButton.Location = New-Object System.Drawing.Point(20, 672)
 $refreshButton.Size = New-Object System.Drawing.Size(120, 30)
 $refreshButton.Text = "Refresh WSL"
 $form.Controls.Add($refreshButton)
 
 $saveButton = New-Object System.Windows.Forms.Button
-$saveButton.Location = New-Object System.Drawing.Point(544, 606)
+$saveButton.Location = New-Object System.Drawing.Point(544, 672)
 $saveButton.Size = New-Object System.Drawing.Size(110, 30)
 $saveButton.Text = "Save"
 $form.Controls.Add($saveButton)
 
 $saveLaunchButton = New-Object System.Windows.Forms.Button
-$saveLaunchButton.Location = New-Object System.Drawing.Point(662, 606)
+$saveLaunchButton.Location = New-Object System.Drawing.Point(662, 672)
 $saveLaunchButton.Size = New-Object System.Drawing.Size(128, 30)
 $saveLaunchButton.Text = "Save and Launch"
 $form.Controls.Add($saveLaunchButton)
 
 $cancelButton = New-Object System.Windows.Forms.Button
-$cancelButton.Location = New-Object System.Drawing.Point(798, 606)
+$cancelButton.Location = New-Object System.Drawing.Point(798, 672)
 $cancelButton.Size = New-Object System.Drawing.Size(82, 30)
 $cancelButton.Text = "Cancel"
 $form.Controls.Add($cancelButton)
@@ -529,8 +562,12 @@ function Build-ConfigFromForm {
 
     return [ordered]@{
         gateway_ws          = $gatewayTextBox.Text.Trim()
-        node_token          = $tokenTextBox.Text.Trim()
-        node_id             = $nodeId
+        workspace_id        = $workspaceTextBox.Text.Trim()
+        device_id           = $nodeId
+        device_token        = $tokenTextBox.Text.Trim()
+        private_key         = [string]$script:Config.private_key
+        public_key          = [string]$script:Config.public_key
+        pairing_code        = $pairingTextBox.Text.Trim()
         node_name           = $nodeName
         log_dir             = $(if ([string]::IsNullOrWhiteSpace($logTextBox.Text)) { Get-DefaultLogDir } else { $logTextBox.Text.Trim() })
         start_at_login      = [bool]$startupCheckbox.Checked
@@ -547,8 +584,12 @@ function Save-FormConfig {
         [System.Windows.Forms.MessageBox]::Show("Gateway WS is required.", "TinyClaw Node", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
         return
     }
-    if ([string]::IsNullOrWhiteSpace($config.node_token)) {
-        [System.Windows.Forms.MessageBox]::Show("Pairing token is required.", "TinyClaw Node", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+    if ([string]::IsNullOrWhiteSpace($config.workspace_id)) {
+        [System.Windows.Forms.MessageBox]::Show("Workspace ID is required.", "TinyClaw Node", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+        return
+    }
+    if ([string]::IsNullOrWhiteSpace($config.device_token) -and [string]::IsNullOrWhiteSpace($config.pairing_code)) {
+        [System.Windows.Forms.MessageBox]::Show("Device token or pairing code is required.", "TinyClaw Node", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
         return
     }
 

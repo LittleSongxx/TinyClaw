@@ -86,7 +86,6 @@ Knowledge 相关的 PostgreSQL / Redis / MinIO / HuggingFace embedding 服务现
 GATEWAY_WS_PATH=/gateway/ws
 GATEWAY_NODE_WS_PATH=/gateway/nodes/ws
 GATEWAY_SHARED_SECRET=replace-with-a-strong-secret
-NODE_PAIRING_TOKEN=replace-with-a-strong-node-token
 SESSION_TRANSCRIPT_DIR=/app/data/sessions
 ```
 
@@ -111,9 +110,9 @@ ENABLE_KNOWLEDGE=true docker compose --profile knowledge up -d
 说明：
 
 - `GATEWAY_SHARED_SECRET`
-  用于 Gateway 控制面鉴权
-- `NODE_PAIRING_TOKEN`
-  用于 `tinyclaw-node` 配对
+  用于管理侧到 Gateway 的短期 actor token 签名
+- Device Pairing
+  节点通过 10 分钟 pairing code 发起请求，Owner/Admin 审批后获得一次性展示的 `device_token`
 - `SESSION_TRANSCRIPT_DIR`
   用于保存 JSONL transcript
 
@@ -221,15 +220,11 @@ http://127.0.0.1:36060/pong
 
 可访问。
 
-### 第二步：准备相同的配对 token
+### 第二步：生成临时 pairing code
 
-主服务侧：
+节点不再使用静态共享 token。Owner/Admin 先在管理侧调用 `devices.bootstrap` 生成 10 分钟有效的 pairing code，节点用它发起配对请求。请求进入 pending 后，由 Owner/Admin 审批，审批通过时会返回一次性展示的 `device_token`。
 
-```env
-NODE_PAIRING_TOKEN=replace-with-a-strong-node-token
-```
-
-节点侧也使用同一个值。
+旧的 `NODE_PAIRING_TOKEN` / `node_token` 配置会被拒绝启动，需要重新走 pairing。
 
 ### 第三步：在真实主机运行节点
 
@@ -242,16 +237,20 @@ Windows 推荐方式：
 然后在 Windows 上安装 `build/release/TinyClawNodeSetup.exe`，打开 `TinyClaw Node Settings`，填写：
 
 - `gateway_ws=ws://127.0.0.1:36060/gateway/nodes/ws`
-- `node_token` 与主服务保持一致
+- `workspace_id=default` 或目标 workspace
+- `pairing_code` 用于首次配对，审批后改用 `device_token`
 - 勾选 Windows desktop node
 - 按需启用 `Ubuntu-22.04` 等 WSL distro
 
 Linux / macOS 开发调试方式：
 
 ```bash
+export TINYCLAW_PAIRING_CODE=pair_10_minute_code
 go run ./cmd/tinyclaw-node \
   --gateway_ws ws://127.0.0.1:36060/gateway/nodes/ws \
-  --node_token "$NODE_PAIRING_TOKEN"
+  --workspace_id default \
+  --device_id "$(hostname)" \
+  --pairing_code "$TINYCLAW_PAIRING_CODE"
 ```
 
 ### 第四步：查询节点
@@ -298,8 +297,8 @@ curl http://127.0.0.1:36060/gateway/nodes/list
 
 建议至少做到：
 
-- `GATEWAY_SHARED_SECRET` 和 `NODE_PAIRING_TOKEN` 使用强随机值
-- 可信管理员才加入 `PRIVILEGED_USER_IDS`
+- `GATEWAY_SHARED_SECRET` 使用强随机值，并定期轮换
+- 只给受信任成员分配 `owner/admin/operator` 角色
 - 不要把 Gateway 直接裸露在公网
 - 如果必须远程访问，放在 VPN / Tailscale / 内网穿透保护之后
 - 先只给受信任主机配对
@@ -312,7 +311,9 @@ curl http://127.0.0.1:36060/gateway/nodes/list
 
 优先检查：
 
-- `NODE_PAIRING_TOKEN` 是否一致
+- `pairing_code` 是否过期，过期后需要重新生成
+- `device_token` 是否为审批通过后一次性展示的值
+- 设备是否已被 revoke，或平台 metadata 是否发生变化
 - `gateway_ws` 地址是否正确
 - 主服务端口是否映射正确
 - `/gateway/nodes/ws` 是否被反向代理或防火墙拦截
@@ -331,7 +332,7 @@ curl http://127.0.0.1:36060/gateway/nodes/list
 
 优先检查：
 
-- 当前用户是否属于 `PRIVILEGED_USER_IDS`
+- 当前用户在 workspace 中是否具备足够 role/scope
 - 操作是否属于默认需要审批的能力，例如 `input.*`、`wsl.exec`、`wsl.fs.write`
 - 飞书里是否直接回复了“确认”或“取消”
 - 是否在用 `/approve <approval_id>` 或 `/reject <approval_id>`

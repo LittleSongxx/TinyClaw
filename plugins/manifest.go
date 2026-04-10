@@ -12,18 +12,18 @@ import (
 const ManifestFileName = "tinyclaw.plugin.json"
 
 type Manifest struct {
-	ID                string                 `json:"id"`
-	Name              string                 `json:"name"`
-	Version           string                 `json:"version"`
-	EnabledByDefault  bool                   `json:"enabledByDefault"`
-	Capabilities      []CapabilityManifest   `json:"capabilities"`
-	ConfigSchema       map[string]interface{} `json:"configSchema,omitempty"`
-	UIHints            map[string]interface{} `json:"uiHints,omitempty"`
-	Skills             []string               `json:"skills,omitempty"`
-	ToolPacks          []string               `json:"toolPacks,omitempty"`
-	NodeDrivers        []string               `json:"nodeDrivers,omitempty"`
-	Channels           []string               `json:"channels,omitempty"`
-	RequiredFeatures   []string               `json:"requiredFeatures,omitempty"`
+	ID               string                 `json:"id"`
+	Name             string                 `json:"name"`
+	Version          string                 `json:"version"`
+	EnabledByDefault bool                   `json:"enabledByDefault"`
+	Capabilities     []CapabilityManifest   `json:"capabilities"`
+	ConfigSchema     map[string]interface{} `json:"configSchema,omitempty"`
+	UIHints          map[string]interface{} `json:"uiHints,omitempty"`
+	Skills           []string               `json:"skills,omitempty"`
+	ToolPacks        []string               `json:"toolPacks,omitempty"`
+	NodeDrivers      []string               `json:"nodeDrivers,omitempty"`
+	Channels         []string               `json:"channels,omitempty"`
+	RequiredFeatures []string               `json:"requiredFeatures,omitempty"`
 }
 
 type CapabilityManifest struct {

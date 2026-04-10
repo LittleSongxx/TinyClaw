@@ -22,6 +22,7 @@ import (
 	adminConf "github.com/LittleSongxx/TinyClaw/admin/conf"
 	"github.com/LittleSongxx/TinyClaw/admin/db"
 	adminUtils "github.com/LittleSongxx/TinyClaw/admin/utils"
+	"github.com/LittleSongxx/TinyClaw/authz"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/logger"
 	"github.com/LittleSongxx/TinyClaw/param"
@@ -66,9 +67,8 @@ var (
 type botProxyContextKey string
 
 const (
-	botProxyActingUserKey    botProxyContextKey = "bot_proxy_acting_user"
-	botManagementTokenHeader string             = "X-TinyClaw-Token"
-	botActingUserHeader      string             = "X-TinyClaw-Acting-User"
+	botProxyActingUserKey botProxyContextKey = "bot_proxy_acting_user"
+	botActorTokenHeader   string             = "X-TinyClaw-Actor-Token"
 )
 
 func sanitizeBotForResponse(bot *db.Bot) *db.Bot {
@@ -1351,14 +1351,27 @@ func applyBotProxyHeaders(ctx context.Context, req *http.Request) {
 		if logID, ok := ctx.Value("log_id").(string); ok && strings.TrimSpace(logID) != "" {
 			req.Header.Set("LogId", logID)
 		}
-		if actingUserID, ok := ctx.Value(botProxyActingUserKey).(string); ok && strings.TrimSpace(actingUserID) != "" {
-			req.Header.Set(botActingUserHeader, strings.TrimSpace(actingUserID))
-		}
 	}
 
-	if token := strings.TrimSpace(firstNonEmptyEnv("HTTP_SHARED_SECRET", "GATEWAY_SHARED_SECRET")); token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set(botManagementTokenHeader, token)
+	if secret := strings.TrimSpace(firstNonEmptyEnv("HTTP_SHARED_SECRET", "GATEWAY_SHARED_SECRET")); secret != "" {
+		actorID := "admin-proxy"
+		if ctx != nil {
+			if actingUserID, ok := ctx.Value(botProxyActingUserKey).(string); ok && strings.TrimSpace(actingUserID) != "" {
+				actorID = strings.TrimSpace(actingUserID)
+			}
+		}
+		token, err := authz.SignActorToken(secret, authz.ActorTokenClaims{
+			WorkspaceID: authz.DefaultWorkspaceID,
+			ActorID:     actorID,
+			Role:        authz.RoleAdmin,
+			Scopes:      []string{"*"},
+			ExpiresAt:   time.Now().Add(2 * time.Minute).Unix(),
+			Nonce:       strconv.FormatInt(time.Now().UnixNano(), 10),
+		})
+		if err == nil {
+			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set(botActorTokenHeader, token)
+		}
 	}
 }
 

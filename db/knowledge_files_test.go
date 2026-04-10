@@ -10,8 +10,9 @@ import (
 
 func TestInsertAndGetKnowledgeFile(t *testing.T) {
 
-	fileName := "test.txt"
-	fileMd5 := "abc123"
+	suffix := time.Now().Format("150405.000000000")
+	fileName := "test-" + suffix + ".txt"
+	fileMd5 := "abc123-" + suffix
 
 	// 插入
 	id, err := InsertKnowledgeFile(fileName, fileMd5)
@@ -32,8 +33,9 @@ func TestInsertAndGetKnowledgeFile(t *testing.T) {
 }
 
 func TestUpdateAndDeleteKnowledgeFile(t *testing.T) {
-	fileName := "test.txt"
-	fileMd5 := "abc123"
+	suffix := time.Now().Format("150405.000000000")
+	fileName := "test-" + suffix + ".txt"
+	fileMd5 := "abc123-" + suffix
 
 	// 插入
 	_, err := InsertKnowledgeFile(fileName, fileMd5)
@@ -57,24 +59,27 @@ func TestUpdateAndDeleteKnowledgeFile(t *testing.T) {
 	assert.Len(t, files, 0)
 
 	// 再插入一个
-	_, err = InsertKnowledgeFile("b.txt", "def456")
+	secondName := "b-" + suffix + ".txt"
+	secondMd5 := "def456-" + suffix
+	_, err = InsertKnowledgeFile(secondName, secondMd5)
 	assert.NoError(t, err)
 
 	// 删除 by vectorId
-	err = UpdateVectorIdByFileMd5("def456", "vec-2")
+	err = UpdateVectorIdByFileMd5(secondMd5, "vec-2-"+suffix)
 	assert.NoError(t, err)
 
-	err = DeleteKnowledgeFileByVectorID("vec-2")
+	err = DeleteKnowledgeFileByVectorID("vec-2-" + suffix)
 	assert.NoError(t, err)
 
-	files, err = GetKnowledgeFileByFileName("b.txt")
+	files, err = GetKnowledgeFileByFileName(secondName)
 	assert.NoError(t, err)
 	assert.Len(t, files, 0)
 }
 
 func TestInsertTimeStamps(t *testing.T) {
-	fileName := "time.txt"
-	fileMd5 := "time123"
+	suffix := time.Now().Format("150405.000000000")
+	fileName := "time-" + suffix + ".txt"
+	fileMd5 := "time123-" + suffix
 
 	// 插入
 	_, err := InsertKnowledgeFile(fileName, fileMd5)

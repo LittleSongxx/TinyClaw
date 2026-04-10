@@ -43,12 +43,13 @@ For Windows, build and install the setup package:
 ./scripts/package_tinyclaw_node_windows.sh amd64
 ```
 
-Then point `TinyClaw Node Settings` at `ws://127.0.0.1:36060/gateway/nodes/ws`.
+Then point `TinyClaw Node Settings` at `ws://127.0.0.1:36060/gateway/nodes/ws`, set `workspace_id/device_id`, and use a 10-minute `pairing_code` from `devices.bootstrap` for first pairing. The node generates and persists its keypair. After approval, save the one-time `device_token`.
 
 For Linux or macOS:
 
 ```bash
-go run ./cmd/tinyclaw-node --gateway_ws ws://127.0.0.1:36060/gateway/nodes/ws --node_token "$NODE_PAIRING_TOKEN"
+export TINYCLAW_PAIRING_CODE=pair_10_minute_code
+go run ./cmd/tinyclaw-node --gateway_ws ws://127.0.0.1:36060/gateway/nodes/ws --workspace_id default --device_id "$(hostname)" --pairing_code "$TINYCLAW_PAIRING_CODE"
 ```
 
 ## Key Endpoints

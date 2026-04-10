@@ -27,6 +27,7 @@ type RunRequest struct {
 	MsgID            string              `json:"msg_id,omitempty"`
 	ReplayOf         int64               `json:"replay_of,omitempty"`
 	SkillID          string              `json:"skill_id,omitempty"`
+	FlowID           string              `json:"flow_id,omitempty"`
 	PerMsgLen        int                 `json:"per_msg_len,omitempty"`
 	Cs               *param.ContextState `json:"-"`
 	MessageChan      chan *param.MsgInfo `json:"-"`

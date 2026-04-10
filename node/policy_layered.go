@@ -16,11 +16,11 @@ type CommandPolicyRule struct {
 }
 
 type LayeredCommandPolicy struct {
-	WorkspaceID string   `json:"workspace_id"`
-	DeviceID    string   `json:"device_id,omitempty"`
-	Allow       []string `json:"allow,omitempty"`
-	Deny        []string `json:"deny,omitempty"`
-	BypassRoles []string `json:"bypass_roles,omitempty"`
+	WorkspaceID  string   `json:"workspace_id"`
+	DeviceID     string   `json:"device_id,omitempty"`
+	Allow        []string `json:"allow,omitempty"`
+	Deny         []string `json:"deny,omitempty"`
+	BypassRoles  []string `json:"bypass_roles,omitempty"`
 	BypassScopes []string `json:"bypass_scopes,omitempty"`
 }
 

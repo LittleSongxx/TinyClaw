@@ -269,12 +269,12 @@ func normalizeNodeRequest(desc NodeDescriptor, req NodeCommandRequest, now time.
 
 	binding := ApprovalBinding{
 		WorkspaceID: req.WorkspaceID,
-		SessionID:  req.SessionID,
-		UserID:     req.UserID,
-		NodeID:     req.NodeID,
-		Capability: req.Capability,
-		CreatedAt:  now.Unix(),
-		ExpiresAt:  now.Add(sessionGrantTTL).Unix(),
+		SessionID:   req.SessionID,
+		UserID:      req.UserID,
+		NodeID:      req.NodeID,
+		Capability:  req.Capability,
+		CreatedAt:   now.Unix(),
+		ExpiresAt:   now.Add(sessionGrantTTL).Unix(),
 	}
 
 	switch req.Capability {

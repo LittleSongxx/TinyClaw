@@ -62,17 +62,17 @@ type ApprovalBinding struct {
 }
 
 type ApprovalGrant struct {
-	ID         string          `json:"id"`
+	ID          string          `json:"id"`
 	WorkspaceID string          `json:"workspace_id"`
-	SessionID  string          `json:"session_id,omitempty"`
-	UserID     string          `json:"user_id,omitempty"`
-	NodeID     string          `json:"node_id"`
-	Capability string          `json:"capability"`
-	Mode       ApprovalMode    `json:"mode"`
-	Summary    string          `json:"summary,omitempty"`
-	Binding    ApprovalBinding `json:"binding"`
-	CreatedAt  int64           `json:"created_at"`
-	ExpiresAt  int64           `json:"expires_at"`
+	SessionID   string          `json:"session_id,omitempty"`
+	UserID      string          `json:"user_id,omitempty"`
+	NodeID      string          `json:"node_id"`
+	Capability  string          `json:"capability"`
+	Mode        ApprovalMode    `json:"mode"`
+	Summary     string          `json:"summary,omitempty"`
+	Binding     ApprovalBinding `json:"binding"`
+	CreatedAt   int64           `json:"created_at"`
+	ExpiresAt   int64           `json:"expires_at"`
 }
 
 type ApprovalRequest struct {
@@ -106,36 +106,36 @@ type NodeCommandResult struct {
 }
 
 type ApprovalDecision struct {
-	ID        string       `json:"id"`
+	ID          string       `json:"id"`
 	WorkspaceID string       `json:"workspace_id"`
-	ActorID   string       `json:"actor_id,omitempty"`
-	ActorRole string       `json:"actor_role,omitempty"`
-	CommandID string       `json:"command_id"`
-	SessionID string       `json:"session_id,omitempty"`
-	UserID    string       `json:"user_id,omitempty"`
-	NodeID    string       `json:"node_id"`
-	Approved  bool         `json:"approved"`
-	Mode      ApprovalMode `json:"mode,omitempty"`
-	Reason    string       `json:"reason,omitempty"`
-	CreatedAt int64        `json:"created_at"`
+	ActorID     string       `json:"actor_id,omitempty"`
+	ActorRole   string       `json:"actor_role,omitempty"`
+	CommandID   string       `json:"command_id"`
+	SessionID   string       `json:"session_id,omitempty"`
+	UserID      string       `json:"user_id,omitempty"`
+	NodeID      string       `json:"node_id"`
+	Approved    bool         `json:"approved"`
+	Mode        ApprovalMode `json:"mode,omitempty"`
+	Reason      string       `json:"reason,omitempty"`
+	CreatedAt   int64        `json:"created_at"`
 }
 
 type ActionEvent struct {
-	Type       string            `json:"type"`
+	Type        string            `json:"type"`
 	WorkspaceID string            `json:"workspace_id,omitempty"`
-	ActorID    string            `json:"actor_id,omitempty"`
-	ActionID   string            `json:"action_id,omitempty"`
-	ApprovalID string            `json:"approval_id,omitempty"`
-	SessionID  string            `json:"session_id,omitempty"`
-	UserID     string            `json:"user_id,omitempty"`
-	NodeID     string            `json:"node_id,omitempty"`
-	Capability string            `json:"capability,omitempty"`
-	Summary    string            `json:"summary,omitempty"`
-	Detail     string            `json:"detail,omitempty"`
-	Mode       ApprovalMode      `json:"mode,omitempty"`
-	Success    bool              `json:"success,omitempty"`
-	CreatedAt  int64             `json:"created_at"`
-	Metadata   map[string]string `json:"metadata,omitempty"`
+	ActorID     string            `json:"actor_id,omitempty"`
+	ActionID    string            `json:"action_id,omitempty"`
+	ApprovalID  string            `json:"approval_id,omitempty"`
+	SessionID   string            `json:"session_id,omitempty"`
+	UserID      string            `json:"user_id,omitempty"`
+	NodeID      string            `json:"node_id,omitempty"`
+	Capability  string            `json:"capability,omitempty"`
+	Summary     string            `json:"summary,omitempty"`
+	Detail      string            `json:"detail,omitempty"`
+	Mode        ApprovalMode      `json:"mode,omitempty"`
+	Success     bool              `json:"success,omitempty"`
+	CreatedAt   int64             `json:"created_at"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
 }
 
 type ActionEventObserver func(ActionEvent)

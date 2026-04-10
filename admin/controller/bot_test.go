@@ -3,7 +3,11 @@ package controller
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/LittleSongxx/TinyClaw/authz"
 )
 
 func TestGetRequestAttachesManagementHeaders(t *testing.T) {
@@ -13,14 +17,20 @@ func TestGetRequestAttachesManagementHeaders(t *testing.T) {
 	ctx = withBotActingUser(ctx, "-42")
 
 	req := GetRequest(ctx, http.MethodGet, "http://example.com/api", nil)
-	if got := req.Header.Get("Authorization"); got != "Bearer shared-secret" {
-		t.Fatalf("expected bearer auth header, got %q", got)
+	authHeader := req.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		t.Fatalf("expected bearer auth header, got %q", authHeader)
 	}
-	if got := req.Header.Get(botManagementTokenHeader); got != "shared-secret" {
-		t.Fatalf("expected management token header, got %q", got)
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	if got := req.Header.Get(botActorTokenHeader); got != token {
+		t.Fatalf("expected actor token header to match bearer token")
 	}
-	if got := req.Header.Get(botActingUserHeader); got != "-42" {
-		t.Fatalf("expected acting user header, got %q", got)
+	principal, err := authz.VerifyActorToken("shared-secret", token, time.Now())
+	if err != nil {
+		t.Fatalf("verify actor token: %v", err)
+	}
+	if principal.ActorID != "-42" {
+		t.Fatalf("expected signed acting user in token, got %+v", principal)
 	}
 	if got := req.Header.Get("LogId"); got != "log-1" {
 		t.Fatalf("expected log id header, got %q", got)

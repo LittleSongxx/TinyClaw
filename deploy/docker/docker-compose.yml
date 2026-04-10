@@ -133,7 +133,6 @@ services:
       GATEWAY_WS_PATH: ${GATEWAY_WS_PATH:-/gateway/ws}
       GATEWAY_NODE_WS_PATH: ${GATEWAY_NODE_WS_PATH:-/gateway/nodes/ws}
       GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET:-}
-      NODE_PAIRING_TOKEN: ${NODE_PAIRING_TOKEN:-}
       SESSION_TRANSCRIPT_DIR: ${SESSION_TRANSCRIPT_DIR:-/app/data/sessions}
       SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
       REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt

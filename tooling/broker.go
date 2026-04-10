@@ -15,11 +15,15 @@ const (
 )
 
 type ToolInvocation struct {
-	Name      string                 `json:"name"`
-	Arguments map[string]interface{} `json:"arguments,omitempty"`
-	SessionID string                 `json:"session_id,omitempty"`
-	NodeID    string                 `json:"node_id,omitempty"`
-	UserID    string                 `json:"user_id,omitempty"`
+	Name        string                 `json:"name"`
+	Arguments   map[string]interface{} `json:"arguments,omitempty"`
+	WorkspaceID string                 `json:"workspace_id,omitempty"`
+	ActorID     string                 `json:"actor_id,omitempty"`
+	ActorRole   string                 `json:"actor_role,omitempty"`
+	ActorScopes []string               `json:"actor_scopes,omitempty"`
+	SessionID   string                 `json:"session_id,omitempty"`
+	NodeID      string                 `json:"node_id,omitempty"`
+	UserID      string                 `json:"user_id,omitempty"`
 }
 
 type ToolProvider interface {

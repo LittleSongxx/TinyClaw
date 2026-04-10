@@ -64,7 +64,7 @@ func TestDetermineRecallUsageHonorsExplicitFlag(t *testing.T) {
 	}
 }
 
-func TestWorkflowModeDisabledByDefault(t *testing.T) {
+func TestWorkflowModeRequiresFlowID(t *testing.T) {
 	previous := conf.FeatureConfInfo.Workflow
 	defer func() {
 		conf.FeatureConfInfo.Workflow = previous
@@ -75,7 +75,7 @@ func TestWorkflowModeDisabledByDefault(t *testing.T) {
 		Mode:  ModeWorkflow,
 		Input: "run workflow",
 	})
-	if err == nil || !strings.Contains(err.Error(), "workflow mode is experimental and disabled") {
-		t.Fatalf("expected workflow feature gate error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "requires flow_id") {
+		t.Fatalf("expected flow_id error, got %v", err)
 	}
 }

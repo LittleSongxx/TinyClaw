@@ -5,18 +5,22 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
 func TestResolveProcessConfigPrecedence(t *testing.T) {
 	t.Setenv("NODE_GATEWAY_WS", "ws://env.example/gateway")
-	t.Setenv("NODE_PAIRING_TOKEN", "env-token")
+	privateKey, publicKey := generateDeviceKeyPair()
 
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	content := `{
   "gateway_ws": "ws://file.example/gateway",
-  "node_token": "file-token",
-  "node_id": "file-node-id",
+  "workspace_id": "file-workspace",
+  "device_id": "file-device-id",
+  "device_token": "file-device-token",
+  "private_key": "` + privateKey + `",
+  "public_key": "` + publicKey + `",
   "node_name": "file-node-name",
   "log_dir": "/tmp/tinyclaw-file-log",
   "enable_windows_node": false
@@ -29,14 +33,14 @@ func TestResolveProcessConfigPrecedence(t *testing.T) {
 	cancel()
 
 	cfg, err := resolveProcessConfig(ctx, cliOptions{
-		ConfigPath: configPath,
-		GatewayWS:  "ws://cli.example/gateway",
-		NodeName:   "cli-node-name",
-		NodeToken:  "cli-token",
+		ConfigPath:  configPath,
+		GatewayWS:   "ws://cli.example/gateway",
+		NodeName:    "cli-node-name",
+		DeviceToken: "cli-device-token",
 	}, map[string]bool{
-		"gateway_ws": true,
-		"node_name":  true,
-		"node_token": true,
+		"gateway_ws":   true,
+		"node_name":    true,
+		"device_token": true,
 	})
 	if err != nil {
 		t.Fatalf("resolve config: %v", err)
@@ -45,11 +49,11 @@ func TestResolveProcessConfigPrecedence(t *testing.T) {
 	if cfg.GatewayWS != "ws://cli.example/gateway" {
 		t.Fatalf("expected CLI gateway to win, got %q", cfg.GatewayWS)
 	}
-	if cfg.NodeToken != "cli-token" {
-		t.Fatalf("expected CLI token to win, got %q", cfg.NodeToken)
+	if cfg.DeviceToken != "cli-device-token" {
+		t.Fatalf("expected CLI device token to win, got %q", cfg.DeviceToken)
 	}
-	if cfg.NodeID != "file-node-id" {
-		t.Fatalf("expected file node id, got %q", cfg.NodeID)
+	if cfg.DeviceID != "file-device-id" {
+		t.Fatalf("expected file device id, got %q", cfg.DeviceID)
 	}
 	if cfg.NodeName != "cli-node-name" {
 		t.Fatalf("expected CLI node name to win, got %q", cfg.NodeName)
@@ -64,10 +68,11 @@ func TestResolveProcessConfigPrecedence(t *testing.T) {
 
 func TestNormalizeProcessConfigNormalizesAllowlists(t *testing.T) {
 	cfg := processConfig{
-		GatewayWS: "ws://127.0.0.1:36060/gateway/nodes/ws",
-		NodeToken: "token",
-		NodeID:    "node-1",
-		NodeName:  "node-1",
+		GatewayWS:   "ws://127.0.0.1:36060/gateway/nodes/ws",
+		WorkspaceID: "default",
+		DeviceToken: "token",
+		DeviceID:    "node-1",
+		NodeName:    "node-1",
 		WSLDistros: []wslDistroConfig{
 			{
 				Name:                   "Ubuntu-22.04",
@@ -89,7 +94,7 @@ func TestNormalizeProcessConfigNormalizesAllowlists(t *testing.T) {
 
 func TestLoadProcessConfigAcceptsUTF8BOM(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
-	content := []byte(`{"gateway_ws":"ws://127.0.0.1:36060/gateway/nodes/ws","node_token":"token"}`)
+	content := []byte(`{"gateway_ws":"ws://127.0.0.1:36060/gateway/nodes/ws","device_token":"token"}`)
 	content = append([]byte{0xEF, 0xBB, 0xBF}, content...)
 	if err := os.WriteFile(configPath, content, 0644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -102,7 +107,15 @@ func TestLoadProcessConfigAcceptsUTF8BOM(t *testing.T) {
 	if cfg.GatewayWS == nil || *cfg.GatewayWS != "ws://127.0.0.1:36060/gateway/nodes/ws" {
 		t.Fatalf("unexpected gateway_ws: %+v", cfg.GatewayWS)
 	}
-	if cfg.NodeToken == nil || *cfg.NodeToken != "token" {
-		t.Fatalf("unexpected node_token: %+v", cfg.NodeToken)
+	if cfg.DeviceToken == nil || *cfg.DeviceToken != "token" {
+		t.Fatalf("unexpected device_token: %+v", cfg.DeviceToken)
+	}
+}
+
+func TestResolveProcessConfigRejectsLegacyNodeToken(t *testing.T) {
+	t.Setenv("NODE_PAIRING_TOKEN", "legacy-token")
+	_, err := resolveProcessConfig(context.Background(), cliOptions{}, map[string]bool{})
+	if err == nil || !strings.Contains(err.Error(), "NODE_PAIRING_TOKEN") {
+		t.Fatalf("expected legacy token rejection, got %v", err)
 	}
 }

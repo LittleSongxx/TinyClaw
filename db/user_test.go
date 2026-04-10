@@ -2,15 +2,16 @@ package db
 
 import (
 	"testing"
+	"time"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/LittleSongxx/TinyClaw/conf"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func TestInsertAndGetUser(t *testing.T) {
 	conf.BaseConfInfo.TokenPerUser = 100
 
-	userId := "123456789"
+	userId := "123456789-" + time.Now().Format("150405.000000000")
 	mode := `{"txt_type":"gemini","txt_model":"gemini-2.0-flash","img_type":"gemini","img_model":"gemini-2.0-flash-preview-image-generation","video_type":"gemini","video_model":"veo-2.0-generate-001"}`
 
 	// 插入用户

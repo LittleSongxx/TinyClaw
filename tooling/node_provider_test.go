@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/node"
 )
 
@@ -140,13 +139,7 @@ func TestNodeProviderReturnsPendingApprovalPayload(t *testing.T) {
 	}
 }
 
-func TestNodeProviderSkipsApprovalForPrivilegedUser(t *testing.T) {
-	oldPrivileged := conf.BaseConfInfo.PrivilegedUserIds
-	conf.BaseConfInfo.PrivilegedUserIds = map[string]bool{"owner-user": true}
-	defer func() {
-		conf.BaseConfInfo.PrivilegedUserIds = oldPrivileged
-	}()
-
+func TestNodeProviderDoesNotBypassApprovalForPrivilegedUser(t *testing.T) {
 	manager := node.NewManager()
 	err := manager.RegisterNode(context.Background(), node.NodeDescriptor{
 		ID: "node-1",
@@ -170,8 +163,8 @@ func TestNodeProviderSkipsApprovalForPrivilegedUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execute tool: %v", err)
 	}
-	if strings.Contains(result.Output, `"pending_approval":true`) {
-		t.Fatalf("expected privileged user to bypass approval, got %s", result.Output)
+	if !strings.Contains(result.Output, `"pending_approval":true`) {
+		t.Fatalf("expected privileged_user_ids not to bypass approval, got %s", result.Output)
 	}
 }
 

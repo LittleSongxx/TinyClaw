@@ -17,6 +17,7 @@ import (
 	"github.com/LittleSongxx/TinyClaw/param"
 	"github.com/LittleSongxx/TinyClaw/plugins"
 	"github.com/LittleSongxx/TinyClaw/session"
+	"github.com/LittleSongxx/TinyClaw/taskflow"
 	"github.com/LittleSongxx/TinyClaw/tooling"
 	"github.com/google/uuid"
 )
@@ -43,14 +44,14 @@ type InboundMessage struct {
 }
 
 type Service struct {
-	cfg       *conf.RuntimeConfig
-	sessions  session.Store
-	nodes     *node.Manager
-	tools     *tooling.Broker
-	agent     *agent.Runtime
-	approvals ApprovalStore
+	cfg         *conf.RuntimeConfig
+	sessions    session.Store
+	nodes       *node.Manager
+	tools       *tooling.Broker
+	agent       *agent.Runtime
+	approvals   ApprovalStore
 	idempotency *idempotencyCache
-	plugins   *plugins.Registry
+	plugins     *plugins.Registry
 
 	mu       sync.RWMutex
 	adapters map[string]ChannelAdapter
@@ -103,15 +104,15 @@ func NewService(cfg *conf.RuntimeConfig, sessions session.Store, tools *tooling.
 		approvals = newMemoryApprovalStore()
 	}
 	service := &Service{
-		cfg:       cfg,
-		sessions:  sessions,
-		tools:     tools,
-		nodes:     nodes,
-		agent:     runtime,
-		approvals: approvals,
+		cfg:         cfg,
+		sessions:    sessions,
+		tools:       tools,
+		nodes:       nodes,
+		agent:       runtime,
+		approvals:   approvals,
 		idempotency: newIdempotencyCache(5 * time.Minute),
-		plugins:   plugins.NewDefaultRegistry(),
-		adapters:  make(map[string]ChannelAdapter),
+		plugins:     plugins.NewDefaultRegistry(),
+		adapters:    make(map[string]ChannelAdapter),
 	}
 	if nodes != nil {
 		nodes.SetEventObserver(service.recordActionEvent)
@@ -127,6 +128,27 @@ func (s *Service) PluginRegistry() *plugins.Registry {
 		s.plugins = plugins.NewDefaultRegistry()
 	}
 	return s.plugins
+}
+
+func (s *Service) TaskFlowEngine() *taskflow.Engine {
+	return taskflow.NewEngine(taskflow.Handlers{
+		Tool: func(ctx context.Context, call tooling.ToolInvocation) (*tooling.ToolResult, error) {
+			if s == nil || s.tools == nil {
+				return nil, tooling.ErrToolBrokerNil
+			}
+			return s.tools.Execute(ctx, call)
+		},
+		NodeCommand: func(ctx context.Context, req node.NodeCommandRequest) (*node.NodeCommandResult, error) {
+			return s.ExecuteNodeCommand(ctx, req)
+		},
+		Subflow: func(ctx context.Context, flowID string, inputs map[string]interface{}) (map[string]interface{}, error) {
+			run, err := s.TaskFlowEngine().Run(ctx, flowID, inputs)
+			if err != nil {
+				return nil, err
+			}
+			return run.Outputs, nil
+		},
+	})
 }
 
 func (s *Service) RegisterAdapter(adapter ChannelAdapter) {
@@ -317,12 +339,12 @@ func (s *Service) resolveSessionKey(message InboundMessage) session.SessionKey {
 
 	key := session.SessionKey{
 		WorkspaceID: authz.NormalizeWorkspaceID(firstNonEmpty(message.Metadata["workspace_id"], message.Metadata["workspace"], authz.WorkspaceIDFromContext(context.Background()))),
-		Channel:   firstNonEmpty(message.Channel, "web"),
-		AccountID: firstNonEmpty(message.AccountID, "default"),
-		PeerID:    message.PeerID,
-		GroupID:   message.GroupID,
-		ThreadID:  message.ThreadID,
-		Kind:      kind,
+		Channel:     firstNonEmpty(message.Channel, "web"),
+		AccountID:   firstNonEmpty(message.AccountID, "default"),
+		PeerID:      message.PeerID,
+		GroupID:     message.GroupID,
+		ThreadID:    message.ThreadID,
+		Kind:        kind,
 	}
 	if kind == "cron" || kind == "debug" {
 		key.Nonce = firstNonEmpty(message.MessageID, uuid.NewString())

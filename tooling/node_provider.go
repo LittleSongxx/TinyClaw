@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LittleSongxx/TinyClaw/conf"
+	"github.com/LittleSongxx/TinyClaw/authz"
 	"github.com/LittleSongxx/TinyClaw/node"
 )
 
@@ -166,14 +166,27 @@ func (p *NodeProvider) ExecuteTool(ctx context.Context, call ToolInvocation) (*T
 	}
 
 	arguments := cloneArguments(call.Arguments)
+	principal, hasPrincipal := authz.PrincipalFromContext(ctx)
+	if hasPrincipal {
+		call.WorkspaceID = authz.NormalizeWorkspaceID(firstNonEmpty(call.WorkspaceID, principal.WorkspaceID))
+		call.ActorID = firstNonEmpty(call.ActorID, principal.ActorID)
+		call.ActorRole = firstNonEmpty(call.ActorRole, string(principal.Role))
+		if len(call.ActorScopes) == 0 {
+			call.ActorScopes = append([]string(nil), principal.Scopes...)
+		}
+	}
 	req := node.NodeCommandRequest{
+		WorkspaceID:     call.WorkspaceID,
+		ActorID:         call.ActorID,
+		ActorRole:       call.ActorRole,
+		ActorScopes:     call.ActorScopes,
 		NodeID:          stringArgument(arguments, argNodeID, call.NodeID),
 		SessionID:       call.SessionID,
 		UserID:          call.UserID,
 		Capability:      capability,
 		Arguments:       arguments,
 		TimeoutSec:      intArgument(arguments, argTimeoutSec),
-		RequireApproval: !conf.IsPrivilegedUser(call.UserID),
+		RequireApproval: true,
 	}
 	delete(req.Arguments, argNodeID)
 	delete(req.Arguments, argTimeoutSec)
@@ -671,6 +684,15 @@ func stringArgument(arguments map[string]interface{}, key, fallback string) stri
 		}
 	}
 	return fallback
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func intArgument(arguments map[string]interface{}, key string) int {

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/LittleSongxx/TinyClaw/agentruntime"
+	"github.com/LittleSongxx/TinyClaw/authz"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/db"
 	"github.com/LittleSongxx/TinyClaw/logger"
@@ -93,14 +94,19 @@ func (d *LLMTaskReq) newRuntimeRegistry(mode agentruntime.Mode) *tooling.Registr
 }
 
 func (d *LLMTaskReq) runMeta(mode agentruntime.Mode) agentruntime.RunMeta {
+	workspaceID := authz.WorkspaceIDFromContext(d.Ctx)
+	if d.Cs != nil && d.Cs.WorkspaceID != "" {
+		workspaceID = d.Cs.WorkspaceID
+	}
 	return agentruntime.RunMeta{
-		UserID:   d.UserId,
-		ChatID:   d.ChatId,
-		MsgID:    d.MsgId,
-		Input:    d.Content,
-		Mode:     mode,
-		ReplayOf: d.ReplayOf,
-		SkillID:  d.SkillID,
+		WorkspaceID: workspaceID,
+		UserID:      d.UserId,
+		ChatID:      d.ChatId,
+		MsgID:       d.MsgId,
+		Input:       d.Content,
+		Mode:        mode,
+		ReplayOf:    d.ReplayOf,
+		SkillID:     d.SkillID,
 	}
 }
 
