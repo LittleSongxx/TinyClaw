@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"runtime/debug"
 	"strconv"
+	"strings"
 
 	"github.com/ArtisanCloud/PowerWeChat/v3/src/kernel"
 	"github.com/ArtisanCloud/PowerWeChat/v3/src/kernel/contract"
@@ -36,7 +37,7 @@ func Communicate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	realUserId := r.URL.Query().Get("user_id")
+	realUserId := strings.TrimSpace(actingUserIDFromRequest(r))
 	if realUserId == "" {
 		realUserId = "web:" + r.RemoteAddr
 	}
@@ -54,7 +55,7 @@ func Communicate(w http.ResponseWriter, r *http.Request) {
 
 	command, p := robot.ParseCommand(prompt)
 
-	web := robot.NewWeb(command, intUserId, realUserId, p, prompt, fileData, w, flusher)
+	web := robot.NewWebWithTrust(command, intUserId, realUserId, p, prompt, fileData, w, flusher, isTrustedManagementRequest(r))
 	_, state, err := gateway.DefaultService().BeginInbound(ctx, gateway.InboundMessage{
 		Channel:   "web",
 		AccountID: "default",

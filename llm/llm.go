@@ -449,6 +449,8 @@ func WithContentParameter(contentParameter map[string]string) Option {
 }
 
 func (l *LLM) ExecMcpReq(ctx context.Context, funcName string, property map[string]interface{}) (string, error) {
+	property = normalizeToolArguments(property)
+
 	if l != nil && len(l.AllowedTools) > 0 && !l.AllowedTools[funcName] {
 		err := fmt.Errorf("tool %s is not allowed in the current skill", funcName)
 		l.observeTool(funcName, property, "", err)
@@ -558,6 +560,49 @@ func (l *LLM) finalizeToolResult(funcName string, property map[string]interface{
 
 	l.observeTool(funcName, property, toolsData, nil)
 	return toolsData, nil
+}
+
+func normalizeToolArguments(arguments map[string]interface{}) map[string]interface{} {
+	if len(arguments) == 0 {
+		return arguments
+	}
+
+	normalized := make(map[string]interface{}, len(arguments))
+	for key, value := range arguments {
+		cleaned, keep := normalizeToolArgumentValue(value)
+		if !keep {
+			continue
+		}
+		normalized[key] = cleaned
+	}
+	return normalized
+}
+
+func normalizeToolArgumentValue(value interface{}) (interface{}, bool) {
+	if value == nil {
+		return nil, false
+	}
+
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		cleaned := normalizeToolArguments(typed)
+		if len(cleaned) == 0 {
+			return nil, false
+		}
+		return cleaned, true
+	case []interface{}:
+		cleaned := make([]interface{}, 0, len(typed))
+		for _, item := range typed {
+			normalized, keep := normalizeToolArgumentValue(item)
+			if !keep {
+				continue
+			}
+			cleaned = append(cleaned, normalized)
+		}
+		return cleaned, true
+	default:
+		return value, true
+	}
 }
 
 func (l *LLM) ensureRuntimeTools() {

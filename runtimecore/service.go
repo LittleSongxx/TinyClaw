@@ -60,6 +60,9 @@ func (s *Service) Run(req RunRequest) (*RunResult, error) {
 	case ModeMCP:
 		return s.runStructured(req, ModeMCP)
 	case ModeWorkflow:
+		if !conf.FeatureConfInfo.WorkflowEnabled() {
+			return nil, fmt.Errorf("workflow mode is experimental and disabled; use task mode or set ENABLE_EXPERIMENTAL_WORKFLOW=true")
+		}
 		return s.runStructured(req, ModeTask)
 	case ModeTask, "":
 		return s.runStructured(req, ModeTask)
@@ -78,7 +81,10 @@ func (s *Service) EffectiveTools(ctx context.Context) (*ToolInventory, error) {
 		runtimeTools = items
 	}
 
-	legacyTools := tooling.NewRegistryFromTaskTools().List()
+	legacyTools := make([]tooling.ToolSpec, 0)
+	if conf.FeatureConfInfo.LegacyTaskToolsEnabled() {
+		legacyTools = tooling.NewRegistryFromTaskTools().List()
+	}
 	merged := make([]tooling.ToolSpec, 0, len(runtimeTools)+len(legacyTools))
 	seen := make(map[string]bool, len(runtimeTools)+len(legacyTools))
 	for _, item := range runtimeTools {

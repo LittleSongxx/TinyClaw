@@ -60,6 +60,11 @@ func (l *Runtime) GenerateContent(ctx context.Context, messages []llms.MessageCo
 }
 
 func Init() {
+	if !conf.FeatureConfInfo.KnowledgeEnabled() {
+		logger.Info("knowledge module disabled")
+		return
+	}
+
 	if conf.KnowledgeConfInfo.EmbeddingType == "" {
 		return
 	}

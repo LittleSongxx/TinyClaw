@@ -300,3 +300,51 @@ func TestManagerWSLWriteRequiresApprovalWhenPathIsNotAllowlisted(t *testing.T) {
 		t.Fatalf("did not expect transport request before approval, got %+v", transport.lastReq)
 	}
 }
+
+func TestManagerPickNodePrefersNewestHeartbeatThenStableID(t *testing.T) {
+	manager := NewManager()
+	manager.nodes["node-b"] = &connectedNode{
+		desc: NodeDescriptor{
+			ID:         "node-b",
+			LastSeenAt: 200,
+			Capabilities: []NodeCapability{
+				{Name: "fs.read"},
+			},
+		},
+	}
+	manager.nodes["node-a"] = &connectedNode{
+		desc: NodeDescriptor{
+			ID:         "node-a",
+			LastSeenAt: 200,
+			Capabilities: []NodeCapability{
+				{Name: "fs.read"},
+			},
+		},
+	}
+	manager.nodes["node-c"] = &connectedNode{
+		desc: NodeDescriptor{
+			ID:         "node-c",
+			LastSeenAt: 100,
+			Capabilities: []NodeCapability{
+				{Name: "fs.read"},
+			},
+		},
+	}
+
+	target, err := manager.pickNode(NodeCommandRequest{Capability: "fs.read"})
+	if err != nil {
+		t.Fatalf("pick node: %v", err)
+	}
+	if target.desc.ID != "node-a" {
+		t.Fatalf("expected stable tie-breaker by node id, got %s", target.desc.ID)
+	}
+
+	manager.nodes["node-b"].desc.LastSeenAt = 300
+	target, err = manager.pickNode(NodeCommandRequest{Capability: "fs.read"})
+	if err != nil {
+		t.Fatalf("pick node after heartbeat update: %v", err)
+	}
+	if target.desc.ID != "node-b" {
+		t.Fatalf("expected newest heartbeat to win, got %s", target.desc.ID)
+	}
+}

@@ -55,7 +55,7 @@ func main() {
 		waitGroup.Add(1)
 		go func(current nodeInstance) {
 			defer waitGroup.Done()
-			runNodeLoop(ctx, cfg.GatewayWS, cfg.NodeToken, current)
+			runNodeLoop(ctx, cfg, current)
 		}(instance)
 	}
 

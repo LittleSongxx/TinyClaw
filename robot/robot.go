@@ -43,8 +43,8 @@ const (
 )
 
 var (
-	smartModeReg = regexp.MustCompile(`\{\s*(?:"cron"\s*:\s*".*?"\s*,\s*"prompt"\s*:\s*".*?"\s*,\s*)?"command"\s*:\s*".*?"\s*\}`)
-	Cron         *cron.Cron
+	smartModeReg   = regexp.MustCompile(`\{\s*(?:"cron"\s*:\s*".*?"\s*,\s*"prompt"\s*:\s*".*?"\s*,\s*)?"command"\s*:\s*".*?"\s*\}`)
+	Cron           *cron.Cron
 	commandAliases = map[string]string{
 		"skil":   param.Skill,
 		"skills": param.Skill,
@@ -575,6 +575,19 @@ func StartRobot() {
 	RobotControl.Cancel = cancel
 	ctx = context.WithValue(ctx, "bot_name", conf.BaseConfInfo.BotName)
 
+	if conf.BaseConfInfo.LarkAPPID != "" && conf.BaseConfInfo.LarkAppSecret != "" {
+		go func() {
+			StartLarkRobot(ctx)
+		}()
+	}
+
+	if !conf.FeatureConfInfo.LegacyBotsEnabled() {
+		if legacyBotConfigured() {
+			logger.InfoCtx(ctx, "legacy bot adapters disabled")
+		}
+		return
+	}
+
 	if conf.BaseConfInfo.TelegramBotToken != "" {
 		go func() {
 			StartTelegramRobot(ctx)
@@ -584,12 +597,6 @@ func StartRobot() {
 	if conf.BaseConfInfo.DiscordBotToken != "" {
 		go func() {
 			StartDiscordRobot(ctx)
-		}()
-	}
-
-	if conf.BaseConfInfo.LarkAPPID != "" && conf.BaseConfInfo.LarkAppSecret != "" {
-		go func() {
-			StartLarkRobot(ctx)
 		}()
 	}
 
@@ -622,6 +629,16 @@ func StartRobot() {
 			StartWechatRobot()
 		}()
 	}
+}
+
+func legacyBotConfigured() bool {
+	return conf.BaseConfInfo.TelegramBotToken != "" ||
+		conf.BaseConfInfo.DiscordBotToken != "" ||
+		(conf.BaseConfInfo.SlackBotToken != "" && conf.BaseConfInfo.SlackAppToken != "") ||
+		(conf.BaseConfInfo.DingClientId != "" && conf.BaseConfInfo.DingClientSecret != "") ||
+		(conf.BaseConfInfo.ComWechatSecret != "" && conf.BaseConfInfo.ComWechatAgentID != "" && conf.BaseConfInfo.ComWechatEncodingAESKey != "") ||
+		(conf.BaseConfInfo.QQAppID != "" && conf.BaseConfInfo.QQAppSecret != "") ||
+		(conf.BaseConfInfo.WechatAppID != "" && conf.BaseConfInfo.WechatAppSecret != "")
 }
 
 // checkUserAllow check use can use telegram bot or not
@@ -907,6 +924,10 @@ func (r *RobotInfo) ExecCmd(cmd string, defaultFunc func(), modeFunc func(string
 		r.handleApprovalDecision(false)
 	case param.TxtType, "/" + param.TxtType, "$" + param.TxtType, param.PhotoType, "/" + param.PhotoType, "$" + param.PhotoType, param.VideoType,
 		"/" + param.VideoType, "$" + param.VideoType, param.RecType, "/" + param.RecType, "$" + param.RecType, param.TtsType, "/" + param.TtsType, "$" + param.TtsType:
+		if isMediaCommand(cmd) && !conf.FeatureConfInfo.MediaEnabled() {
+			r.sendFeatureDisabled("media")
+			return
+		}
 		if typesFunc != nil {
 			typesFunc(cmd)
 		} else {
@@ -915,18 +936,34 @@ func (r *RobotInfo) ExecCmd(cmd string, defaultFunc func(), modeFunc func(string
 	case param.TxtModel, "/" + param.TxtModel, "$" + param.TxtModel, param.PhotoModel, "/" + param.PhotoModel, "$" + param.PhotoModel,
 		param.VideoModel, "/" + param.VideoModel, "$" + param.VideoModel, param.RecModel, "/" + param.RecModel, "$" + param.RecModel,
 		param.TtsModel, "/" + param.TtsModel, "$" + param.TtsModel:
+		if isMediaCommand(cmd) && !conf.FeatureConfInfo.MediaEnabled() {
+			r.sendFeatureDisabled("media")
+			return
+		}
 		if modeFunc != nil {
 			modeFunc(cmd)
 		} else {
 			r.changeModel(cmd)
 		}
 	case param.Photo, "/" + param.Photo, "$" + param.Photo, param.EditPhoto, "/" + param.EditPhoto, "$" + param.EditPhoto:
+		if !conf.FeatureConfInfo.MediaEnabled() {
+			r.sendFeatureDisabled("media")
+			return
+		}
 		r.Robot.sendImg()
 	case param.Video, "/" + param.Video, "$" + param.Video:
+		if !conf.FeatureConfInfo.MediaEnabled() {
+			r.sendFeatureDisabled("media")
+			return
+		}
 		r.Robot.sendVideo()
 	case param.Help, "/" + param.Help, "$" + param.Help:
 		r.sendHelpInfo()
 	case param.RecPhoto, "/" + param.RecPhoto, "$" + param.RecPhoto:
+		if !conf.FeatureConfInfo.MediaEnabled() {
+			r.sendFeatureDisabled("media")
+			return
+		}
 		r.recPhoto()
 	case param.Task, "/" + param.Task, "$" + param.Task:
 		var emptyPromptFunc func()
@@ -949,10 +986,22 @@ func (r *RobotInfo) ExecCmd(cmd string, defaultFunc func(), modeFunc func(string
 	case param.Mode, "/" + param.Mode, "$" + param.Mode:
 		r.showMode()
 	case param.CronList, "/" + param.CronList, "$" + param.CronList:
+		if !conf.FeatureConfInfo.CronEnabled() {
+			r.sendFeatureDisabled("cron")
+			return
+		}
 		r.cronList()
 	case param.CronDel, "/" + param.CronDel, "$" + param.CronDel:
+		if !conf.FeatureConfInfo.CronEnabled() {
+			r.sendFeatureDisabled("cron")
+			return
+		}
 		r.cronDel()
 	case param.CronClear, "/" + param.CronClear, "$" + param.CronClear:
+		if !conf.FeatureConfInfo.CronEnabled() {
+			r.sendFeatureDisabled("cron")
+			return
+		}
 		r.cronClear()
 	default:
 		if r.tryHandleDynamicSlashCommand(rawCmd, cmd) {
@@ -1005,9 +1054,29 @@ func (r *RobotInfo) tryHandleDynamicSlashCommand(rawCmd, canonicalCmd string) bo
 
 func (r *RobotInfo) sendUnknownCommand(rawCmd string) {
 	chatId, msgId, _ := r.GetChatIdAndMsgIdAndUserID()
-	msg := fmt.Sprintf("Unknown command `%s`. Try `/skill list`, `/mcp list`, or use a registered skill / MCP alias such as `/amap <task>`.", rawCmd)
+	msg := fmt.Sprintf("Unknown command `%s`. Try `/skill list` or `/mcp list` to inspect the enabled Agent capabilities.", rawCmd)
 	if conf.BaseConfInfo.Lang == "zh" {
-		msg = fmt.Sprintf("未识别命令 `%s`。可使用 `/skill list`、`/mcp list`，或直接使用已注册的 skill / MCP 别名，例如 `/amap <任务>`。", rawCmd)
+		msg = fmt.Sprintf("未识别命令 `%s`。可使用 `/skill list` 或 `/mcp list` 查看当前已启用的 Agent 能力。", rawCmd)
+	}
+	r.SendMsg(chatId, msg, msgId, tgbotapi.ModeMarkdown, nil)
+}
+
+func isMediaCommand(cmd string) bool {
+	switch strings.TrimLeft(canonicalizeCommand(cmd), "/$") {
+	case param.Photo, param.EditPhoto, param.Video, param.RecPhoto,
+		param.PhotoType, param.PhotoModel, param.VideoType, param.VideoModel,
+		param.RecType, param.RecModel, param.TtsType, param.TtsModel:
+		return true
+	default:
+		return false
+	}
+}
+
+func (r *RobotInfo) sendFeatureDisabled(feature string) {
+	chatId, msgId, _ := r.GetChatIdAndMsgIdAndUserID()
+	msg := fmt.Sprintf("The optional %s feature is disabled in this TinyClaw core profile.", feature)
+	if conf.BaseConfInfo.Lang == "zh" {
+		msg = fmt.Sprintf("可选能力 `%s` 当前未启用。TinyClaw 默认只开放 Agent 平台核心能力。", feature)
 	}
 	r.SendMsg(chatId, msg, msgId, tgbotapi.ModeMarkdown, nil)
 }
@@ -2187,6 +2256,10 @@ func (r *RobotInfo) smartMode() bool {
 
 	switch smartResult.Command {
 	case "/cron":
+		if !conf.FeatureConfInfo.CronEnabled() {
+			r.sendFeatureDisabled("cron")
+			return false
+		}
 		r.cs.Token = llmClient.Cs.Token
 		err = r.InsertCron(smartResult.Cron, smartResult.Prompt)
 		if err != nil {

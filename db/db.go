@@ -352,6 +352,11 @@ func InitTable() {
 		logger.Fatal("migrate primary agent tables fail", "err", err)
 	}
 
+	err = InitWorkspaceSchema(DB)
+	if err != nil {
+		logger.Fatal("initialize workspace schema fail", "err", err)
+	}
+
 	InsertRecord(context.Background())
 
 	err = InitFeatureDB()

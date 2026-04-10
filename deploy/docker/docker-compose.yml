@@ -1,5 +1,7 @@
 services:
   hf-embeddings:
+    profiles:
+      - knowledge
     # Use the CPU image by default for maximum compatibility across hosts.
     image: ${HF_EMBEDDINGS_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-1.9}
     restart: unless-stopped
@@ -13,6 +15,8 @@ services:
       - hf-model-cache:/data
 
   postgres:
+    profiles:
+      - knowledge
     image: pgvector/pgvector:pg17
     restart: unless-stopped
     environment:
@@ -28,6 +32,8 @@ services:
       retries: 10
 
   redis:
+    profiles:
+      - knowledge
     image: redis:7-alpine
     restart: unless-stopped
     command:
@@ -56,6 +62,9 @@ services:
       - milvus-etcd:/etcd
 
   minio:
+    profiles:
+      - knowledge
+      - full
     image: minio/minio:latest
     restart: unless-stopped
     environment:
@@ -129,20 +138,27 @@ services:
       SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
       REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
       USE_TOOLS: ${USE_TOOLS:-true}
-      EMBEDDING_TYPE: ${EMBEDDING_TYPE:-huggingface}
-      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://hf-embeddings:80}
-      EMBEDDING_MODEL_ID: ${EMBEDDING_MODEL_ID:-BAAI/bge-small-zh-v1.5}
-      EMBEDDING_QUERY_INSTRUCTION: ${EMBEDDING_QUERY_INSTRUCTION:-为这个句子生成表示以用于检索相关文章：}
+      ENABLE_KNOWLEDGE: ${ENABLE_KNOWLEDGE:-false}
+      ENABLE_MEDIA: ${ENABLE_MEDIA:-false}
+      ENABLE_CRON: ${ENABLE_CRON:-false}
+      ENABLE_LEGACY_BOTS: ${ENABLE_LEGACY_BOTS:-false}
+      ENABLE_LEGACY_MCP_PROXY: ${ENABLE_LEGACY_MCP_PROXY:-false}
+      ENABLE_LEGACY_TASK_TOOLS: ${ENABLE_LEGACY_TASK_TOOLS:-false}
+      ENABLE_EXPERIMENTAL_WORKFLOW: ${ENABLE_EXPERIMENTAL_WORKFLOW:-false}
+      EMBEDDING_TYPE: ${EMBEDDING_TYPE:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_MODEL_ID: ${EMBEDDING_MODEL_ID:-}
+      EMBEDDING_QUERY_INSTRUCTION: ${EMBEDDING_QUERY_INSTRUCTION:-}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-512}
       CHUNK_SIZE: ${CHUNK_SIZE:-500}
       CHUNK_OVERLAP: ${CHUNK_OVERLAP:-50}
-      POSTGRES_DSN: ${POSTGRES_DSN:-postgres://tinyclaw:tinyclawpass@postgres:5432/tinyclaw?sslmode=disable}
-      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      POSTGRES_DSN: ${POSTGRES_DSN:-}
+      REDIS_ADDR: ${REDIS_ADDR:-}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DB: ${REDIS_DB:-0}
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-}
       MINIO_BUCKET: ${MINIO_BUCKET:-tinyclaw-knowledge}
       MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
       DEFAULT_KNOWLEDGE_BASE: ${DEFAULT_KNOWLEDGE_BASE:-default}
@@ -150,10 +166,6 @@ services:
       KNOWLEDGE_AUTO_MIGRATE: ${KNOWLEDGE_AUTO_MIGRATE:-true}
       RERANKER_BASE_URL: ${RERANKER_BASE_URL:-}
     depends_on:
-      - hf-embeddings
-      - postgres
-      - redis
-      - minio
       - playwright-mcp
     ports:
       - "${HOST_HTTP_PORT:-36060}:36060"

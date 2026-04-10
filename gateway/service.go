@@ -4,15 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/LittleSongxx/TinyClaw/agent"
+	"github.com/LittleSongxx/TinyClaw/authz"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/db"
 	"github.com/LittleSongxx/TinyClaw/logger"
 	"github.com/LittleSongxx/TinyClaw/node"
 	"github.com/LittleSongxx/TinyClaw/param"
+	"github.com/LittleSongxx/TinyClaw/plugins"
 	"github.com/LittleSongxx/TinyClaw/session"
 	"github.com/LittleSongxx/TinyClaw/tooling"
 	"github.com/google/uuid"
@@ -46,6 +49,8 @@ type Service struct {
 	tools     *tooling.Broker
 	agent     *agent.Runtime
 	approvals ApprovalStore
+	idempotency *idempotencyCache
+	plugins   *plugins.Registry
 
 	mu       sync.RWMutex
 	adapters map[string]ChannelAdapter
@@ -69,10 +74,11 @@ func Init() *Service {
 
 		store := session.InitDefaultStore(conf.RuntimeConfInfo.Sessions.TranscriptDir)
 		nodes := node.NewManager()
-		tools := tooling.NewBroker(
-			tooling.NewRegistryProvider(tooling.NewRegistryFromTaskTools()),
-			tooling.NewNodeProvider(nodes),
-		)
+		providers := []tooling.ToolProvider{tooling.NewNodeProvider(nodes)}
+		if conf.FeatureConfInfo.LegacyTaskToolsEnabled() {
+			providers = append([]tooling.ToolProvider{tooling.NewRegistryProvider(tooling.NewRegistryFromTaskTools())}, providers...)
+		}
+		tools := tooling.NewBroker(providers...)
 		runtime := agent.NewRuntime(
 			&agent.SessionAssembler{Store: store, Limit: conf.RuntimeConfInfo.Sessions.ContextWindow},
 			nil,
@@ -103,12 +109,24 @@ func NewService(cfg *conf.RuntimeConfig, sessions session.Store, tools *tooling.
 		nodes:     nodes,
 		agent:     runtime,
 		approvals: approvals,
+		idempotency: newIdempotencyCache(5 * time.Minute),
+		plugins:   plugins.NewDefaultRegistry(),
 		adapters:  make(map[string]ChannelAdapter),
 	}
 	if nodes != nil {
 		nodes.SetEventObserver(service.recordActionEvent)
 	}
 	return service
+}
+
+func (s *Service) PluginRegistry() *plugins.Registry {
+	if s == nil {
+		return nil
+	}
+	if s.plugins == nil {
+		s.plugins = plugins.NewDefaultRegistry()
+	}
+	return s.plugins
 }
 
 func (s *Service) RegisterAdapter(adapter ChannelAdapter) {
@@ -133,6 +151,7 @@ func (s *Service) BeginInbound(ctx context.Context, message InboundMessage) (*se
 
 	state := &param.ContextState{
 		UseRecord:    false,
+		WorkspaceID:  key.WorkspaceID,
 		SessionID:    env.SessionID,
 		SessionKey:   env.SessionKey,
 		SessionScope: key.Scope(),
@@ -273,12 +292,18 @@ func (s *Service) ListSessionMeta(limit int) ([]db.SessionMeta, error) {
 	return db.ListSessionMeta(limit)
 }
 
+func (s *Service) ListSessionMetaInWorkspace(ctx context.Context, limit int) ([]db.SessionMeta, error) {
+	return db.ListSessionMetaInWorkspace(authz.WorkspaceIDFromContext(ctx), limit)
+}
+
 func (s *Service) resolveSessionKey(message InboundMessage) session.SessionKey {
 	s.mu.RLock()
 	adapter := s.adapters[message.Channel]
 	s.mu.RUnlock()
 	if adapter != nil {
-		return adapter.ResolveSessionKey(message)
+		key := adapter.ResolveSessionKey(message)
+		key.WorkspaceID = authz.NormalizeWorkspaceID(firstNonEmpty(key.WorkspaceID, message.Metadata["workspace_id"], message.Metadata["workspace"]))
+		return key
 	}
 
 	kind := message.Kind
@@ -291,6 +316,7 @@ func (s *Service) resolveSessionKey(message InboundMessage) session.SessionKey {
 	}
 
 	key := session.SessionKey{
+		WorkspaceID: authz.NormalizeWorkspaceID(firstNonEmpty(message.Metadata["workspace_id"], message.Metadata["workspace"], authz.WorkspaceIDFromContext(context.Background()))),
 		Channel:   firstNonEmpty(message.Channel, "web"),
 		AccountID: firstNonEmpty(message.AccountID, "default"),
 		PeerID:    message.PeerID,
@@ -304,14 +330,55 @@ func (s *Service) resolveSessionKey(message InboundMessage) session.SessionKey {
 	return key
 }
 
-func (s *Service) authorizeToken(token string) bool {
+func (s *Service) authorizeControlToken(token string) bool {
 	if s == nil || s.cfg == nil {
-		return true
+		return false
 	}
-	if s.cfg.Gateway.SharedSecret == "" {
-		return true
+	secret := strings.TrimSpace(s.cfg.Gateway.SharedSecret)
+	if secret == "" || token == "" {
+		return false
 	}
-	return token == s.cfg.Gateway.SharedSecret || token == s.cfg.Nodes.PairingToken
+	return token == secret
+}
+
+func (s *Service) authorizeNodeToken(token string) bool {
+	return false
+}
+
+func (s *Service) authorizeControlConnect(connect ConnectFrame) (authz.Principal, bool) {
+	if s == nil || s.cfg == nil {
+		return authz.Principal{}, false
+	}
+	if connect.ProtocolVersion != ProtocolVersionV1 {
+		return authz.Principal{}, false
+	}
+	secret := strings.TrimSpace(s.cfg.Gateway.SharedSecret)
+	if secret == "" {
+		return authz.Principal{}, false
+	}
+	token := strings.TrimSpace(firstNonEmpty(connect.Auth.ActorToken, connect.Auth.Token))
+	if token == "" {
+		return authz.Principal{}, false
+	}
+	principal, err := authz.VerifyActorToken(secret, token, time.Now())
+	if err != nil {
+		return authz.Principal{}, false
+	}
+	if connect.WorkspaceID != "" && !sameGatewayWorkspace(connect.WorkspaceID, principal.WorkspaceID) {
+		return authz.Principal{}, false
+	}
+	return principal, true
+}
+
+func (s *Service) idempotencyKey(principal authz.Principal, method, key string) string {
+	if key == "" {
+		return ""
+	}
+	return authz.NormalizeWorkspaceID(principal.WorkspaceID) + ":" + strings.TrimSpace(principal.ActorID) + ":" + strings.TrimSpace(method) + ":" + strings.TrimSpace(key)
+}
+
+func sameGatewayWorkspace(left, right string) bool {
+	return authz.NormalizeWorkspaceID(left) == authz.NormalizeWorkspaceID(right)
 }
 
 func newMemoryApprovalStore() *memoryApprovalStore {

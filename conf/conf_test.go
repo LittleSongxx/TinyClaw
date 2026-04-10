@@ -2,6 +2,7 @@ package conf
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -93,6 +94,13 @@ func TestInitConf_AllEnvVars(t *testing.T) {
 	os.Setenv("LEXICAL_SCORE_THRESHOLD", "0.07")
 	os.Setenv("FUSED_SCORE_THRESHOLD", "0.03")
 	os.Setenv("RERANKER_SCORE_THRESHOLD", "0.22")
+	os.Setenv("ENABLE_KNOWLEDGE", "true")
+	os.Setenv("ENABLE_MEDIA", "true")
+	os.Setenv("ENABLE_CRON", "true")
+	os.Setenv("ENABLE_LEGACY_BOTS", "true")
+	os.Setenv("ENABLE_LEGACY_MCP_PROXY", "true")
+	os.Setenv("ENABLE_LEGACY_TASK_TOOLS", "true")
+	os.Setenv("ENABLE_EXPERIMENTAL_WORKFLOW", "true")
 
 	os.Setenv("MCP_CONF_PATH", "./conf/mcp/mcp.json")
 
@@ -120,6 +128,12 @@ func TestInitConf_AllEnvVars(t *testing.T) {
 	assertEqual(t, BaseConfInfo.LLMProxy, "http://proxy.deepseek", "LLMProxy")
 	assertEqual(t, BaseConfInfo.RobotProxy, "http://proxy.telegram", "RobotProxy")
 	assertEqual(t, BaseConfInfo.Lang, "zh-CN", "Lang")
+	assertMapContains(t, BaseConfInfo.AllowedUserIds, "1001", "AllowedUserIds[1001]")
+	assertMapContains(t, BaseConfInfo.AllowedUserIds, "1002", "AllowedUserIds[1002]")
+	assertMapContains(t, BaseConfInfo.AllowedGroupIds, "-2001", "AllowedGroupIds[-2001]")
+	assertMapContains(t, BaseConfInfo.AllowedGroupIds, "-2002", "AllowedGroupIds[-2002]")
+	assertMapContains(t, BaseConfInfo.PrivilegedUserIds, "9999", "PrivilegedUserIds[9999]")
+	assertMapContains(t, BaseConfInfo.PrivilegedUserIds, "8888", "PrivilegedUserIds[8888]")
 	assertInt(t, BaseConfInfo.TokenPerUser, 888, "TokenPerUser")
 	assertInt(t, BaseConfInfo.MaxUserChat, 10, "MaxUserChat")
 	assertEqual(t, BaseConfInfo.HTTPHost, "8888", "HTTPPort")
@@ -189,6 +203,13 @@ func TestInitConf_AllEnvVars(t *testing.T) {
 	assertBool(t, KnowledgeConfInfo.Enabled(), true, "KnowledgeEnabled")
 	assertEqual(t, KnowledgeConfInfo.KnowledgeBaseName(), "default-kb", "KnowledgeBaseName")
 	assertEqual(t, KnowledgeConfInfo.CollectionName(), "team-docs", "CollectionName")
+	assertBool(t, FeatureConfInfo.KnowledgeEnabled(), true, "FeatureKnowledge")
+	assertBool(t, FeatureConfInfo.MediaEnabled(), true, "FeatureMedia")
+	assertBool(t, FeatureConfInfo.CronEnabled(), true, "FeatureCron")
+	assertBool(t, FeatureConfInfo.LegacyBotsEnabled(), true, "FeatureLegacyBots")
+	assertBool(t, FeatureConfInfo.LegacyMCPProxyEnabled(), true, "FeatureLegacyMCPProxy")
+	assertBool(t, FeatureConfInfo.LegacyTaskToolsEnabled(), true, "FeatureLegacyTaskTools")
+	assertBool(t, FeatureConfInfo.WorkflowEnabled(), true, "FeatureWorkflow")
 
 	assertEqual(t, *ToolsConfInfo.McpConfPath, "./conf/mcp/mcp.json", "MCP_CONF_PATH")
 
@@ -200,6 +221,89 @@ func TestInitConf_AllEnvVars(t *testing.T) {
 	assertBool(t, VideoConfInfo.Watermark, true, "WATERMARK")
 
 	os.Clearenv()
+}
+
+func TestGetAbsPathHonorsTinyClawRoot(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("TINYCLAW_ROOT", root)
+
+	got := GetAbsPath("data/tinyclaw.db")
+	want := root + "/data/tinyclaw.db"
+	if got != want {
+		t.Fatalf("expected root override path %q, got %q", want, got)
+	}
+}
+
+func TestNormalizeProjectManagedPathRelocatesStaleAbsolutePaths(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("TINYCLAW_ROOT", root)
+
+	got := normalizeProjectManagedPath("/tmp/legacy/TinyClaw/data/tiny_claw.db", "data")
+	want := root + "/data/tiny_claw.db"
+	if got != want {
+		t.Fatalf("expected stale project path to relocate to %q, got %q", want, got)
+	}
+
+	unchanged := normalizeProjectManagedPath("/var/lib/custom/app.db", "data")
+	if unchanged != "/var/lib/custom/app.db" {
+		t.Fatalf("expected unrelated absolute path to remain unchanged, got %q", unchanged)
+	}
+}
+
+func TestInitConf_LoadedSnapshotStillAppliesEnvOverrides(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("TINYCLAW_ROOT", root)
+
+	origArgs := os.Args
+	os.Args = []string{"tinyclaw"}
+	defer func() {
+		os.Args = origArgs
+	}()
+
+	BaseConfInfo = &BaseConf{
+		BotName:           "TinyClaw",
+		HTTPHost:          ":36060",
+		AllowedUserIds:    map[string]bool{},
+		AllowedGroupIds:   map[string]bool{},
+		PrivilegedUserIds: map[string]bool{},
+	}
+	AudioConfInfo = new(AudioConf)
+	LLMConfInfo = new(LLMConf)
+	PhotoConfInfo = new(PhotoConf)
+	FeatureConfInfo = new(FeatureConf)
+	KnowledgeConfInfo = new(KnowledgeConf)
+	VideoConfInfo = new(VideoConf)
+	RegisterConfInfo = new(RegisterConf)
+	mcpConfPath := filepath.Join(root, "conf", "mcp", "mcp.json")
+	ToolsConfInfo = &ToolsConf{McpConfPath: &mcpConfPath}
+	AllConf = make(map[string]interface{})
+	SaveConf()
+
+	BaseConfInfo = new(BaseConf)
+	AudioConfInfo = new(AudioConf)
+	LLMConfInfo = new(LLMConf)
+	PhotoConfInfo = new(PhotoConf)
+	FeatureConfInfo = new(FeatureConf)
+	KnowledgeConfInfo = new(KnowledgeConf)
+	VideoConfInfo = new(VideoConf)
+	RegisterConfInfo = new(RegisterConf)
+	ToolsConfInfo = new(ToolsConf)
+	AllConf = make(map[string]interface{})
+
+	t.Setenv("TYPE", "aliyun")
+	t.Setenv("ALIYUN_TOKEN", "aliyun-test-token")
+	t.Setenv("DEFAULT_MODEL", "qwen3.6-plus")
+	t.Setenv("USE_TOOLS", "true")
+	t.Setenv("PRIVILEGED_USER_IDS", "admin-1,admin-2")
+
+	InitConf()
+
+	assertEqual(t, BaseConfInfo.Type, "aliyun", "Type")
+	assertEqual(t, BaseConfInfo.AliyunToken, "aliyun-test-token", "AliyunToken")
+	assertEqual(t, BaseConfInfo.DefaultModel, "qwen3.6-plus", "DefaultModel")
+	assertBool(t, BaseConfInfo.UseTools, true, "UseTools")
+	assertMapContains(t, BaseConfInfo.PrivilegedUserIds, "admin-1", "PrivilegedUserIds[admin-1]")
+	assertMapContains(t, BaseConfInfo.PrivilegedUserIds, "admin-2", "PrivilegedUserIds[admin-2]")
 }
 
 // 辅助函数
@@ -218,6 +322,12 @@ func assertInt(t *testing.T, got int, expected int, field string) {
 func assertBool(t *testing.T, got bool, expected bool, field string) {
 	if got != expected {
 		t.Errorf("%s expected %v, got %v", field, expected, got)
+	}
+}
+
+func assertMapContains(t *testing.T, got map[string]bool, key string, field string) {
+	if !got[key] {
+		t.Errorf("%s expected key %q to be present, got %#v", field, key, got)
 	}
 }
 

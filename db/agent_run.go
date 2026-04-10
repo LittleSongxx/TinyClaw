@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/LittleSongxx/TinyClaw/authz"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/tooling"
 )
 
 type AgentRun struct {
 	ID             int64  `json:"id"`
+	WorkspaceID    string `json:"workspace_id"`
 	UserId         string `json:"user_id"`
 	ChatId         string `json:"chat_id"`
 	MsgId          string `json:"msg_id"`
@@ -33,6 +35,7 @@ type AgentRun struct {
 
 type AgentStep struct {
 	ID           int64                 `json:"id"`
+	WorkspaceID  string                `json:"workspace_id"`
 	RunID        int64                 `json:"run_id"`
 	StepIndex    int                   `json:"step_index"`
 	Kind         string                `json:"kind"`
@@ -68,17 +71,18 @@ func InsertAgentRun(run *AgentRun) (int64, error) {
 	now := time.Now().Unix()
 	run.CreateTime = now
 	run.UpdateTime = now
+	run.WorkspaceID = authz.NormalizeWorkspaceID(run.WorkspaceID)
 
-	query := `INSERT INTO agent_runs (user_id, chat_id, msg_id, mode, input, final_output, status, error, token_total, step_count, replay_of, skill_id, skill_name, skill_version, selector_reason, create_time, update_time, from_bot)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	query := `INSERT INTO agent_runs (workspace_id, user_id, chat_id, msg_id, mode, input, final_output, status, error, token_total, step_count, replay_of, skill_id, skill_name, skill_version, selector_reason, create_time, update_time, from_bot)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	args := []interface{}{
-		run.UserId, run.ChatId, run.MsgId, run.Mode, run.Input, run.FinalOutput, run.Status, run.Error,
+		run.WorkspaceID, run.UserId, run.ChatId, run.MsgId, run.Mode, run.Input, run.FinalOutput, run.Status, run.Error,
 		run.TokenTotal, run.StepCount, run.ReplayOf, run.SkillID, run.SkillName, run.SkillVersion, run.SelectorReason, now, now, conf.BaseConfInfo.BotName,
 	}
 
 	if FeatureEnabled() {
-		query = `INSERT INTO agent_runs (user_id, chat_id, msg_id, mode, input, final_output, status, error, token_total, step_count, replay_of, skill_id, skill_name, skill_version, selector_reason, create_time, update_time, from_bot)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`
+		query = `INSERT INTO agent_runs (workspace_id, user_id, chat_id, msg_id, mode, input, final_output, status, error, token_total, step_count, replay_of, skill_id, skill_name, skill_version, selector_reason, create_time, update_time, from_bot)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING id`
 		var id int64
 		err := FeatureDB.QueryRow(query, args...).Scan(&id)
 		if err != nil {
@@ -100,16 +104,17 @@ func UpdateAgentRun(run *AgentRun) error {
 	}
 
 	run.UpdateTime = time.Now().Unix()
-	query := `UPDATE agent_runs SET user_id = ?, chat_id = ?, msg_id = ?, mode = ?, input = ?, final_output = ?, status = ?, error = ?, token_total = ?, step_count = ?, replay_of = ?, skill_id = ?, skill_name = ?, skill_version = ?, selector_reason = ?, update_time = ?
+	run.WorkspaceID = authz.NormalizeWorkspaceID(run.WorkspaceID)
+	query := `UPDATE agent_runs SET workspace_id = ?, user_id = ?, chat_id = ?, msg_id = ?, mode = ?, input = ?, final_output = ?, status = ?, error = ?, token_total = ?, step_count = ?, replay_of = ?, skill_id = ?, skill_name = ?, skill_version = ?, selector_reason = ?, update_time = ?
 		WHERE id = ? AND from_bot = ?`
 	args := []interface{}{
-		run.UserId, run.ChatId, run.MsgId, run.Mode, run.Input, run.FinalOutput, run.Status, run.Error,
+		run.WorkspaceID, run.UserId, run.ChatId, run.MsgId, run.Mode, run.Input, run.FinalOutput, run.Status, run.Error,
 		run.TokenTotal, run.StepCount, run.ReplayOf, run.SkillID, run.SkillName, run.SkillVersion, run.SelectorReason, run.UpdateTime, run.ID, conf.BaseConfInfo.BotName,
 	}
 
 	if FeatureEnabled() {
-		query = `UPDATE agent_runs SET user_id = $1, chat_id = $2, msg_id = $3, mode = $4, input = $5, final_output = $6, status = $7, error = $8, token_total = $9, step_count = $10, replay_of = $11, skill_id = $12, skill_name = $13, skill_version = $14, selector_reason = $15, update_time = $16
-			WHERE id = $17 AND from_bot = $18`
+		query = `UPDATE agent_runs SET workspace_id = $1, user_id = $2, chat_id = $3, msg_id = $4, mode = $5, input = $6, final_output = $7, status = $8, error = $9, token_total = $10, step_count = $11, replay_of = $12, skill_id = $13, skill_name = $14, skill_version = $15, selector_reason = $16, update_time = $17
+			WHERE id = $18 AND from_bot = $19`
 		_, err := FeatureDB.Exec(query, args...)
 		return err
 	}
@@ -119,21 +124,26 @@ func UpdateAgentRun(run *AgentRun) error {
 }
 
 func GetAgentRunByID(id int64) (*AgentRun, error) {
-	query := `SELECT id, user_id, chat_id, msg_id, mode, input, final_output, status, error, token_total, step_count, replay_of, skill_id, skill_name, skill_version, selector_reason, create_time, update_time
-		FROM agent_runs WHERE id = ? AND from_bot = ?`
-	args := []interface{}{id, conf.BaseConfInfo.BotName}
+	return GetAgentRunByIDInWorkspace(authz.DefaultWorkspaceID, id)
+}
+
+func GetAgentRunByIDInWorkspace(workspaceID string, id int64) (*AgentRun, error) {
+	workspaceID = authz.NormalizeWorkspaceID(workspaceID)
+	query := `SELECT id, workspace_id, user_id, chat_id, msg_id, mode, input, final_output, status, error, token_total, step_count, replay_of, skill_id, skill_name, skill_version, selector_reason, create_time, update_time
+		FROM agent_runs WHERE workspace_id = ? AND id = ? AND from_bot = ?`
+	args := []interface{}{workspaceID, id, conf.BaseConfInfo.BotName}
 
 	var row *sql.Row
 	if FeatureEnabled() {
-		query = `SELECT id, user_id, chat_id, msg_id, mode, input, final_output, status, error, token_total, step_count, replay_of, skill_id, skill_name, skill_version, selector_reason, create_time, update_time
-			FROM agent_runs WHERE id = $1 AND from_bot = $2`
+		query = `SELECT id, workspace_id, user_id, chat_id, msg_id, mode, input, final_output, status, error, token_total, step_count, replay_of, skill_id, skill_name, skill_version, selector_reason, create_time, update_time
+			FROM agent_runs WHERE workspace_id = $1 AND id = $2 AND from_bot = $3`
 		row = FeatureDB.QueryRow(query, args...)
 	} else {
 		row = DB.QueryRow(query, args...)
 	}
 
 	var run AgentRun
-	if err := row.Scan(&run.ID, &run.UserId, &run.ChatId, &run.MsgId, &run.Mode, &run.Input, &run.FinalOutput,
+	if err := row.Scan(&run.ID, &run.WorkspaceID, &run.UserId, &run.ChatId, &run.MsgId, &run.Mode, &run.Input, &run.FinalOutput,
 		&run.Status, &run.Error, &run.TokenTotal, &run.StepCount, &run.ReplayOf, &run.SkillID, &run.SkillName, &run.SkillVersion, &run.SelectorReason, &run.CreateTime, &run.UpdateTime); err != nil {
 		return nil, err
 	}
@@ -141,12 +151,16 @@ func GetAgentRunByID(id int64) (*AgentRun, error) {
 }
 
 func GetAgentRunDetailByID(id int64) (*AgentRunDetail, error) {
-	run, err := GetAgentRunByID(id)
+	return GetAgentRunDetailByIDInWorkspace(authz.DefaultWorkspaceID, id)
+}
+
+func GetAgentRunDetailByIDInWorkspace(workspaceID string, id int64) (*AgentRunDetail, error) {
+	run, err := GetAgentRunByIDInWorkspace(workspaceID, id)
 	if err != nil {
 		return nil, err
 	}
 
-	steps, err := GetAgentStepsByRunID(id)
+	steps, err := GetAgentStepsByRunIDInWorkspace(run.WorkspaceID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -213,6 +227,10 @@ func DeleteAgentRunByID(id int64) error {
 }
 
 func GetAgentRunsByPage(page, pageSize int, mode, status, userId string) ([]AgentRun, error) {
+	return GetAgentRunsByPageInWorkspace(authz.DefaultWorkspaceID, page, pageSize, mode, status, userId)
+}
+
+func GetAgentRunsByPageInWorkspace(workspaceID string, page, pageSize int, mode, status, userId string) ([]AgentRun, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -221,8 +239,9 @@ func GetAgentRunsByPage(page, pageSize int, mode, status, userId string) ([]Agen
 	}
 
 	offset := (page - 1) * pageSize
-	whereSQL := "WHERE from_bot = ?"
-	args := []interface{}{conf.BaseConfInfo.BotName}
+	workspaceID = authz.NormalizeWorkspaceID(workspaceID)
+	whereSQL := "WHERE workspace_id = ? AND from_bot = ?"
+	args := []interface{}{workspaceID, conf.BaseConfInfo.BotName}
 
 	if mode != "" {
 		whereSQL += " AND mode = ?"
@@ -238,7 +257,7 @@ func GetAgentRunsByPage(page, pageSize int, mode, status, userId string) ([]Agen
 	}
 
 	query := fmt.Sprintf(`
-		SELECT id, user_id, chat_id, msg_id, mode, input, final_output, status, error, token_total, step_count, replay_of, skill_id, skill_name, skill_version, selector_reason, create_time, update_time
+		SELECT id, workspace_id, user_id, chat_id, msg_id, mode, input, final_output, status, error, token_total, step_count, replay_of, skill_id, skill_name, skill_version, selector_reason, create_time, update_time
 		FROM agent_runs %s
 		ORDER BY id DESC
 		LIMIT ? OFFSET ?`, whereSQL)
@@ -249,9 +268,9 @@ func GetAgentRunsByPage(page, pageSize int, mode, status, userId string) ([]Agen
 		err  error
 	)
 	if FeatureEnabled() {
-		whereSQL = "WHERE from_bot = $1"
-		args = []interface{}{conf.BaseConfInfo.BotName}
-		index := 2
+		whereSQL = "WHERE workspace_id = $1 AND from_bot = $2"
+		args = []interface{}{workspaceID, conf.BaseConfInfo.BotName}
+		index := 3
 		if mode != "" {
 			whereSQL += fmt.Sprintf(" AND mode = $%d", index)
 			args = append(args, mode)
@@ -268,7 +287,7 @@ func GetAgentRunsByPage(page, pageSize int, mode, status, userId string) ([]Agen
 			index++
 		}
 		query = fmt.Sprintf(`
-			SELECT id, user_id, chat_id, msg_id, mode, input, final_output, status, error, token_total, step_count, replay_of, skill_id, skill_name, skill_version, selector_reason, create_time, update_time
+			SELECT id, workspace_id, user_id, chat_id, msg_id, mode, input, final_output, status, error, token_total, step_count, replay_of, skill_id, skill_name, skill_version, selector_reason, create_time, update_time
 			FROM agent_runs %s
 			ORDER BY id DESC
 			LIMIT $%d OFFSET $%d`, whereSQL, index, index+1)
@@ -285,7 +304,7 @@ func GetAgentRunsByPage(page, pageSize int, mode, status, userId string) ([]Agen
 	runs := make([]AgentRun, 0)
 	for rows.Next() {
 		var run AgentRun
-		if err := rows.Scan(&run.ID, &run.UserId, &run.ChatId, &run.MsgId, &run.Mode, &run.Input, &run.FinalOutput,
+		if err := rows.Scan(&run.ID, &run.WorkspaceID, &run.UserId, &run.ChatId, &run.MsgId, &run.Mode, &run.Input, &run.FinalOutput,
 			&run.Status, &run.Error, &run.TokenTotal, &run.StepCount, &run.ReplayOf, &run.SkillID, &run.SkillName, &run.SkillVersion, &run.SelectorReason, &run.CreateTime, &run.UpdateTime); err != nil {
 			return nil, err
 		}
@@ -296,8 +315,13 @@ func GetAgentRunsByPage(page, pageSize int, mode, status, userId string) ([]Agen
 }
 
 func GetAgentRunsCount(mode, status, userId string) (int, error) {
-	whereSQL := "WHERE from_bot = ?"
-	args := []interface{}{conf.BaseConfInfo.BotName}
+	return GetAgentRunsCountInWorkspace(authz.DefaultWorkspaceID, mode, status, userId)
+}
+
+func GetAgentRunsCountInWorkspace(workspaceID, mode, status, userId string) (int, error) {
+	workspaceID = authz.NormalizeWorkspaceID(workspaceID)
+	whereSQL := "WHERE workspace_id = ? AND from_bot = ?"
+	args := []interface{}{workspaceID, conf.BaseConfInfo.BotName}
 
 	if mode != "" {
 		whereSQL += " AND mode = ?"
@@ -315,9 +339,9 @@ func GetAgentRunsCount(mode, status, userId string) (int, error) {
 	query := fmt.Sprintf("SELECT COUNT(*) FROM agent_runs %s", whereSQL)
 	var count int
 	if FeatureEnabled() {
-		whereSQL = "WHERE from_bot = $1"
-		args = []interface{}{conf.BaseConfInfo.BotName}
-		index := 2
+		whereSQL = "WHERE workspace_id = $1 AND from_bot = $2"
+		args = []interface{}{workspaceID, conf.BaseConfInfo.BotName}
+		index := 3
 		if mode != "" {
 			whereSQL += fmt.Sprintf(" AND mode = $%d", index)
 			args = append(args, mode)
@@ -359,16 +383,17 @@ func InsertAgentStep(step *AgentStep) (int64, error) {
 	now := time.Now().Unix()
 	step.CreateTime = now
 	step.UpdateTime = now
-	query := `INSERT INTO agent_steps (run_id, step_index, kind, name, tool_name, skill_id, skill_name, skill_version, input, raw_output, observations, allowed_tools, step_context, token, status, error, provider, model, create_time, update_time, from_bot)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	step.WorkspaceID = authz.NormalizeWorkspaceID(step.WorkspaceID)
+	query := `INSERT INTO agent_steps (workspace_id, run_id, step_index, kind, name, tool_name, skill_id, skill_name, skill_version, input, raw_output, observations, allowed_tools, step_context, token, status, error, provider, model, create_time, update_time, from_bot)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	args := []interface{}{
-		step.RunID, step.StepIndex, step.Kind, step.Name, step.ToolName, step.SkillID, step.SkillName, step.SkillVersion, step.Input, step.RawOutput, obs, allowedTools, step.StepContext,
+		step.WorkspaceID, step.RunID, step.StepIndex, step.Kind, step.Name, step.ToolName, step.SkillID, step.SkillName, step.SkillVersion, step.Input, step.RawOutput, obs, allowedTools, step.StepContext,
 		step.Token, step.Status, step.Error, step.Provider, step.Model, now, now, conf.BaseConfInfo.BotName,
 	}
 
 	if FeatureEnabled() {
-		query = `INSERT INTO agent_steps (run_id, step_index, kind, name, tool_name, skill_id, skill_name, skill_version, input, raw_output, observations, allowed_tools, step_context, token, status, error, provider, model, create_time, update_time, from_bot)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13, $14, $15, $16, $17, $18, $19, $20, $21) RETURNING id`
+		query = `INSERT INTO agent_steps (workspace_id, run_id, step_index, kind, name, tool_name, skill_id, skill_name, skill_version, input, raw_output, observations, allowed_tools, step_context, token, status, error, provider, model, create_time, update_time, from_bot)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14, $15, $16, $17, $18, $19, $20, $21, $22) RETURNING id`
 		var id int64
 		err := FeatureDB.QueryRow(query, args...).Scan(&id)
 		if err != nil {
@@ -399,16 +424,17 @@ func UpdateAgentStep(step *AgentStep) error {
 	}
 
 	step.UpdateTime = time.Now().Unix()
-	query := `UPDATE agent_steps SET run_id = ?, step_index = ?, kind = ?, name = ?, tool_name = ?, skill_id = ?, skill_name = ?, skill_version = ?, input = ?, raw_output = ?, observations = ?, allowed_tools = ?, step_context = ?, token = ?, status = ?, error = ?, provider = ?, model = ?, update_time = ?
+	step.WorkspaceID = authz.NormalizeWorkspaceID(step.WorkspaceID)
+	query := `UPDATE agent_steps SET workspace_id = ?, run_id = ?, step_index = ?, kind = ?, name = ?, tool_name = ?, skill_id = ?, skill_name = ?, skill_version = ?, input = ?, raw_output = ?, observations = ?, allowed_tools = ?, step_context = ?, token = ?, status = ?, error = ?, provider = ?, model = ?, update_time = ?
 		WHERE id = ? AND from_bot = ?`
 	args := []interface{}{
-		step.RunID, step.StepIndex, step.Kind, step.Name, step.ToolName, step.SkillID, step.SkillName, step.SkillVersion, step.Input, step.RawOutput, obs, allowedTools, step.StepContext,
+		step.WorkspaceID, step.RunID, step.StepIndex, step.Kind, step.Name, step.ToolName, step.SkillID, step.SkillName, step.SkillVersion, step.Input, step.RawOutput, obs, allowedTools, step.StepContext,
 		step.Token, step.Status, step.Error, step.Provider, step.Model, step.UpdateTime, step.ID, conf.BaseConfInfo.BotName,
 	}
 
 	if FeatureEnabled() {
-		query = `UPDATE agent_steps SET run_id = $1, step_index = $2, kind = $3, name = $4, tool_name = $5, skill_id = $6, skill_name = $7, skill_version = $8, input = $9, raw_output = $10, observations = $11::jsonb, allowed_tools = $12::jsonb, step_context = $13, token = $14, status = $15, error = $16, provider = $17, model = $18, update_time = $19
-			WHERE id = $20 AND from_bot = $21`
+		query = `UPDATE agent_steps SET workspace_id = $1, run_id = $2, step_index = $3, kind = $4, name = $5, tool_name = $6, skill_id = $7, skill_name = $8, skill_version = $9, input = $10, raw_output = $11, observations = $12::jsonb, allowed_tools = $13::jsonb, step_context = $14, token = $15, status = $16, error = $17, provider = $18, model = $19, update_time = $20
+			WHERE id = $21 AND from_bot = $22`
 		_, err := FeatureDB.Exec(query, args...)
 		return err
 	}
@@ -418,17 +444,22 @@ func UpdateAgentStep(step *AgentStep) error {
 }
 
 func GetAgentStepsByRunID(runID int64) ([]AgentStep, error) {
-	query := `SELECT id, run_id, step_index, kind, name, tool_name, skill_id, skill_name, skill_version, input, raw_output, observations, allowed_tools, step_context, token, status, error, provider, model, create_time, update_time
-		FROM agent_steps WHERE run_id = ? AND from_bot = ? ORDER BY step_index ASC, id ASC`
-	args := []interface{}{runID, conf.BaseConfInfo.BotName}
+	return GetAgentStepsByRunIDInWorkspace(authz.DefaultWorkspaceID, runID)
+}
+
+func GetAgentStepsByRunIDInWorkspace(workspaceID string, runID int64) ([]AgentStep, error) {
+	workspaceID = authz.NormalizeWorkspaceID(workspaceID)
+	query := `SELECT id, workspace_id, run_id, step_index, kind, name, tool_name, skill_id, skill_name, skill_version, input, raw_output, observations, allowed_tools, step_context, token, status, error, provider, model, create_time, update_time
+		FROM agent_steps WHERE workspace_id = ? AND run_id = ? AND from_bot = ? ORDER BY step_index ASC, id ASC`
+	args := []interface{}{workspaceID, runID, conf.BaseConfInfo.BotName}
 
 	var (
 		rows *sql.Rows
 		err  error
 	)
 	if FeatureEnabled() {
-		query = `SELECT id, run_id, step_index, kind, name, tool_name, skill_id, skill_name, skill_version, input, raw_output, observations, allowed_tools, step_context, token, status, error, provider, model, create_time, update_time
-			FROM agent_steps WHERE run_id = $1 AND from_bot = $2 ORDER BY step_index ASC, id ASC`
+		query = `SELECT id, workspace_id, run_id, step_index, kind, name, tool_name, skill_id, skill_name, skill_version, input, raw_output, observations, allowed_tools, step_context, token, status, error, provider, model, create_time, update_time
+			FROM agent_steps WHERE workspace_id = $1 AND run_id = $2 AND from_bot = $3 ORDER BY step_index ASC, id ASC`
 		rows, err = FeatureDB.Query(query, args...)
 	} else {
 		rows, err = DB.Query(query, args...)
@@ -445,7 +476,7 @@ func GetAgentStepsByRunID(runID int64) ([]AgentStep, error) {
 			observationsRaw string
 			allowedToolsRaw string
 		)
-		if err := rows.Scan(&step.ID, &step.RunID, &step.StepIndex, &step.Kind, &step.Name, &step.ToolName, &step.SkillID, &step.SkillName, &step.SkillVersion, &step.Input,
+		if err := rows.Scan(&step.ID, &step.WorkspaceID, &step.RunID, &step.StepIndex, &step.Kind, &step.Name, &step.ToolName, &step.SkillID, &step.SkillName, &step.SkillVersion, &step.Input,
 			&step.RawOutput, &observationsRaw, &allowedToolsRaw, &step.StepContext, &step.Token, &step.Status, &step.Error, &step.Provider, &step.Model, &step.CreateTime, &step.UpdateTime); err != nil {
 			return nil, err
 		}

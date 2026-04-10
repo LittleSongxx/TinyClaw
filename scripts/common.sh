@@ -114,6 +114,10 @@ docker_compose() {
     profile_args+=(--profile cloudflared)
   fi
 
+  if [[ "${ENABLE_KNOWLEDGE:-false}" == "true" ]]; then
+    profile_args+=(--profile knowledge)
+  fi
+
   if [[ "${ENABLE_FULL_STACK:-false}" == "true" ]]; then
     profile_args+=(--profile full)
   fi

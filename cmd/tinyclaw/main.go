@@ -25,6 +25,9 @@ func main() {
 	logger.InitLogger()
 	conf.InitConf()
 	conf.InitRuntimeConf()
+	if conf.RuntimeConfInfo.Nodes.LegacyNodeTokenPresent {
+		logger.Fatal("NODE_PAIRING_TOKEN is no longer supported; remove it and pair devices with the Device Pairing flow")
+	}
 	i18n.InitI18n()
 	db.InitTable()
 	conf.InitTools()
@@ -35,7 +38,11 @@ func main() {
 	metrics.RegisterMetrics()
 	robot.StartRobot()
 	register.InitRegister()
-	robot.InitCron()
+	if conf.FeatureConfInfo.CronEnabled() {
+		robot.InitCron()
+	} else {
+		logger.Info("cron module disabled")
+	}
 
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)

@@ -1,6 +1,11 @@
 package runtimecore
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/LittleSongxx/TinyClaw/conf"
+)
 
 func TestShouldPreferRuntimeToolsForNodeInventory(t *testing.T) {
 	cases := []string{
@@ -56,5 +61,21 @@ func TestDetermineRecallUsageHonorsExplicitFlag(t *testing.T) {
 	value = false
 	if determineRecallUsage(&value, "请总结一下 A2A 协议") {
 		t.Fatalf("expected explicit false to disable recall")
+	}
+}
+
+func TestWorkflowModeDisabledByDefault(t *testing.T) {
+	previous := conf.FeatureConfInfo.Workflow
+	defer func() {
+		conf.FeatureConfInfo.Workflow = previous
+	}()
+
+	conf.FeatureConfInfo.Workflow = false
+	_, err := NewService(nil).Run(RunRequest{
+		Mode:  ModeWorkflow,
+		Input: "run workflow",
+	})
+	if err == nil || !strings.Contains(err.Error(), "workflow mode is experimental and disabled") {
+		t.Fatalf("expected workflow feature gate error, got %v", err)
 	}
 }

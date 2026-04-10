@@ -219,7 +219,7 @@ func (r *KnowledgeConf) Enabled() bool {
 		return false
 	}
 
-	return r.FeatureStoreEnabled() && r.ObjectStorageEnabled()
+	return FeatureConfInfo.KnowledgeEnabled() && r.FeatureStoreEnabled() && r.ObjectStorageEnabled()
 }
 
 func (r *KnowledgeConf) KnowledgeBaseName() string {

@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"reflect"
 	"runtime/debug"
-	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +34,7 @@ func GetCommand(w http.ResponseWriter, r *http.Request) {
 	res += CompareFlagsWithStructTags(conf.AudioConfInfo)
 	res += CompareFlagsWithStructTags(conf.LLMConfInfo)
 	res += CompareFlagsWithStructTags(conf.PhotoConfInfo)
+	res += CompareFlagsWithStructTags(conf.FeatureConfInfo)
 	res += CompareFlagsWithStructTags(conf.KnowledgeConfInfo)
 	res += CompareFlagsWithStructTags(conf.VideoConfInfo)
 	res += CompareFlagsWithStructTags(conf.ToolsConfInfo)
@@ -50,6 +51,7 @@ func UpdateConf(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	normalizeUpdateConfParam(&updateConfParam)
 	handleSpecialData(&updateConfParam)
 
 	var err error
@@ -62,6 +64,8 @@ func UpdateConf(w http.ResponseWriter, r *http.Request) {
 		err = utils.SetStructFieldByJSONTag(conf.LLMConfInfo, updateConfParam.Key, updateConfParam.Value)
 	case "photo":
 		err = utils.SetStructFieldByJSONTag(conf.PhotoConfInfo, updateConfParam.Key, updateConfParam.Value)
+	case "features":
+		err = utils.SetStructFieldByJSONTag(conf.FeatureConfInfo, updateConfParam.Key, updateConfParam.Value)
 	case "knowledge":
 		err = utils.SetStructFieldByJSONTag(conf.KnowledgeConfInfo, updateConfParam.Key, updateConfParam.Value)
 	case "video":
@@ -78,6 +82,7 @@ func UpdateConf(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	conf.SaveConf()
 	utils.Success(ctx, w, r, "")
 }
 
@@ -89,6 +94,7 @@ func GetConf(w http.ResponseWriter, r *http.Request) {
 	res["audio"] = conf.AudioConfInfo
 	res["llm"] = conf.LLMConfInfo
 	res["photo"] = conf.PhotoConfInfo
+	res["features"] = conf.FeatureConfInfo
 	res["knowledge"] = conf.KnowledgeConfInfo
 	res["video"] = conf.VideoConfInfo
 
@@ -258,21 +264,38 @@ func getMCPConf(ctx context.Context) (*mcpParam.McpClientGoConfig, error) {
 }
 
 func updateMCPConfFile(ctx context.Context, config *mcpParam.McpClientGoConfig) error {
-	file, err := os.OpenFile(*conf.ToolsConfInfo.McpConfPath, os.O_RDWR|os.O_TRUNC, 0644)
+	path := *conf.ToolsConfInfo.McpConfPath
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		logger.ErrorCtx(ctx, "create mcp conf directory error", "err", err)
+		return err
+	}
+
+	tmpPath := path + ".tmp"
+	file, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		logger.ErrorCtx(ctx, "open mcp conf error", "err", err)
 		return err
 	}
-	defer file.Close()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 
 	if err := encoder.Encode(config); err != nil {
+		_ = file.Close()
+		_ = os.Remove(tmpPath)
 		logger.ErrorCtx(ctx, "encode mcp conf error", "err", err)
 		return err
 	}
 
+	if err := file.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
 	return nil
 }
 
@@ -296,19 +319,31 @@ func updateMCPConf(ctx context.Context, name string, mcpClientConf *mcpParam.MCP
 
 func handleSpecialData(updateConfParam *UpdateConfParam) {
 	switch updateConfParam.Key {
-	case "allowed_user_ids", "allowed_group_ids", "admin_user_ids":
-		ids := strings.Split(updateConfParam.Value.(string), ",")
-		idMap := make(map[int64]bool)
-		for _, idStr := range ids {
-			id, err := strconv.Atoi(idStr)
-			if err != nil {
+	case "allowed_user_ids", "allowed_group_ids", "privileged_user_ids":
+		rawValue, ok := updateConfParam.Value.(string)
+		if !ok {
+			return
+		}
+		idMap := make(map[string]bool)
+		for _, idStr := range strings.Split(rawValue, ",") {
+			idStr = strings.TrimSpace(idStr)
+			if idStr == "" {
 				continue
 			}
-			idMap[int64(id)] = true
+			idMap[idStr] = true
 		}
 		updateConfParam.Value = idMap
 	case "stop":
 		updateConfParam.Value = strings.Split(updateConfParam.Value.(string), ",")
+	}
+}
+
+func normalizeUpdateConfParam(updateConfParam *UpdateConfParam) {
+	if updateConfParam == nil {
+		return
+	}
+	if updateConfParam.Key == "admin_user_ids" {
+		updateConfParam.Key = "privileged_user_ids"
 	}
 }
 
@@ -342,7 +377,7 @@ func CompareFlagsWithStructTags(cfg interface{}) string {
 		flagValue := flag.Lookup(jsonTag)
 		structValue := ""
 		switch jsonTag {
-		case "allowed_user_ids", "allowed_group_ids", "admin_user_ids":
+		case "allowed_user_ids", "allowed_group_ids", "privileged_user_ids":
 			structValue = utils.MapKeysToString(v.Field(i).Interface())
 		default:
 			structValue = utils.ValueToString(v.Field(i).Interface())

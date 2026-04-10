@@ -86,7 +86,10 @@ func (d *LLMTaskReq) newRuntimeRegistry(mode agentruntime.Mode) *tooling.Registr
 		}
 	}
 
-	return tooling.NewRegistryFromTaskTools()
+	if conf.FeatureConfInfo.LegacyTaskToolsEnabled() {
+		return tooling.NewRegistryFromTaskTools()
+	}
+	return tooling.NewRegistry()
 }
 
 func (d *LLMTaskReq) runMeta(mode agentruntime.Mode) agentruntime.RunMeta {

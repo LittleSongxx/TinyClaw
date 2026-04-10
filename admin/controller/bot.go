@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"reflect"
 	"sort"
 	"strconv"
@@ -60,6 +61,14 @@ type GetBotConfRes struct {
 
 var (
 	SkipKey = map[string]bool{"bot": true}
+)
+
+type botProxyContextKey string
+
+const (
+	botProxyActingUserKey    botProxyContextKey = "bot_proxy_acting_user"
+	botManagementTokenHeader string             = "X-TinyClaw-Token"
+	botActingUserHeader      string             = "X-TinyClaw-Acting-User"
 )
 
 func sanitizeBotForResponse(bot *db.Bot) *db.Bot {
@@ -986,17 +995,12 @@ func Communicate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := sessionStore.Get(r, sessionName)
+	actingUserID, err := currentAdminActorID(r)
 	if err != nil {
 		utils.Failure(ctx, w, r, param.CodeNotLogin, param.MsgNotLogin, nil)
 		return
 	}
-
-	userIDValue, ok := session.Values["user_id"]
-	if !ok || userIDValue == nil {
-		utils.Failure(ctx, w, r, param.CodeNotLogin, param.MsgNotLogin, nil)
-		return
-	}
+	ctx = withBotActingUser(ctx, actingUserID)
 
 	err = r.ParseMultipartForm(10 << 20)
 	if err != nil {
@@ -1026,8 +1030,8 @@ func Communicate(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetSSERequest(ctx, http.MethodPost,
 		strings.TrimSuffix(botInfo.Address, "/")+
-			fmt.Sprintf("/communicate?prompt=%s&user_id=-%d",
-				url.QueryEscape(r.URL.Query().Get("prompt")), userIDValue), bytes.NewBuffer(data)))
+			fmt.Sprintf("/communicate?prompt=%s",
+				url.QueryEscape(r.URL.Query().Get("prompt"))), bytes.NewBuffer(data)))
 	if err != nil {
 		logger.ErrorCtx(ctx, "get bot conf error", "err", err)
 		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
@@ -1136,6 +1140,12 @@ func ExecuteGatewayNodeCommand(w http.ResponseWriter, r *http.Request) {
 		utils.Failure(ctx, w, r, param.CodeDBQueryFail, param.MsgDBQueryFail, err)
 		return
 	}
+	actingUserID, err := currentAdminActorID(r)
+	if err != nil {
+		utils.Failure(ctx, w, r, param.CodeNotLogin, param.MsgNotLogin, nil)
+		return
+	}
+	ctx = withBotActingUser(ctx, actingUserID)
 
 	resp, err := adminUtils.GetCrtClient(botInfo).Do(GetRequest(ctx, http.MethodPost,
 		strings.TrimSuffix(botInfo.Address, "/")+"/gateway/node/command", r.Body))
@@ -1279,7 +1289,7 @@ func CompareFlagsWithStructTags(cfg interface{}) map[string]any {
 
 		structValue := ""
 		switch jsonTag {
-		case "allowed_user_ids", "allowed_group_ids", "admin_user_ids":
+		case "allowed_user_ids", "allowed_group_ids", "privileged_user_ids":
 			structValue = utils.MapKeysToString(v.Field(i).Interface())
 		default:
 			structValue = utils.ValueToString(v.Field(i).Interface())
@@ -1318,16 +1328,114 @@ func InsertUserRecord(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetRequest(ctx context.Context, method, path string, body io.Reader) *http.Request {
-	req, _ := http.NewRequest(method, path, body)
+	req, _ := http.NewRequestWithContext(ctx, method, path, body)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("LogId", ctx.Value("log_id").(string))
+	applyBotProxyHeaders(ctx, req)
 	return req
 }
 
 func GetSSERequest(ctx context.Context, method, path string, body io.Reader) *http.Request {
-	req, _ := http.NewRequest(method, path, body)
+	req, _ := http.NewRequestWithContext(ctx, method, path, body)
 	req.Header.Set("Content-Type", "text/event-stream")
-	req.Header.Set("LogId", ctx.Value("log_id").(string))
 	req.Header.Set("Accept", "text/event-stream")
+	applyBotProxyHeaders(ctx, req)
 	return req
+}
+
+func applyBotProxyHeaders(ctx context.Context, req *http.Request) {
+	if req == nil {
+		return
+	}
+
+	if ctx != nil {
+		if logID, ok := ctx.Value("log_id").(string); ok && strings.TrimSpace(logID) != "" {
+			req.Header.Set("LogId", logID)
+		}
+		if actingUserID, ok := ctx.Value(botProxyActingUserKey).(string); ok && strings.TrimSpace(actingUserID) != "" {
+			req.Header.Set(botActingUserHeader, strings.TrimSpace(actingUserID))
+		}
+	}
+
+	if token := strings.TrimSpace(firstNonEmptyEnv("HTTP_SHARED_SECRET", "GATEWAY_SHARED_SECRET")); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set(botManagementTokenHeader, token)
+	}
+}
+
+func withBotActingUser(ctx context.Context, actingUserID string) context.Context {
+	if ctx == nil || strings.TrimSpace(actingUserID) == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, botProxyActingUserKey, strings.TrimSpace(actingUserID))
+}
+
+func currentAdminActorID(r *http.Request) (string, error) {
+	if r == nil {
+		return "", errors.New(param.MsgNotLogin)
+	}
+
+	session, err := sessionStore.Get(r, sessionName)
+	if err != nil {
+		return "", err
+	}
+
+	rawUserID, ok := session.Values["user_id"]
+	if !ok || rawUserID == nil {
+		return "", errors.New(param.MsgNotLogin)
+	}
+
+	actorID := strings.TrimSpace(toSignedAdminActorID(rawUserID))
+	if actorID == "" {
+		return "", errors.New(param.MsgNotLogin)
+	}
+	return actorID, nil
+}
+
+func toSignedAdminActorID(value interface{}) string {
+	switch typed := value.(type) {
+	case int:
+		return strconv.Itoa(-typed)
+	case int8:
+		return strconv.FormatInt(-int64(typed), 10)
+	case int16:
+		return strconv.FormatInt(-int64(typed), 10)
+	case int32:
+		return strconv.FormatInt(-int64(typed), 10)
+	case int64:
+		return strconv.FormatInt(-typed, 10)
+	case uint:
+		return "-" + strconv.FormatUint(uint64(typed), 10)
+	case uint8:
+		return "-" + strconv.FormatUint(uint64(typed), 10)
+	case uint16:
+		return "-" + strconv.FormatUint(uint64(typed), 10)
+	case uint32:
+		return "-" + strconv.FormatUint(uint64(typed), 10)
+	case uint64:
+		return "-" + strconv.FormatUint(typed, 10)
+	case string:
+		return normalizeSignedActorID(typed)
+	default:
+		return normalizeSignedActorID(fmt.Sprint(value))
+	}
+}
+
+func normalizeSignedActorID(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	if strings.HasPrefix(trimmed, "-") {
+		return trimmed
+	}
+	return "-" + trimmed
+}
+
+func firstNonEmptyEnv(keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+	}
+	return ""
 }

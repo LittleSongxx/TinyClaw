@@ -60,6 +60,7 @@ func initializeFeatureTables(db *sql.DB) error {
 		`
 		CREATE TABLE IF NOT EXISTS agent_runs (
 			id BIGSERIAL PRIMARY KEY,
+			workspace_id VARCHAR(100) NOT NULL DEFAULT 'default',
 			user_id VARCHAR(100) NOT NULL DEFAULT '',
 			chat_id VARCHAR(255) NOT NULL DEFAULT '',
 			msg_id VARCHAR(255) NOT NULL DEFAULT '',
@@ -80,6 +81,7 @@ func initializeFeatureTables(db *sql.DB) error {
 			from_bot VARCHAR(255) NOT NULL DEFAULT ''
 		);
 		CREATE INDEX IF NOT EXISTS idx_agent_runs_user_id ON agent_runs(user_id);
+		CREATE INDEX IF NOT EXISTS idx_agent_runs_workspace ON agent_runs(workspace_id, create_time);
 		CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status);
 		CREATE INDEX IF NOT EXISTS idx_agent_runs_mode ON agent_runs(mode);
 		CREATE INDEX IF NOT EXISTS idx_agent_runs_replay_of ON agent_runs(replay_of);
@@ -88,6 +90,7 @@ func initializeFeatureTables(db *sql.DB) error {
 		`
 		CREATE TABLE IF NOT EXISTS agent_steps (
 			id BIGSERIAL PRIMARY KEY,
+			workspace_id VARCHAR(100) NOT NULL DEFAULT 'default',
 			run_id BIGINT NOT NULL,
 			step_index INTEGER NOT NULL DEFAULT 0,
 			kind VARCHAR(50) NOT NULL DEFAULT '',
@@ -110,6 +113,7 @@ func initializeFeatureTables(db *sql.DB) error {
 			update_time BIGINT NOT NULL DEFAULT 0,
 			from_bot VARCHAR(255) NOT NULL DEFAULT ''
 		);
+		CREATE INDEX IF NOT EXISTS idx_agent_steps_workspace ON agent_steps(workspace_id, run_id);
 		CREATE INDEX IF NOT EXISTS idx_agent_steps_run_id ON agent_steps(run_id);
 		CREATE INDEX IF NOT EXISTS idx_agent_steps_run_idx ON agent_steps(run_id, step_index);
 	`,
@@ -291,12 +295,14 @@ func migrateFeatureAgentTables(db *sql.DB) error {
 
 	definitions := map[string]map[string]string{
 		"agent_runs": {
+			"workspace_id":    "VARCHAR(100) NOT NULL DEFAULT 'default'",
 			"skill_id":        "VARCHAR(255) NOT NULL DEFAULT ''",
 			"skill_name":      "VARCHAR(255) NOT NULL DEFAULT ''",
 			"skill_version":   "VARCHAR(100) NOT NULL DEFAULT ''",
 			"selector_reason": "TEXT NOT NULL DEFAULT ''",
 		},
 		"agent_steps": {
+			"workspace_id":  "VARCHAR(100) NOT NULL DEFAULT 'default'",
 			"skill_id":      "VARCHAR(255) NOT NULL DEFAULT ''",
 			"skill_name":    "VARCHAR(255) NOT NULL DEFAULT ''",
 			"skill_version": "VARCHAR(100) NOT NULL DEFAULT ''",
@@ -310,6 +316,16 @@ func migrateFeatureAgentTables(db *sql.DB) error {
 			if err := ensurePostgresColumn(db, tableName, columnName, definition); err != nil {
 				return err
 			}
+		}
+	}
+
+	indexes := []string{
+		`CREATE INDEX IF NOT EXISTS idx_agent_runs_workspace ON agent_runs(workspace_id, create_time)`,
+		`CREATE INDEX IF NOT EXISTS idx_agent_steps_workspace ON agent_steps(workspace_id, run_id)`,
+	}
+	for _, statement := range indexes {
+		if _, err := db.Exec(statement); err != nil {
+			return err
 		}
 	}
 

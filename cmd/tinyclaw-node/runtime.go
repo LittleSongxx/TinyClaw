@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"os"
@@ -83,7 +86,9 @@ func buildNodeInstancesFromDistros(cfg processConfig, hostname string, available
 		driver := node.NewLocalDriver()
 		items = append(items, nodeInstance{
 			descriptor: &node.NodeDescriptor{
-				ID:           cfg.NodeID,
+				ID:           cfg.DeviceID,
+				WorkspaceID:  cfg.WorkspaceID,
+				DeviceID:     cfg.DeviceID,
 				Name:         cfg.NodeName,
 				Platform:     runtimePlatform(),
 				Hostname:     hostname,
@@ -116,14 +121,16 @@ func buildNodeInstancesFromDistros(cfg processConfig, hostname string, available
 		})
 		items = append(items, nodeInstance{
 			descriptor: &node.NodeDescriptor{
-				ID:       cfg.NodeID + "-wsl-" + slugifyDistroName(resolvedName),
+				ID:       cfg.DeviceID + "-wsl-" + slugifyDistroName(resolvedName),
+				WorkspaceID: cfg.WorkspaceID,
+				DeviceID:   cfg.DeviceID,
 				Name:     cfg.NodeName + " / WSL " + resolvedName,
 				Platform: "wsl",
 				Hostname: hostname,
 				Version:  nodeBinaryVersion,
 				Metadata: map[string]string{
 					"kind":                               "wsl",
-					"parent_node_id":                     cfg.NodeID,
+					"parent_node_id":                     cfg.DeviceID,
 					"wsl_distro":                         resolvedName,
 					"approval_allow_command_prefixes":    encodeStringSlice(distro.AllowCommandPrefixes),
 					"approval_allow_write_path_prefixes": encodeStringSlice(distro.AllowWritePathPrefixes),
@@ -140,9 +147,9 @@ func buildNodeInstancesFromDistros(cfg processConfig, hostname string, available
 	return items, nil
 }
 
-func runNodeLoop(ctx context.Context, gatewayWS, token string, instance nodeInstance) {
+func runNodeLoop(ctx context.Context, cfg processConfig, instance nodeInstance) {
 	for {
-		if err := runNode(ctx, gatewayWS, token, instance.descriptor, instance.driver); err != nil {
+		if err := runNode(ctx, cfg, instance.descriptor, instance.driver); err != nil {
 			if ctx.Err() != nil {
 				return
 			}
@@ -199,8 +206,8 @@ func nodePowerShellExecutable() (string, error) {
 	return "", errors.New("powershell executable is not available")
 }
 
-func runNode(ctx context.Context, gatewayWS, token string, descriptor *node.NodeDescriptor, driver node.Driver) error {
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, gatewayWS, nil)
+func runNode(ctx context.Context, cfg processConfig, descriptor *node.NodeDescriptor, driver node.Driver) error {
+	conn, _, err := websocket.DefaultDialer.DialContext(ctx, cfg.GatewayWS, nil)
 	if err != nil {
 		return err
 	}
@@ -216,7 +223,28 @@ func runNode(ctx context.Context, gatewayWS, token string, descriptor *node.Node
 	}()
 	var writeMu sync.Mutex
 
-	connectFrame := gateway.NewConnectFrame("node", token, descriptor)
+	connectFrame := gateway.NewConnectFrame("node", "", descriptor)
+	connectFrame.WorkspaceID = cfg.WorkspaceID
+	connectFrame.Device = &gateway.DeviceInfo{
+		ID:        cfg.DeviceID,
+		Name:      cfg.NodeName,
+		Platform:  descriptor.Platform,
+		PublicKey: cfg.PublicKey,
+	}
+	if cfg.PairingCode != "" && cfg.DeviceToken == "" {
+		connectFrame.Auth = gateway.AuthInfo{
+			Type:      "bootstrap",
+			Token:     cfg.PairingCode,
+			DeviceID:  cfg.DeviceID,
+			PublicKey: cfg.PublicKey,
+		}
+	} else {
+		auth, err := buildDeviceAuth(cfg)
+		if err != nil {
+			return err
+		}
+		connectFrame.Auth = auth
+	}
 	if err := writeJSON(&writeMu, conn, connectFrame); err != nil {
 		return err
 	}
@@ -248,7 +276,7 @@ func runNode(ctx context.Context, gatewayWS, token string, descriptor *node.Node
 			}
 			return err
 		}
-		if request.Action != "node.command" {
+		if request.MethodName() != "node.command" {
 			response, respErr := gateway.NewResponseFrame(request.ID, false, nil, "unsupported node action")
 			if respErr == nil {
 				_ = writeJSON(&writeMu, conn, response)
@@ -257,7 +285,7 @@ func runNode(ctx context.Context, gatewayWS, token string, descriptor *node.Node
 		}
 
 		var command node.NodeCommandRequest
-		if err := json.Unmarshal(request.Payload, &command); err != nil {
+		if err := json.Unmarshal(request.RawParams(), &command); err != nil {
 			response, respErr := gateway.NewResponseFrame(request.ID, false, nil, err.Error())
 			if respErr == nil {
 				_ = writeJSON(&writeMu, conn, response)
@@ -278,4 +306,41 @@ func runNode(ctx context.Context, gatewayWS, token string, descriptor *node.Node
 			return err
 		}
 	}
+}
+
+func buildDeviceAuth(cfg processConfig) (gateway.AuthInfo, error) {
+	privateKey, err := decodePrivateKey(cfg.PrivateKey)
+	if err != nil {
+		return gateway.AuthInfo{}, err
+	}
+	nonceBytes := make([]byte, 16)
+	if _, err := rand.Read(nonceBytes); err != nil {
+		return gateway.AuthInfo{}, err
+	}
+	nonce := base64.RawURLEncoding.EncodeToString(nonceBytes)
+	message := []byte(cfg.WorkspaceID + ":" + cfg.DeviceID + ":" + nonce)
+	signature := ed25519.Sign(privateKey, message)
+	return gateway.AuthInfo{
+		Type:      "device",
+		Token:     cfg.DeviceToken,
+		DeviceID:  cfg.DeviceID,
+		Nonce:     nonce,
+		Signature: base64.RawStdEncoding.EncodeToString(signature),
+		PublicKey: cfg.PublicKey,
+	}, nil
+}
+
+func decodePrivateKey(value string) (ed25519.PrivateKey, error) {
+	value = strings.TrimSpace(value)
+	body, err := base64.RawStdEncoding.DecodeString(value)
+	if err != nil {
+		body, err = base64.StdEncoding.DecodeString(value)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(body) != ed25519.PrivateKeySize {
+		return nil, errors.New("invalid device private_key")
+	}
+	return ed25519.PrivateKey(body), nil
 }

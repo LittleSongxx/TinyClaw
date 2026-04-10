@@ -4,18 +4,18 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/LittleSongxx/TinyClaw/logger"
 )
 
 func GetAbsPath(relPath string) string {
-	exe, err := os.Executable()
-	if err != nil {
-		logger.Error("Failed to get executable path", "err", err)
+	baseDir := resolveBaseDir()
+	if baseDir == "" {
+		logger.Error("Failed to resolve base directory")
 		return ""
 	}
-	dir := filepath.Dir(exe)
-	return filepath.Join(dir, relPath)
+	return filepath.Join(baseDir, relPath)
 }
 
 func GetTailStartOffset(filePath string, lines int) (int64, error) {
@@ -53,4 +53,61 @@ func GetTailStartOffset(filePath string, lines int) (int64, error) {
 	}
 
 	return offset, nil
+}
+
+func resolveBaseDir() string {
+	if root := strings.TrimSpace(os.Getenv("TINYCLAW_ROOT")); root != "" {
+		if abs, err := filepath.Abs(root); err == nil {
+			return abs
+		}
+		return root
+	}
+
+	candidates := make([]string, 0, 2)
+	if wd, err := os.Getwd(); err == nil {
+		candidates = append(candidates, wd)
+	}
+	if exe, err := os.Executable(); err == nil {
+		candidates = append(candidates, filepath.Dir(exe))
+	}
+
+	for _, candidate := range candidates {
+		if root := findProjectRoot(candidate); root != "" {
+			return root
+		}
+	}
+
+	return ""
+}
+
+func findProjectRoot(start string) string {
+	current := filepath.Clean(start)
+	for current != "." && current != string(filepath.Separator) {
+		if looksLikeProjectRoot(current) {
+			return current
+		}
+		next := filepath.Dir(current)
+		if next == current {
+			break
+		}
+		current = next
+	}
+	if looksLikeProjectRoot(current) {
+		return current
+	}
+	return ""
+}
+
+func looksLikeProjectRoot(dir string) bool {
+	if dir == "" {
+		return false
+	}
+
+	if info, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil && !info.IsDir() {
+		return true
+	}
+
+	confInfo, confErr := os.Stat(filepath.Join(dir, "conf"))
+	cmdInfo, cmdErr := os.Stat(filepath.Join(dir, "cmd"))
+	return confErr == nil && confInfo.IsDir() && cmdErr == nil && cmdInfo.IsDir()
 }

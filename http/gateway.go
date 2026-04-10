@@ -2,8 +2,10 @@ package http
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/LittleSongxx/TinyClaw/authz"
 	"github.com/LittleSongxx/TinyClaw/gateway"
 	"github.com/LittleSongxx/TinyClaw/logger"
 	"github.com/LittleSongxx/TinyClaw/node"
@@ -26,7 +28,7 @@ func GetGatewayNodes(w http.ResponseWriter, r *http.Request) {
 
 func GetGatewaySessions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	items, err := gateway.DefaultService().ListSessionMeta(100)
+	items, err := gateway.DefaultService().ListSessionMetaInWorkspace(ctx, 100)
 	if err != nil {
 		logger.ErrorCtx(ctx, "list gateway sessions fail", "err", err)
 		utils.Failure(ctx, w, r, param.CodeDBQueryFail, param.MsgDBQueryFail, err)
@@ -48,6 +50,7 @@ func ExecuteGatewayNodeCommand(w http.ResponseWriter, r *http.Request) {
 		utils.Failure(ctx, w, r, param.CodeParamError, param.MsgParamError, err)
 		return
 	}
+	normalizeManagedNodeCommandRequest(r, &req)
 
 	result, err := gateway.DefaultService().ExecuteNodeCommand(ctx, req)
 	if err != nil {
@@ -82,4 +85,22 @@ func DecideGatewayApproval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	utils.Success(ctx, w, r, result)
+}
+
+func normalizeManagedNodeCommandRequest(r *http.Request, req *node.NodeCommandRequest) {
+	if req == nil {
+		return
+	}
+
+	if actingUserID := strings.TrimSpace(actingUserIDFromRequest(r)); actingUserID != "" {
+		req.UserID = actingUserID
+	}
+	if principal, ok := authz.PrincipalFromContext(r.Context()); ok {
+		req.WorkspaceID = principal.WorkspaceID
+		req.ActorID = principal.ActorID
+		req.ActorRole = string(principal.Role)
+		req.ActorScopes = append([]string(nil), principal.Scopes...)
+	}
+
+	req.RequireApproval = true
 }

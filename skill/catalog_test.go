@@ -3,6 +3,7 @@ package skill
 import (
 	"testing"
 
+	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
 )
@@ -216,6 +217,36 @@ func TestResolveSkillSupportsLegacyAlias(t *testing.T) {
 	if assert.True(t, ok) && assert.NotNil(t, item) {
 		assert.Equal(t, "legacy_amap_proxy", item.Manifest.ID)
 	}
+}
+
+func TestAppendLegacySkillsRequiresFeatureFlag(t *testing.T) {
+	previous := conf.FeatureConfInfo.LegacyMCPProxy
+	defer func() {
+		conf.FeatureConfInfo.LegacyMCPProxy = previous
+	}()
+
+	catalog := &Catalog{
+		skills:  map[string]*Skill{},
+		ordered: []*Skill{},
+		toolsByName: map[string]mcp.Tool{
+			"maps_search": {Name: "maps_search", Description: "Search map data"},
+		},
+		serverTools: map[string][]string{
+			"amap": {"maps_search"},
+		},
+		serverDesc: map[string]string{
+			"amap": "Map data",
+		},
+	}
+
+	conf.FeatureConfInfo.LegacyMCPProxy = false
+	catalog.appendLegacySkills()
+	assert.Empty(t, catalog.ordered)
+
+	conf.FeatureConfInfo.LegacyMCPProxy = true
+	catalog.appendLegacySkills()
+	assert.Contains(t, catalog.skills, "legacy_amap_proxy")
+	assert.Contains(t, catalog.skills, "legacy_all_tools_proxy")
 }
 
 func TestFormatMCPList(t *testing.T) {

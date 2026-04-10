@@ -17,7 +17,7 @@ type SessionConf struct {
 
 type NodeRuntimeConf struct {
 	Enabled                  bool   `json:"enabled"`
-	PairingToken             string `json:"-"`
+	LegacyNodeTokenPresent   bool   `json:"-"`
 	DefaultCommandTimeoutSec int    `json:"default_command_timeout_sec"`
 }
 
@@ -40,7 +40,7 @@ func InitRuntimeConf() {
 	RuntimeConfInfo.Sessions.ContextWindow = 20
 
 	RuntimeConfInfo.Nodes.Enabled = true
-	RuntimeConfInfo.Nodes.PairingToken = os.Getenv("NODE_PAIRING_TOKEN")
+	RuntimeConfInfo.Nodes.LegacyNodeTokenPresent = os.Getenv("NODE_PAIRING_TOKEN") != ""
 	RuntimeConfInfo.Nodes.DefaultCommandTimeoutSec = 30
 }
 

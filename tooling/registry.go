@@ -82,10 +82,14 @@ type Registry struct {
 	entries map[string]*Entry
 }
 
+const DirectLLMToolName = "llm_tool"
+
 func NewRegistry() *Registry {
-	return &Registry{
+	registry := &Registry{
 		entries: make(map[string]*Entry),
 	}
+	registry.Put(directLLMEntry())
+	return registry
 }
 
 func (r *Registry) Put(entry *Entry) {
@@ -103,6 +107,9 @@ func (r *Registry) Put(entry *Entry) {
 
 func NewRegistryFromTaskTools() *Registry {
 	registry := NewRegistry()
+	if !conf.FeatureConfInfo.LegacyTaskToolsEnabled() {
+		return registry
+	}
 
 	conf.TaskTools.Range(func(name, value any) bool {
 		key, ok := name.(string)
@@ -210,4 +217,24 @@ func normalizeToolSpec(spec ToolSpec) ToolSpec {
 	}
 
 	return spec
+}
+
+func directLLMEntry() *Entry {
+	return &Entry{
+		Spec: ToolSpec{
+			Name:            DirectLLMToolName,
+			Category:        CategoryHost,
+			Description:     "Answer directly with the current LLM when no external skill or tool is needed.",
+			Memory:          "conversation",
+			WhenToUse:       "Use for simple requests that can be answered directly without MCP, knowledge, or node actions.",
+			WhenNotToUse:    "Do not use when the task needs external tools, desktop actions, retrieval, or a specialized skill.",
+			Instructions:    "Reply directly to the user's request using the active LLM provider and current conversation context.",
+			OutputContract:  "Return the final user-facing answer directly.",
+			FailureHandling: "Explain the limitation briefly if the request still needs unavailable tools or information.",
+			Policy: ToolPolicy{
+				Timeout:    2 * time.Minute,
+				MaxRetries: conf.BaseConfInfo.LLMRetryTimes,
+			},
+		},
+	}
 }

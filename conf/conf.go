@@ -1,6 +1,7 @@
 package conf
 
 import (
+	"bytes"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -100,7 +101,10 @@ var (
 func InitConf() {
 	BaseConfInfo.StartTime = time.Now().Unix()
 	if loadConf() {
-		logConf("", "", "")
+		allowedUserIds, allowedGroupIds, privilegedUserIds := applyEnvOverrides("", "", "")
+		normalizeLoadedConfPaths()
+		logConf(allowedUserIds, allowedGroupIds, privilegedUserIds)
+		SaveConf()
 		return
 	}
 
@@ -186,11 +190,41 @@ func InitConf() {
 	InitVideoConf()
 	InitAudioConf()
 	InitToolsConf()
+	InitFeatureConf()
 	InitKnowledgeConf()
 	InitRegisterConf()
 
 	flag.CommandLine.Init(os.Args[0], flag.ContinueOnError)
 	flag.Parse()
+	allowedUserIdsValue, allowedGroupIdsValue, privilegedUserIdsValue := applyEnvOverrides(*allowedUserIds, *allowedGroupIds, *privilegedUserIds)
+	normalizeLoadedConfPaths()
+	logConf(allowedUserIdsValue, allowedGroupIdsValue, privilegedUserIdsValue)
+	SaveConf()
+
+}
+
+func applyEnvOverrides(allowedUserIds, allowedGroupIds, privilegedUserIds string) (string, string, string) {
+	if os.Getenv("ALLOWED_USER_IDS") != "" {
+		allowedUserIds = os.Getenv("ALLOWED_USER_IDS")
+	}
+	if os.Getenv("ALLOWED_GROUP_IDS") != "" {
+		allowedGroupIds = os.Getenv("ALLOWED_GROUP_IDS")
+	}
+	if os.Getenv("PRIVILEGED_USER_IDS") != "" {
+		privilegedUserIds = os.Getenv("PRIVILEGED_USER_IDS")
+	} else if os.Getenv("ADMIN_USER_IDS") != "" {
+		privilegedUserIds = os.Getenv("ADMIN_USER_IDS")
+	}
+
+	if BaseConfInfo.AllowedUserIds == nil {
+		BaseConfInfo.AllowedUserIds = make(map[string]bool)
+	}
+	if BaseConfInfo.AllowedGroupIds == nil {
+		BaseConfInfo.AllowedGroupIds = make(map[string]bool)
+	}
+	if BaseConfInfo.PrivilegedUserIds == nil {
+		BaseConfInfo.PrivilegedUserIds = make(map[string]bool)
+	}
 
 	if os.Getenv("TELEGRAM_BOT_TOKEN") != "" {
 		BaseConfInfo.TelegramBotToken = os.Getenv("TELEGRAM_BOT_TOKEN")
@@ -320,16 +354,16 @@ func InitConf() {
 		BaseConfInfo.DBConf = os.Getenv("DB_CONF")
 	}
 
-	if os.Getenv("ALLOWED_USER_IDS") != "" {
-		*allowedUserIds = os.Getenv("ALLOWED_USER_IDS")
+	if allowedUserIds != "" {
+		BaseConfInfo.AllowedUserIds = make(map[string]bool)
 	}
 
-	if os.Getenv("ALLOWED_GROUP_IDS") != "" {
-		*allowedGroupIds = os.Getenv("ALLOWED_GROUP_IDS")
+	if allowedGroupIds != "" {
+		BaseConfInfo.AllowedGroupIds = make(map[string]bool)
 	}
 
-	if os.Getenv("PRIVILEGED_USER_IDS") != "" {
-		*privilegedUserIds = os.Getenv("PRIVILEGED_USER_IDS")
+	if privilegedUserIds != "" {
+		BaseConfInfo.PrivilegedUserIds = make(map[string]bool)
 	}
 
 	if os.Getenv("LLM_PROXY") != "" {
@@ -461,6 +495,7 @@ func InitConf() {
 	}
 
 	EnvAudioConf()
+	EnvFeatureConf()
 	EnvKnowledgeConf()
 	EnvLLMConf()
 	EnvPhotoConf()
@@ -468,9 +503,7 @@ func InitConf() {
 	EnvVideoConf()
 	EnvRegisterConf()
 
-	logConf(*allowedUserIds, *allowedGroupIds, *privilegedUserIds)
-	SaveConf()
-
+	return allowedUserIds, allowedGroupIds, privilegedUserIds
 }
 
 func logConf(allowedUserIds, allowedGroupIds, privilegedUserIds string) {
@@ -562,6 +595,14 @@ func logConf(allowedUserIds, allowedGroupIds, privilegedUserIds string) {
 	logger.Info("CONF", "ImagePath", BaseConfInfo.ImagePath)
 	logger.Info("CONF", "IsStreaming", BaseConfInfo.IsStreaming)
 	logger.Info("CONF", "SendMcpMediaToLLM", BaseConfInfo.SendMcpMediaToLLM)
+
+	logger.Info("FEATURE_CONF", "Knowledge", FeatureConfInfo.Knowledge)
+	logger.Info("FEATURE_CONF", "Media", FeatureConfInfo.Media)
+	logger.Info("FEATURE_CONF", "Cron", FeatureConfInfo.Cron)
+	logger.Info("FEATURE_CONF", "LegacyBots", FeatureConfInfo.LegacyBots)
+	logger.Info("FEATURE_CONF", "LegacyMCPProxy", FeatureConfInfo.LegacyMCPProxy)
+	logger.Info("FEATURE_CONF", "LegacyTaskTools", FeatureConfInfo.LegacyTaskTools)
+	logger.Info("FEATURE_CONF", "Workflow", FeatureConfInfo.Workflow)
 
 	logger.Info("AUDIO_CONF", "AudioAppID", maskSecret(AudioConfInfo.VolAudioAppID))
 	logger.Info("AUDIO_CONF", "AudioToken", maskSecret(AudioConfInfo.VolAudioToken))
@@ -662,13 +703,11 @@ func IsPrivilegedUser(userID string) bool {
 }
 
 func GetAbsPath(relPath string) string {
-	exe, err := os.Executable()
-	if err != nil {
-		logger.Error("Failed to get executable path", "err", err)
+	baseDir := resolveBaseDir()
+	if baseDir == "" {
 		return ""
 	}
-	dir := filepath.Dir(exe)
-	return filepath.Join(dir, relPath)
+	return filepath.Join(baseDir, relPath)
 }
 
 func loadConf() bool {
@@ -698,50 +737,47 @@ func loadConf() bool {
 		return false
 	}
 
-	err = TransferMapToConf(AllConf["base"].(map[string]interface{}), BaseConfInfo)
-	if err != nil {
+	if err = transferOptionalSection(AllConf, "base", BaseConfInfo, true); err != nil {
 		logger.Error("Failed to transfer map to base conf", "err", err)
 		return false
 	}
 
-	err = TransferMapToConf(AllConf["audio"].(map[string]interface{}), AudioConfInfo)
-	if err != nil {
+	if err = transferOptionalSection(AllConf, "audio", AudioConfInfo, true); err != nil {
 		logger.Error("Failed to transfer map to audio conf", "err", err)
 		return false
 	}
 
-	err = TransferMapToConf(AllConf["llm"].(map[string]interface{}), LLMConfInfo)
-	if err != nil {
+	if err = transferOptionalSection(AllConf, "llm", LLMConfInfo, true); err != nil {
 		logger.Error("Failed to transfer map to llm conf", "err", err)
 		return false
 	}
 
-	err = TransferMapToConf(AllConf["photo"].(map[string]interface{}), PhotoConfInfo)
-	if err != nil {
+	if err = transferOptionalSection(AllConf, "photo", PhotoConfInfo, true); err != nil {
 		logger.Error("Failed to transfer map to photo conf", "err", err)
 		return false
 	}
 
-	err = TransferMapToConf(AllConf["knowledge"].(map[string]interface{}), KnowledgeConfInfo)
-	if err != nil {
+	if err = transferOptionalSection(AllConf, "features", FeatureConfInfo, false); err != nil {
+		logger.Error("Failed to transfer map to feature conf", "err", err)
+		return false
+	}
+
+	if err = transferOptionalSection(AllConf, "knowledge", KnowledgeConfInfo, true); err != nil {
 		logger.Error("Failed to transfer map to knowledge conf", "err", err)
 		return false
 	}
 
-	err = TransferMapToConf(AllConf["video"].(map[string]interface{}), VideoConfInfo)
-	if err != nil {
+	if err = transferOptionalSection(AllConf, "video", VideoConfInfo, true); err != nil {
 		logger.Error("Failed to transfer map to video conf", "err", err)
 		return false
 	}
 
-	err = TransferMapToConf(AllConf["register"].(map[string]interface{}), RegisterConfInfo)
-	if err != nil {
+	if err = transferOptionalSection(AllConf, "register", RegisterConfInfo, true); err != nil {
 		logger.Error("Failed to transfer map to register conf", "err", err)
 		return false
 	}
 
-	err = TransferMapToConf(AllConf["tools"].(map[string]interface{}), ToolsConfInfo)
-	if err != nil {
+	if err = transferOptionalSection(AllConf, "tools", ToolsConfInfo, true); err != nil {
 		logger.Error("Failed to transfer map to tools conf", "err", err)
 		return false
 	}
@@ -754,6 +790,7 @@ func SaveConf() {
 	AllConf["audio"] = AudioConfInfo
 	AllConf["llm"] = LLMConfInfo
 	AllConf["photo"] = PhotoConfInfo
+	AllConf["features"] = FeatureConfInfo
 	AllConf["knowledge"] = KnowledgeConfInfo
 	AllConf["video"] = VideoConfInfo
 	AllConf["register"] = RegisterConfInfo
@@ -770,10 +807,19 @@ func SaveConf() {
 		return
 	}
 
-	err = os.WriteFile(fileName, confData, 0644)
+	if err = os.MkdirAll(filepath.Dir(fileName), 0700); err != nil {
+		logger.Error("Failed to create config directory", "err", err)
+		return
+	}
+
+	tmpFile := fileName + ".tmp"
+	err = os.WriteFile(tmpFile, confData, 0600)
 	if err != nil {
 		logger.Error("Failed to write config file", "err", err)
 		return
+	}
+	if err = os.Rename(tmpFile, fileName); err != nil {
+		logger.Error("Failed to replace config file", "err", err)
 	}
 
 }
@@ -812,4 +858,154 @@ func TransferMapToConf(m map[string]interface{}, conf interface{}) error {
 	}
 
 	return json.Unmarshal(data, conf)
+}
+
+func transferOptionalSection(all map[string]interface{}, key string, target interface{}, required bool) error {
+	raw, ok := all[key]
+	if !ok || raw == nil {
+		if required {
+			return os.ErrNotExist
+		}
+		return nil
+	}
+
+	section, ok := raw.(map[string]interface{})
+	if !ok {
+		return os.ErrInvalid
+	}
+
+	return TransferMapToConf(section, target)
+}
+
+func normalizeLoadedConfPaths() {
+	if BaseConfInfo != nil && strings.EqualFold(strings.TrimSpace(BaseConfInfo.DBType), "sqlite3") {
+		BaseConfInfo.DBConf = normalizeProjectManagedPath(BaseConfInfo.DBConf, "data", "conf")
+		BaseConfInfo.ImagePath = normalizeProjectManagedPath(BaseConfInfo.ImagePath, "conf", "data")
+	}
+
+	if KnowledgeConfInfo != nil {
+		KnowledgeConfInfo.KnowledgePath = normalizeProjectManagedPath(KnowledgeConfInfo.KnowledgePath, "data")
+	}
+
+	if ToolsConfInfo != nil && ToolsConfInfo.McpConfPath != nil {
+		*ToolsConfInfo.McpConfPath = normalizeProjectManagedPath(*ToolsConfInfo.McpConfPath, "conf", "data")
+	}
+}
+
+func normalizeProjectManagedPath(value string, roots ...string) string {
+	original := strings.TrimSpace(value)
+	value = original
+	if value == "" || !filepath.IsAbs(value) || pathExists(value) {
+		return value
+	}
+	if !looksLikePersistedProjectPath(value) {
+		return value
+	}
+
+	baseDir := resolveBaseDir()
+	if baseDir == "" {
+		return value
+	}
+
+	relativePath, ok := projectRelativePath(value, roots...)
+	if !ok {
+		return value
+	}
+
+	relocated := filepath.Join(baseDir, relativePath)
+	logger.Warn("Relocating project-managed path", "from", original, "to", relocated)
+	return relocated
+}
+
+func projectRelativePath(value string, roots ...string) (string, bool) {
+	if len(roots) == 0 {
+		return "", false
+	}
+
+	normalized := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(value)), filepath.ToSlash(filepath.VolumeName(value)))
+	normalized = strings.TrimPrefix(normalized, "/")
+	parts := strings.Split(normalized, "/")
+	for idx := len(parts) - 1; idx >= 0; idx-- {
+		for _, root := range roots {
+			if parts[idx] == root {
+				return filepath.Join(parts[idx:]...), true
+			}
+		}
+	}
+	return "", false
+}
+
+func resolveBaseDir() string {
+	if root := strings.TrimSpace(os.Getenv("TINYCLAW_ROOT")); root != "" {
+		if abs, err := filepath.Abs(root); err == nil {
+			return abs
+		}
+		return root
+	}
+
+	for _, candidate := range candidateBaseDirs() {
+		if root := findProjectRoot(candidate); root != "" {
+			return root
+		}
+	}
+
+	return ""
+}
+
+func candidateBaseDirs() []string {
+	candidates := make([]string, 0, 2)
+	if wd, err := os.Getwd(); err == nil {
+		candidates = append(candidates, wd)
+	}
+	if exe, err := os.Executable(); err == nil {
+		candidates = append(candidates, filepath.Dir(exe))
+	}
+	return candidates
+}
+
+func findProjectRoot(start string) string {
+	current := filepath.Clean(start)
+	for current != "." && current != string(filepath.Separator) {
+		if looksLikeProjectRoot(current) {
+			return current
+		}
+		next := filepath.Dir(current)
+		if next == current {
+			break
+		}
+		current = next
+	}
+	if looksLikeProjectRoot(current) {
+		return current
+	}
+	return ""
+}
+
+func looksLikeProjectRoot(dir string) bool {
+	if dir == "" {
+		return false
+	}
+
+	if data, err := os.ReadFile(filepath.Join(dir, "go.mod")); err == nil {
+		if bytes.Contains(data, []byte("module github.com/LittleSongxx/TinyClaw")) {
+			return true
+		}
+	}
+
+	return isDir(filepath.Join(dir, "conf")) && (isDir(filepath.Join(dir, "cmd")) || isDir(filepath.Join(dir, "data")))
+}
+
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func looksLikePersistedProjectPath(path string) bool {
+	normalized := "/" + strings.Trim(strings.ToLower(filepath.ToSlash(filepath.Clean(path))), "/") + "/"
+	return strings.Contains(normalized, "/tinyclaw/")
 }

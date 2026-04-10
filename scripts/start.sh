@@ -51,10 +51,6 @@ build_app_image() {
 }
 
 dependency_services=(
-  postgres
-  redis
-  hf-embeddings
-  minio
   playwright-mcp
 )
 
@@ -68,7 +64,12 @@ source_env_file "${ENV_FILE}"
 mkdir -p "${DATA_DIR}" "${DATA_DIR}/knowledge" "${LOG_DIR}" "${START_LOG_DIR}"
 
 ENABLE_CLOUDFLARED="${ENABLE_CLOUDFLARED:-false}"
+ENABLE_KNOWLEDGE="${ENABLE_KNOWLEDGE:-false}"
 ENABLE_FULL_STACK="${ENABLE_FULL_STACK:-false}"
+
+if [[ "${ENABLE_KNOWLEDGE}" == "true" ]]; then
+  dependency_services+=(postgres redis hf-embeddings minio)
+fi
 
 if [[ "${ENABLE_FULL_STACK}" == "true" ]]; then
   dependency_services+=(etcd milvus)

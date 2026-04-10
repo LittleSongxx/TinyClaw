@@ -22,6 +22,14 @@ HOST_ADMIN_PORT="${HOST_ADMIN_PORT:-${HOST_ADMIN_PORT_START:-18080}}"
 HTTP_BASE="http://127.0.0.1:${HOST_HTTP_PORT}"
 ADMIN_BASE="http://127.0.0.1:${HOST_ADMIN_PORT}"
 
+CURL_AUTH_ARGS=()
+if [[ -n "${GATEWAY_SHARED_SECRET:-}" ]]; then
+  CURL_AUTH_ARGS+=(
+    -H "Authorization: Bearer ${GATEWAY_SHARED_SECRET}"
+    -H "X-TinyClaw-Token: ${GATEWAY_SHARED_SECRET}"
+  )
+fi
+
 VERIFY_RUN_ID="${VERIFY_RUN_ID:-$(date +%s)}"
 VERIFY_MARKER="${VERIFY_MARKER:-tinyclaw-verify-marker-${VERIFY_RUN_ID}}"
 VERIFY_DOC_NAME="${VERIFY_DOC_NAME:-tinyclaw-live-verify-${VERIFY_RUN_ID}.txt}"
@@ -38,9 +46,9 @@ request_json() {
   local response
 
   if [[ -n "${data}" ]]; then
-    response="$(curl -fsS -X "${method}" -H 'Content-Type: application/json' -d "${data}" "${url}")"
+    response="$(curl -fsS -X "${method}" "${CURL_AUTH_ARGS[@]}" -H 'Content-Type: application/json' -d "${data}" "${url}")"
   else
-    response="$(curl -fsS -X "${method}" "${url}")"
+    response="$(curl -fsS -X "${method}" "${CURL_AUTH_ARGS[@]}" "${url}")"
   fi
 
   if [[ "${response}" != *'"code":0'* ]]; then
@@ -64,6 +72,7 @@ script_section "Verification"
 script_kv "HTTP" "${HTTP_BASE}"
 script_kv "Admin" "${ADMIN_BASE}"
 script_kv "Mode" "$([[ "${VERIFY_FULL}" == "true" ]] && echo "full" || echo "basic")"
+script_kv "Knowledge" "${ENABLE_KNOWLEDGE:-false}"
 
 verify_step "Checking /pong"
 pong_response="$(curl -fsS "${HTTP_BASE}/pong")"
@@ -84,59 +93,65 @@ verify_step "Checking agent run API"
 request_json GET "${HTTP_BASE}/run/list?page=1&page_size=5" >/dev/null
 verify_ok "Agent run API"
 
-verify_step "Checking knowledge collection API"
-request_json GET "${HTTP_BASE}/knowledge/collections/list" >/dev/null
-verify_ok "Knowledge collection API"
+if [[ "${ENABLE_KNOWLEDGE:-false}" == "true" ]]; then
+  verify_step "Checking knowledge collection API"
+  request_json GET "${HTTP_BASE}/knowledge/collections/list" >/dev/null
+  verify_ok "Knowledge collection API"
 
-verify_step "Creating verification document"
-create_payload="$(printf '{"file_name":"%s","content":"%s"}' "${VERIFY_DOC_NAME}" "${VERIFY_DOC_CONTENT}" | sed 's/\\/\\\\/g')"
-request_json POST "${HTTP_BASE}/knowledge/documents/create" "${create_payload}" >/dev/null
-verify_ok "Verification document created"
+  verify_step "Creating verification document"
+  create_payload="$(printf '{"file_name":"%s","content":"%s"}' "${VERIFY_DOC_NAME}" "${VERIFY_DOC_CONTENT}" | sed 's/\\/\\\\/g')"
+  request_json POST "${HTTP_BASE}/knowledge/documents/create" "${create_payload}" >/dev/null
+  verify_ok "Verification document created"
 
-verify_step "Waiting for ingestion job"
-job_ok=false
-for _ in $(seq 1 60); do
-  jobs_response="$(request_json GET "${HTTP_BASE}/knowledge/jobs/list?page=1&page_size=20" || true)"
-  if [[ "${jobs_response}" == *"\"document_name\":\"${VERIFY_DOC_NAME}\""* && "${jobs_response}" == *'"status":"succeeded"'* ]]; then
-    job_ok=true
-    break
-  fi
-  if [[ "${jobs_response}" == *"\"document_name\":\"${VERIFY_DOC_NAME}\""* && "${jobs_response}" == *'"status":"failed"'* ]]; then
-    echo "${jobs_response}" >&2
-    break
-  fi
-  sleep 2
-done
+  verify_step "Waiting for ingestion job"
+  job_ok=false
+  for _ in $(seq 1 60); do
+    jobs_response="$(request_json GET "${HTTP_BASE}/knowledge/jobs/list?page=1&page_size=20" || true)"
+    if [[ "${jobs_response}" == *"\"document_name\":\"${VERIFY_DOC_NAME}\""* && "${jobs_response}" == *'"status":"succeeded"'* ]]; then
+      job_ok=true
+      break
+    fi
+    if [[ "${jobs_response}" == *"\"document_name\":\"${VERIFY_DOC_NAME}\""* && "${jobs_response}" == *'"status":"failed"'* ]]; then
+      echo "${jobs_response}" >&2
+      break
+    fi
+    sleep 2
+  done
 
-if [[ "${job_ok}" != "true" ]]; then
+  if [[ "${job_ok}" != "true" ]]; then
     script_error "Knowledge ingestion job did not finish successfully for ${VERIFY_DOC_NAME}"
-  exit 1
-fi
-verify_ok "Ingestion job succeeded"
-
-verify_step "Running retrieval debug"
-debug_payload="$(printf '{"query":"%s"}' "${VERIFY_DOC_QUERY}" | sed 's/\\/\\\\/g')"
-debug_ok=false
-debug_response=""
-for _ in $(seq 1 30); do
-  debug_response="$(request_json POST "${HTTP_BASE}/knowledge/retrieval/debug" "${debug_payload}")"
-  if [[ "${debug_response}" == *"\"document_name\":\"${VERIFY_DOC_NAME}\""* && "${debug_response}" == *"${VERIFY_MARKER}"* ]]; then
-    debug_ok=true
-    break
+    exit 1
   fi
-  sleep 2
-done
+  verify_ok "Ingestion job succeeded"
 
-if [[ "${debug_ok}" != "true" ]]; then
-  script_error "Retrieval debug response does not include the verification document"
-  echo "${debug_response}" >&2
-  exit 1
+  verify_step "Running retrieval debug"
+  debug_payload="$(printf '{"query":"%s"}' "${VERIFY_DOC_QUERY}" | sed 's/\\/\\\\/g')"
+  debug_ok=false
+  debug_response=""
+  for _ in $(seq 1 30); do
+    debug_response="$(request_json POST "${HTTP_BASE}/knowledge/retrieval/debug" "${debug_payload}")"
+    if [[ "${debug_response}" == *"\"document_name\":\"${VERIFY_DOC_NAME}\""* && "${debug_response}" == *"${VERIFY_MARKER}"* ]]; then
+      debug_ok=true
+      break
+    fi
+    sleep 2
+  done
+
+  if [[ "${debug_ok}" != "true" ]]; then
+    script_error "Retrieval debug response does not include the verification document"
+    echo "${debug_response}" >&2
+    exit 1
+  fi
+  verify_ok "Retrieval debug"
+else
+  verify_step "Skipping Knowledge checks because ENABLE_KNOWLEDGE is false"
+  verify_ok "Knowledge checks skipped"
 fi
-verify_ok "Retrieval debug"
 
 if [[ "${VERIFY_FULL}" == "true" ]]; then
   verify_step "Running /task live verification"
   task_output="$(curl -fsS -N --get \
+    "${CURL_AUTH_ARGS[@]}" \
     --data-urlencode "user_id=${VERIFY_TASK_USER_ID}" \
     --data-urlencode "prompt=/task 请只回复四个字：任务完成" \
     "${HTTP_BASE}/communicate")"
@@ -149,6 +164,7 @@ if [[ "${VERIFY_FULL}" == "true" ]]; then
 
   verify_step "Running /mcp live verification"
   mcp_output="$(curl -fsS -N --get \
+    "${CURL_AUTH_ARGS[@]}" \
     --data-urlencode "user_id=${VERIFY_MCP_USER_ID}" \
     --data-urlencode "prompt=/mcp 打开 https://example.com 并只返回页面标题" \
     "${HTTP_BASE}/communicate")"
@@ -168,7 +184,7 @@ if [[ "${VERIFY_FULL}" == "true" ]]; then
     exit 1
   fi
 
-  replay_response="$(curl -fsS -X POST "${HTTP_BASE}/run/replay" -d "id=${task_run_id}")"
+  replay_response="$(curl -fsS -X POST "${CURL_AUTH_ARGS[@]}" "${HTTP_BASE}/run/replay" -d "id=${task_run_id}")"
   if [[ "${replay_response}" != *'"code":0'* || "${replay_response}" != *"\"replay_of\":${task_run_id}"* ]]; then
     script_error "Replay verification failed"
     echo "${replay_response}" >&2

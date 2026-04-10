@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/LittleSongxx/TinyClaw/authz"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/db"
 	"github.com/google/uuid"
@@ -45,6 +46,7 @@ func (s *FileStore) Open(ctx context.Context, key SessionKey, metadata map[strin
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	key.WorkspaceID = authz.NormalizeWorkspaceID(firstNonEmpty(key.WorkspaceID, authz.WorkspaceIDFromContext(ctx)))
 	if err := s.loadLocked(); err != nil {
 		return nil, err
 	}
@@ -71,6 +73,7 @@ func (s *FileStore) Open(ctx context.Context, key SessionKey, metadata map[strin
 	now := time.Now().Unix()
 	sessionID := uuid.NewString()
 	env := &Envelope{
+		WorkspaceID:    key.WorkspaceID,
 		SessionID:      sessionID,
 		SessionKey:     stableKey,
 		Key:            key,
@@ -228,6 +231,11 @@ func (s *FileStore) loadLocked() error {
 		}
 	}
 	for _, env := range envelopes {
+		env.WorkspaceID = authz.NormalizeWorkspaceID(firstNonEmpty(env.WorkspaceID, env.Key.WorkspaceID))
+		env.Key.WorkspaceID = env.WorkspaceID
+		if env.SessionKey == "" {
+			env.SessionKey = env.Key.StableKey()
+		}
 		s.byID[env.SessionID] = env
 		s.byKey[env.SessionKey] = env.SessionID
 	}
@@ -256,6 +264,7 @@ func (s *FileStore) persistLocked() error {
 
 func (s *FileStore) upsertMeta(env *Envelope) error {
 	return db.UpsertSessionMeta(&db.SessionMeta{
+		WorkspaceID:    env.WorkspaceID,
 		SessionID:      env.SessionID,
 		SessionKey:     env.SessionKey,
 		Channel:        env.Key.Channel,
@@ -270,6 +279,15 @@ func (s *FileStore) upsertMeta(env *Envelope) error {
 		CreateTime:     env.CreatedAt,
 		UpdateTime:     env.UpdatedAt,
 	})
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func RecentContext(ctx context.Context, sessionID string, limit int) ([]Message, error) {

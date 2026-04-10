@@ -3,11 +3,12 @@ package db
 import (
 	"database/sql"
 	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/LittleSongxx/TinyClaw/admin/conf"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMain(m *testing.M) {
@@ -19,6 +20,12 @@ func TestMain(m *testing.M) {
 }
 
 func setup() {
+	tempDir, err := os.MkdirTemp("", "tinyclaw-admin-db-*")
+	if err != nil {
+		panic(err)
+	}
+	os.Setenv("DB_TYPE", "sqlite3")
+	os.Setenv("DB_CONF", filepath.Join(tempDir, "tinyclaw-admin.db"))
 	conf.InitConfig()
 	InitTable()
 }
@@ -49,12 +56,18 @@ func TestInitializeSqlite3Table(t *testing.T) {
 }
 
 func TestCreateAndGetBot(t *testing.T) {
-
 	err := CreateBot("127.0.0.1", "BotA", "crt.pem", "key.pem", "ca.pem", "run")
 	assert.NoError(t, err)
 
+	bots, total, err := ListBots(0, 10, "127.0.0.1")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, total)
+	if len(bots) != 1 {
+		t.Fatalf("expected one bot, got %+v", bots)
+	}
+
 	// 检查数据库是否插入成功
-	bot, err := GetBotByID("1")
+	bot, err := GetBotByID(strconv.Itoa(bots[0].ID))
 	assert.NoError(t, err)
 	assert.Equal(t, "BotA", bot.Name)
 	assert.Equal(t, "127.0.0.1", bot.Address)
@@ -64,15 +77,21 @@ func TestCreateAndGetBot(t *testing.T) {
 }
 
 func TestUpdateBotAddress(t *testing.T) {
-
 	err := CreateBot("127.0.0.1", "BotA", "crt.pem", "key.pem", "ca.pem", "run")
 	assert.NoError(t, err)
 
-	err = UpdateBotAddress(2, "192.168.0.1", "BotB", "crt2.pem", "key2.pem", "ca2.pem", "restart")
+	bots, total, err := ListBots(0, 10, "127.0.0.1")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, total)
+	if len(bots) != 1 {
+		t.Fatalf("expected one bot, got %+v", bots)
+	}
+
+	err = UpdateBotAddress(bots[0].ID, "192.168.0.1", "BotB", "crt2.pem", "key2.pem", "ca2.pem", "restart")
 	assert.NoError(t, err)
 
 	// 验证
-	bot, err := GetBotByID("2")
+	bot, err := GetBotByID(strconv.Itoa(bots[0].ID))
 	assert.NoError(t, err)
 	assert.Equal(t, "192.168.0.1", bot.Address)
 	assert.Equal(t, "BotB", bot.Name)
@@ -82,15 +101,21 @@ func TestUpdateBotAddress(t *testing.T) {
 }
 
 func TestSoftDeleteBot(t *testing.T) {
-
 	err := CreateBot("127.0.0.1", "BotA", "crt.pem", "key.pem", "ca.pem", "run")
 	assert.NoError(t, err)
 
-	err = SoftDeleteBot(1)
+	bots, total, err := ListBots(0, 10, "127.0.0.1")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, total)
+	if len(bots) != 1 {
+		t.Fatalf("expected one bot, got %+v", bots)
+	}
+
+	err = SoftDeleteBot(bots[0].ID)
 	assert.NoError(t, err)
 
 	// 再查时应找不到
-	_, err = GetBotByID("1")
+	_, err = GetBotByID(strconv.Itoa(bots[0].ID))
 	assert.Error(t, err)
 	assert.Equal(t, sql.ErrNoRows, err)
 

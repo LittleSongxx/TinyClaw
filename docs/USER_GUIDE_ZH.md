@@ -27,6 +27,7 @@
 - 现在先经过 Gateway，再进入既有执行流
 - Session 已经成为独立层
 - 设备控制不再混进 tool 内核，而是进入专门的 Node 网络
+- Knowledge、媒体生成、Cron、legacy bot adapters、legacy MCP proxy 默认关闭，作为可选模块启用
 
 ## 2. 推荐运行方式
 
@@ -38,9 +39,9 @@
 
 - TinyClaw `app`
 - Admin
-- PostgreSQL / Redis / MinIO / Milvus
-- HuggingFace embedding 服务
 - Playwright MCP
+
+Knowledge 相关的 PostgreSQL / Redis / MinIO / HuggingFace embedding 服务现在属于可选 `knowledge` profile。
 
 ### 真实 PC 节点
 
@@ -87,6 +88,24 @@ GATEWAY_NODE_WS_PATH=/gateway/nodes/ws
 GATEWAY_SHARED_SECRET=replace-with-a-strong-secret
 NODE_PAIRING_TOKEN=replace-with-a-strong-node-token
 SESSION_TRANSCRIPT_DIR=/app/data/sessions
+```
+
+默认 profile 已经收紧为 Agent 平台核心能力。以下可选模块默认关闭：
+
+```env
+ENABLE_KNOWLEDGE=false
+ENABLE_MEDIA=false
+ENABLE_CRON=false
+ENABLE_LEGACY_BOTS=false
+ENABLE_LEGACY_MCP_PROXY=false
+ENABLE_LEGACY_TASK_TOOLS=false
+ENABLE_EXPERIMENTAL_WORKFLOW=false
+```
+
+启用 Knowledge 时，需要同时启动 Docker profile：
+
+```bash
+ENABLE_KNOWLEDGE=true docker compose --profile knowledge up -d
 ```
 
 说明：

@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/LittleSongxx/TinyClaw/authz"
 	"github.com/LittleSongxx/TinyClaw/conf"
 )
 
 type SessionMeta struct {
 	ID             int64  `json:"id"`
+	WorkspaceID    string `json:"workspace_id"`
 	SessionID      string `json:"session_id"`
 	SessionKey     string `json:"session_key"`
 	Channel        string `json:"channel"`
@@ -36,14 +38,16 @@ func UpsertSessionMeta(meta *SessionMeta) error {
 		meta.CreateTime = now
 	}
 	meta.UpdateTime = now
+	meta.WorkspaceID = authz.NormalizeWorkspaceID(meta.WorkspaceID)
 
 	if conf.BaseConfInfo.DBType == "mysql" {
 		query := `
 		INSERT INTO sessions (
-			session_id, session_key, channel, account_id, peer_id, group_id, thread_id, kind,
+			workspace_id, session_id, session_key, channel, account_id, peer_id, group_id, thread_id, kind,
 			transcript_path, summary, message_count, last_message_at, create_time, update_time, from_bot
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON DUPLICATE KEY UPDATE
+			workspace_id = VALUES(workspace_id),
 			session_key = VALUES(session_key),
 			channel = VALUES(channel),
 			account_id = VALUES(account_id),
@@ -59,7 +63,7 @@ func UpsertSessionMeta(meta *SessionMeta) error {
 			from_bot = VALUES(from_bot)
 		`
 		_, err := DB.Exec(query,
-			meta.SessionID, meta.SessionKey, meta.Channel, meta.AccountID, meta.PeerID, meta.GroupID,
+			meta.WorkspaceID, meta.SessionID, meta.SessionKey, meta.Channel, meta.AccountID, meta.PeerID, meta.GroupID,
 			meta.ThreadID, meta.Kind, meta.TranscriptPath, meta.Summary, meta.MessageCount,
 			meta.LastMessageAt, meta.CreateTime, meta.UpdateTime, conf.BaseConfInfo.BotName,
 		)
@@ -68,10 +72,11 @@ func UpsertSessionMeta(meta *SessionMeta) error {
 
 	query := `
 	INSERT INTO sessions (
-		session_id, session_key, channel, account_id, peer_id, group_id, thread_id, kind,
+		workspace_id, session_id, session_key, channel, account_id, peer_id, group_id, thread_id, kind,
 		transcript_path, summary, message_count, last_message_at, create_time, update_time, from_bot
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(session_id) DO UPDATE SET
+		workspace_id = excluded.workspace_id,
 		session_key = excluded.session_key,
 		channel = excluded.channel,
 		account_id = excluded.account_id,
@@ -87,7 +92,7 @@ func UpsertSessionMeta(meta *SessionMeta) error {
 		from_bot = excluded.from_bot
 	`
 	_, err := DB.Exec(query,
-		meta.SessionID, meta.SessionKey, meta.Channel, meta.AccountID, meta.PeerID, meta.GroupID,
+		meta.WorkspaceID, meta.SessionID, meta.SessionKey, meta.Channel, meta.AccountID, meta.PeerID, meta.GroupID,
 		meta.ThreadID, meta.Kind, meta.TranscriptPath, meta.Summary, meta.MessageCount,
 		meta.LastMessageAt, meta.CreateTime, meta.UpdateTime, conf.BaseConfInfo.BotName,
 	)
@@ -95,20 +100,25 @@ func UpsertSessionMeta(meta *SessionMeta) error {
 }
 
 func GetSessionMeta(sessionID string) (*SessionMeta, error) {
+	return GetSessionMetaInWorkspace(authz.DefaultWorkspaceID, sessionID)
+}
+
+func GetSessionMetaInWorkspace(workspaceID, sessionID string) (*SessionMeta, error) {
 	if DB == nil || sessionID == "" {
 		return nil, nil
 	}
+	workspaceID = authz.NormalizeWorkspaceID(workspaceID)
 
 	query := `
-	SELECT id, session_id, session_key, channel, account_id, peer_id, group_id, thread_id, kind,
+	SELECT id, workspace_id, session_id, session_key, channel, account_id, peer_id, group_id, thread_id, kind,
 		transcript_path, summary, message_count, last_message_at, create_time, update_time
-	FROM sessions WHERE session_id = ?
+	FROM sessions WHERE workspace_id = ? AND session_id = ?
 	`
-	row := DB.QueryRow(query, sessionID)
+	row := DB.QueryRow(query, workspaceID, sessionID)
 
 	meta := new(SessionMeta)
 	err := row.Scan(
-		&meta.ID, &meta.SessionID, &meta.SessionKey, &meta.Channel, &meta.AccountID, &meta.PeerID,
+		&meta.ID, &meta.WorkspaceID, &meta.SessionID, &meta.SessionKey, &meta.Channel, &meta.AccountID, &meta.PeerID,
 		&meta.GroupID, &meta.ThreadID, &meta.Kind, &meta.TranscriptPath, &meta.Summary,
 		&meta.MessageCount, &meta.LastMessageAt, &meta.CreateTime, &meta.UpdateTime,
 	)
@@ -122,22 +132,28 @@ func GetSessionMeta(sessionID string) (*SessionMeta, error) {
 }
 
 func ListSessionMeta(limit int) ([]SessionMeta, error) {
+	return ListSessionMetaInWorkspace(authz.DefaultWorkspaceID, limit)
+}
+
+func ListSessionMetaInWorkspace(workspaceID string, limit int) ([]SessionMeta, error) {
 	if DB == nil {
 		return nil, nil
 	}
 	if limit <= 0 {
 		limit = 50
 	}
+	workspaceID = authz.NormalizeWorkspaceID(workspaceID)
 
 	query := fmt.Sprintf(`
-	SELECT id, session_id, session_key, channel, account_id, peer_id, group_id, thread_id, kind,
+	SELECT id, workspace_id, session_id, session_key, channel, account_id, peer_id, group_id, thread_id, kind,
 		transcript_path, summary, message_count, last_message_at, create_time, update_time
 	FROM sessions
+	WHERE workspace_id = ?
 	ORDER BY update_time DESC
 	LIMIT %d
 	`, limit)
 
-	rows, err := DB.Query(query)
+	rows, err := DB.Query(query, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +163,7 @@ func ListSessionMeta(limit int) ([]SessionMeta, error) {
 	for rows.Next() {
 		var meta SessionMeta
 		if err := rows.Scan(
-			&meta.ID, &meta.SessionID, &meta.SessionKey, &meta.Channel, &meta.AccountID, &meta.PeerID,
+			&meta.ID, &meta.WorkspaceID, &meta.SessionID, &meta.SessionKey, &meta.Channel, &meta.AccountID, &meta.PeerID,
 			&meta.GroupID, &meta.ThreadID, &meta.Kind, &meta.TranscriptPath, &meta.Summary,
 			&meta.MessageCount, &meta.LastMessageAt, &meta.CreateTime, &meta.UpdateTime,
 		); err != nil {

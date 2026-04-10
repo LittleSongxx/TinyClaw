@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/LittleSongxx/TinyClaw/authz"
 )
 
 const (
@@ -16,6 +18,7 @@ const (
 )
 
 type SessionKey struct {
+	WorkspaceID string `json:"workspace_id"`
 	Channel   string `json:"channel"`
 	AccountID string `json:"account_id"`
 	PeerID    string `json:"peer_id"`
@@ -37,7 +40,9 @@ func (k SessionKey) Scope() string {
 }
 
 func (k SessionKey) StableKey() string {
+	workspaceID := authz.NormalizeWorkspaceID(k.WorkspaceID)
 	parts := []string{
+		workspaceID,
 		strings.TrimSpace(k.Channel),
 		strings.TrimSpace(k.AccountID),
 		strings.TrimSpace(k.Scope()),
@@ -63,6 +68,7 @@ type Message struct {
 }
 
 type Envelope struct {
+	WorkspaceID    string            `json:"workspace_id"`
 	SessionID      string            `json:"session_id"`
 	SessionKey     string            `json:"session_key"`
 	Key            SessionKey        `json:"key"`

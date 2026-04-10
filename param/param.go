@@ -338,6 +338,7 @@ type ContextState struct {
 	RecordID     int64
 	SkipCheck    bool
 	UseRecord    bool
+	WorkspaceID  string
 	SessionID    string
 	SessionKey   string
 	SessionScope string

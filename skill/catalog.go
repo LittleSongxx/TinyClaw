@@ -636,6 +636,10 @@ func (c *Catalog) appendBuiltinSkills() {
 }
 
 func (c *Catalog) appendLegacySkills() {
+	if !conf.FeatureConfInfo.LegacyMCPProxyEnabled() {
+		return
+	}
+
 	serverNames := make([]string, 0, len(c.serverTools))
 	for serverName := range c.serverTools {
 		serverNames = append(serverNames, serverName)

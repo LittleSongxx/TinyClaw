@@ -144,12 +144,41 @@ func (a *runtimeAdapter) Synthesize(ctx context.Context, input string, evidence 
 }
 
 func (a *runtimeAdapter) executeWithTool(ctx context.Context, prompt, recordInput string, entry *tooling.Entry, visible bool) (*tooling.ToolResult, int, error) {
-	if entry == nil || entry.AgentInfo == nil {
+	if entry == nil {
 		return nil, 0, fmt.Errorf("tool entry is invalid")
 	}
 
 	runCtx, cancel := a.toolContext(ctx, entry)
 	defer cancel()
+
+	if entry.Spec.Name == tooling.DirectLLMToolName {
+		startedAt := time.Now().Unix()
+		var (
+			output string
+			token  int
+			err    error
+		)
+		if visible {
+			output, token, err = a.executeVisible(runCtx, prompt, recordInput)
+		} else {
+			output, token, err = a.executeSilent(runCtx, prompt)
+		}
+
+		result := &tooling.ToolResult{
+			Name:        entry.Spec.Name,
+			Output:      output,
+			StartedAt:   startedAt,
+			CompletedAt: time.Now().Unix(),
+		}
+		if err != nil {
+			result.Error = err.Error()
+		}
+		return result, token, err
+	}
+
+	if entry.AgentInfo == nil {
+		return nil, 0, fmt.Errorf("tool entry is invalid")
+	}
 
 	execPrompt := prompt
 	allowedTools := make([]string, 0)

@@ -10,6 +10,8 @@ type NodeCapability struct {
 
 type NodeDescriptor struct {
 	ID           string            `json:"id"`
+	WorkspaceID  string            `json:"workspace_id"`
+	DeviceID     string            `json:"device_id,omitempty"`
 	Name         string            `json:"name"`
 	Platform     string            `json:"platform"`
 	Hostname     string            `json:"hostname"`
@@ -22,6 +24,10 @@ type NodeDescriptor struct {
 
 type NodeCommandRequest struct {
 	ID              string                 `json:"id"`
+	WorkspaceID     string                 `json:"workspace_id,omitempty"`
+	ActorID         string                 `json:"actor_id,omitempty"`
+	ActorRole       string                 `json:"actor_role,omitempty"`
+	ActorScopes     []string               `json:"actor_scopes,omitempty"`
 	NodeID          string                 `json:"node_id,omitempty"`
 	SessionID       string                 `json:"session_id,omitempty"`
 	UserID          string                 `json:"user_id,omitempty"`
@@ -43,6 +49,7 @@ const (
 )
 
 type ApprovalBinding struct {
+	WorkspaceID    string `json:"workspace_id,omitempty"`
 	SessionID      string `json:"session_id,omitempty"`
 	UserID         string `json:"user_id,omitempty"`
 	NodeID         string `json:"node_id,omitempty"`
@@ -56,6 +63,7 @@ type ApprovalBinding struct {
 
 type ApprovalGrant struct {
 	ID         string          `json:"id"`
+	WorkspaceID string          `json:"workspace_id"`
 	SessionID  string          `json:"session_id,omitempty"`
 	UserID     string          `json:"user_id,omitempty"`
 	NodeID     string          `json:"node_id"`
@@ -69,6 +77,9 @@ type ApprovalGrant struct {
 
 type ApprovalRequest struct {
 	ID            string                 `json:"id"`
+	WorkspaceID   string                 `json:"workspace_id"`
+	ActorID       string                 `json:"actor_id,omitempty"`
+	ActorRole     string                 `json:"actor_role,omitempty"`
 	ActionID      string                 `json:"action_id,omitempty"`
 	SessionID     string                 `json:"session_id,omitempty"`
 	UserID        string                 `json:"user_id,omitempty"`
@@ -96,6 +107,9 @@ type NodeCommandResult struct {
 
 type ApprovalDecision struct {
 	ID        string       `json:"id"`
+	WorkspaceID string       `json:"workspace_id"`
+	ActorID   string       `json:"actor_id,omitempty"`
+	ActorRole string       `json:"actor_role,omitempty"`
 	CommandID string       `json:"command_id"`
 	SessionID string       `json:"session_id,omitempty"`
 	UserID    string       `json:"user_id,omitempty"`
@@ -108,6 +122,8 @@ type ApprovalDecision struct {
 
 type ActionEvent struct {
 	Type       string            `json:"type"`
+	WorkspaceID string            `json:"workspace_id,omitempty"`
+	ActorID    string            `json:"actor_id,omitempty"`
 	ActionID   string            `json:"action_id,omitempty"`
 	ApprovalID string            `json:"approval_id,omitempty"`
 	SessionID  string            `json:"session_id,omitempty"`

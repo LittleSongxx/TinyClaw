@@ -34,6 +34,10 @@ type Web struct {
 }
 
 func NewWeb(command string, userId int64, realUserId, prompt, originalPrompt string, bodyData []byte, w http.ResponseWriter, flusher http.Flusher) *Web {
+	return NewWebWithTrust(command, userId, realUserId, prompt, originalPrompt, bodyData, w, flusher, true)
+}
+
+func NewWebWithTrust(command string, userId int64, realUserId, prompt, originalPrompt string, bodyData []byte, w http.ResponseWriter, flusher http.Flusher, trustedManagement bool) *Web {
 	metrics.AppRequestCount.WithLabelValues("web").Inc()
 	web := &Web{
 		Command:        command,
@@ -56,7 +60,7 @@ func NewWeb(command string, userId int64, realUserId, prompt, originalPrompt str
 		web.AudioContent = bodyData
 	}
 
-	web.Robot = NewRobot(WithRobot(web), WithSkipCheck(true))
+	web.Robot = NewRobot(WithRobot(web), WithSkipCheck(trustedManagement))
 	return web
 }
 

@@ -2,6 +2,13 @@
 
 TinyClaw 现在的主线定位，是一个基于 Go 的 AI Agent / Bot 平台，而不是单纯的聊天机器人集合。
 
+当前默认运行形态已经收紧为 **Agent 平台核心 profile**：
+
+- 默认启用：Gateway、Session、Agent Runtime、MCP/Skill、Node、Approval、Runs/Admin
+- 默认保留核心入口：Web 与 Lark
+- 默认关闭可选模块：Knowledge、媒体生成、Cron、legacy bot adapters、legacy MCP proxy、legacy task tools
+- 默认关闭实验模块：workflow mode
+
 这一轮重构之后，项目的主干已经切成了：
 
 - `Gateway`：鉴权、路由、控制面、节点接入
@@ -48,14 +55,15 @@ TinyClaw 现在的主线定位，是一个基于 Go 的 AI Agent / Bot 平台，
 当前推荐把部署拆成两块：
 
 1. `Docker Compose`
-作用：运行 TinyClaw 主服务、Admin、Knowledge 依赖、MCP 相关基础设施。
+作用：运行 TinyClaw 主服务、Admin、MCP 相关基础设施。Knowledge 依赖现在是可选 profile。
 
 2. `tinyclaw-node`
 作用：运行在真实 Windows / macOS / Linux 主机上，向 Gateway 注册自身能力。
 
 这个边界很重要：
 
-- 如果你只是想跑 Bot、Knowledge、MCP、Admin，Compose 就够了
+- 如果你只是想跑 Agent 平台、MCP、Admin，Compose 默认栈就够了
+- 如果你要启用 Knowledge，请显式设置 `ENABLE_KNOWLEDGE=true` 并启动 `knowledge` profile
 - 如果你想操作真实桌面，不要把 `tinyclaw-node` 当成普通容器服务来替代宿主机
 
 ## 目录结构
@@ -109,9 +117,15 @@ cp deploy/docker/.env.example deploy/docker/.env
 BOT_NAME=TinyClawLark
 LANG=zh
 TYPE=aliyun
-MEDIA_TYPE=aliyun
 DEFAULT_MODEL=qwen-max
 DB_TYPE=sqlite3
+ENABLE_KNOWLEDGE=false
+ENABLE_MEDIA=false
+ENABLE_CRON=false
+ENABLE_LEGACY_BOTS=false
+ENABLE_LEGACY_MCP_PROXY=false
+ENABLE_LEGACY_TASK_TOOLS=false
+ENABLE_EXPERIMENTAL_WORKFLOW=false
 
 LARK_APP_ID=your_lark_app_id
 LARK_APP_SECRET=your_lark_app_secret
@@ -191,17 +205,24 @@ go run ./cmd/tinyclaw-node \
 - `/gateway/nodes/ws` 给 `tinyclaw-node` 配对与长连接
 - `/gateway/node/command` 给控制面下发节点命令
 
-## Docker Compose 现在承担什么
+## 默认与可选能力
 
-当前仓库里的 [deploy/docker/docker-compose.yml](deploy/docker/docker-compose.yml) 负责：
+当前仓库里的 [deploy/docker/docker-compose.yml](deploy/docker/docker-compose.yml) 默认负责：
 
 - `app`
+- `playwright-mcp`
+
+Knowledge 相关服务已经移动到 `knowledge` profile：
+
+- `hf-embeddings`
 - `postgres`
 - `redis`
 - `minio`
+
+完整旧式向量栈仍保留在 `full` profile：
+
 - `milvus`
-- `hf-embeddings`
-- `playwright-mcp`
+- `etcd`
 
 它不会自动替你运行一个“真实桌面节点”。
 
@@ -217,6 +238,7 @@ go run ./cmd/tinyclaw-node \
 
 ## 文档导航
 
+- 项目收紧说明：[docs/PROJECT_FOCUS_ZH.md](docs/PROJECT_FOCUS_ZH.md)
 - 部署与运维手册：[docs/USER_GUIDE_ZH.md](docs/USER_GUIDE_ZH.md)
 - PC Node 说明：[docs/PC_NODE_ZH.md](docs/PC_NODE_ZH.md)
 - 飞书说明：[static/doc/lark_ZH.md](static/doc/lark_ZH.md)

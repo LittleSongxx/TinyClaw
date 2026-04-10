@@ -132,7 +132,7 @@ func TestFinalizeToolResultHandlesPendingApproval(t *testing.T) {
 	if err != nil {
 		t.Fatalf("finalize tool result: %v", err)
 	}
-	if !strings.Contains(output, "等待用户确认") {
+	if !strings.Contains(output, "等待用户确认") && !strings.Contains(output, "等待你的确认") {
 		t.Fatalf("expected waiting placeholder, got %s", output)
 	}
 
@@ -174,5 +174,36 @@ func TestBuildImageToolSummaryIncludesWindowTitle(t *testing.T) {
 	})
 	if !strings.Contains(got, "active_window") || !strings.Contains(got, "记事本") || !strings.Contains(got, "1280x720") {
 		t.Fatalf("expected active window summary with title and size, got %q", got)
+	}
+}
+
+func TestNormalizeToolArgumentsDropsNullValues(t *testing.T) {
+	got := normalizeToolArguments(map[string]interface{}{
+		"function": "() => document.title",
+		"element":  nil,
+		"ref":      nil,
+		"nested": map[string]interface{}{
+			"keep": "value",
+			"drop": nil,
+		},
+		"items": []interface{}{"a", nil, map[string]interface{}{"keep": 1, "drop": nil}},
+	})
+
+	if _, ok := got["element"]; ok {
+		t.Fatalf("expected null top-level key to be removed, got %+v", got)
+	}
+	if _, ok := got["ref"]; ok {
+		t.Fatalf("expected null top-level key to be removed, got %+v", got)
+	}
+	nested, ok := got["nested"].(map[string]interface{})
+	if !ok || nested["keep"] != "value" {
+		t.Fatalf("expected nested map to be preserved, got %+v", got["nested"])
+	}
+	if _, ok := nested["drop"]; ok {
+		t.Fatalf("expected nested null key to be removed, got %+v", nested)
+	}
+	items, ok := got["items"].([]interface{})
+	if !ok || len(items) != 2 {
+		t.Fatalf("expected nil slice entries to be removed, got %+v", got["items"])
 	}
 }

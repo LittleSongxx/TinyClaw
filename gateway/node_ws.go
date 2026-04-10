@@ -46,10 +46,32 @@ func (s *Service) HandleNodeWS(w http.ResponseWriter, r *http.Request) {
 		_ = conn.Close()
 		return
 	}
-	if !s.authorizeToken(connect.Token) {
+	if connect.ProtocolVersion != ProtocolVersionV1 {
 		_ = conn.Close()
 		return
 	}
+	if connect.Auth.Type == "bootstrap" {
+		publicKey := firstNonEmpty(connect.Auth.PublicKey, devicePublicKey(connect))
+		request, pairErr := s.SubmitDevicePairing(r.Context(), PairingSubmitRequest{
+			BootstrapCode: firstNonEmpty(connect.Auth.Token, connect.Token),
+			DeviceID:      connect.DeviceID(),
+			PublicKey:     publicKey,
+			Descriptor:    connect.Node,
+		})
+		if pairErr == nil {
+			frame, _ := NewEventFrame("devices.pairing_pending", request)
+			_ = conn.WriteJSON(frame)
+		}
+		_ = conn.Close()
+		return
+	}
+	device, err := s.VerifyDeviceConnect(r.Context(), connect)
+	if err != nil || device == nil {
+		_ = conn.Close()
+		return
+	}
+	connect.Node.WorkspaceID = device.WorkspaceID
+	connect.Node.DeviceID = device.DeviceID
 
 	transport := &websocketNodeTransport{
 		conn:    conn,
@@ -73,6 +95,16 @@ func (s *Service) HandleNodeWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go transport.readLoop(connect.Node.ID)
+}
+
+func devicePublicKey(connect ConnectFrame) string {
+	if connect.Device != nil && connect.Device.PublicKey != "" {
+		return connect.Device.PublicKey
+	}
+	if connect.Node != nil && len(connect.Node.Metadata) > 0 {
+		return connect.Node.Metadata["public_key"]
+	}
+	return ""
 }
 
 func (t *websocketNodeTransport) Request(ctx context.Context, req node.NodeCommandRequest) (*node.NodeCommandResult, error) {
@@ -130,15 +162,15 @@ func (t *websocketNodeTransport) readLoop(nodeID string) {
 		_ = json.Unmarshal(raw["type"], &frameType)
 
 		switch frameType {
-		case FrameTypeResponse:
+		case FrameTypeResponse, legacyFrameTypeResponse:
 			var response ResponseFrame
 			if err := decodeRawFrame(raw, &response); err != nil {
 				continue
 			}
 
 			var result node.NodeCommandResult
-			if len(response.Payload) > 0 {
-				_ = json.Unmarshal(response.Payload, &result)
+			if body := response.RawResult(); len(body) > 0 {
+				_ = json.Unmarshal(body, &result)
 			}
 			if result.NodeID == "" {
 				result.NodeID = nodeID
@@ -155,7 +187,7 @@ func (t *websocketNodeTransport) readLoop(nodeID string) {
 				if response.OK {
 					waiter <- responseWaiter{result: &result}
 				} else {
-					waiter <- responseWaiter{result: &result, err: errors.New(response.Error)}
+					waiter <- responseWaiter{result: &result, err: errors.New(response.ErrorMessage())}
 				}
 			}
 		case FrameTypeEvent:

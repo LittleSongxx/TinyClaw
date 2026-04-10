@@ -3,10 +3,12 @@ package node
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/LittleSongxx/TinyClaw/authz"
 	"github.com/google/uuid"
 )
 
@@ -48,6 +50,13 @@ func (m *Manager) RegisterNode(ctx context.Context, desc NodeDescriptor, transpo
 	}
 	if desc.ID == "" {
 		return errors.New("node id is required")
+	}
+	desc.WorkspaceID = authz.NormalizeWorkspaceID(desc.WorkspaceID)
+	if desc.Platform == "" {
+		desc.Platform = "windows"
+	}
+	if desc.DeviceID == "" {
+		desc.DeviceID = desc.ID
 	}
 	now := m.timeNow().Unix()
 	desc.ConnectedAt = now
@@ -94,6 +103,9 @@ func (m *Manager) ListNodes(ctx context.Context) []NodeDescriptor {
 
 	items := make([]NodeDescriptor, 0, len(m.nodes))
 	for _, current := range m.nodes {
+		if !sameWorkspace(authz.WorkspaceIDFromContext(ctx), current.desc.WorkspaceID) {
+			continue
+		}
 		items = append(items, current.desc)
 	}
 	return items
@@ -111,6 +123,22 @@ func (m *Manager) Execute(ctx context.Context, req NodeCommandRequest) (*NodeCom
 	}
 	if req.ActionID == "" {
 		req.ActionID = req.ID
+	}
+	if principal, ok := authz.PrincipalFromContext(ctx); ok {
+		req.WorkspaceID = authz.NormalizeWorkspaceID(firstNonEmpty(req.WorkspaceID, principal.WorkspaceID))
+		req.ActorID = firstNonEmpty(req.ActorID, principal.ActorID)
+		req.ActorRole = firstNonEmpty(req.ActorRole, string(principal.Role))
+		if len(req.ActorScopes) == 0 {
+			req.ActorScopes = append([]string(nil), principal.Scopes...)
+		}
+	} else {
+		req.WorkspaceID = authz.NormalizeWorkspaceID(req.WorkspaceID)
+	}
+	if req.ActorID == "" && req.UserID != "" {
+		req.ActorID = req.UserID
+	}
+	if req.ActorRole == "" {
+		req.ActorRole = string(authz.RoleOperator)
 	}
 
 	target, err := m.pickNode(req)
@@ -155,6 +183,20 @@ func (m *Manager) Execute(ctx context.Context, req NodeCommandRequest) (*NodeCom
 		})
 		return nil, err
 	}
+	if err := EvaluateCommandPolicy(target.desc, req, profile); err != nil {
+		m.emit(ActionEvent{
+			Type:       "action.denied",
+			ActionID:   req.ActionID,
+			SessionID:  req.SessionID,
+			UserID:     req.UserID,
+			NodeID:     req.NodeID,
+			Capability: req.Capability,
+			Summary:    summary,
+			Detail:     err.Error(),
+			CreatedAt:  m.timeNow().Unix(),
+		})
+		return nil, err
+	}
 
 	if grant := m.matchGrant(req, binding, now); grant != nil {
 		req.ApprovalMode = grant.Mode
@@ -168,6 +210,9 @@ func (m *Manager) Execute(ctx context.Context, req NodeCommandRequest) (*NodeCom
 
 	approval := ApprovalRequest{
 		ID:            req.ID,
+		WorkspaceID:   req.WorkspaceID,
+		ActorID:       req.ActorID,
+		ActorRole:     req.ActorRole,
 		ActionID:      req.ActionID,
 		SessionID:     req.SessionID,
 		UserID:        req.UserID,
@@ -228,7 +273,11 @@ func (m *Manager) ListApprovals(ctx context.Context) []ApprovalRequest {
 	m.mu.Lock()
 	m.cleanupLocked(now)
 	items := make([]ApprovalRequest, 0, len(m.approvals))
+	workspaceID := authz.WorkspaceIDFromContext(ctx)
 	for _, approval := range m.approvals {
+		if !sameWorkspace(workspaceID, approval.WorkspaceID) {
+			continue
+		}
 		items = append(items, approval)
 	}
 	m.mu.Unlock()
@@ -241,6 +290,16 @@ func (m *Manager) DecideApproval(ctx context.Context, decision ApprovalDecision)
 	}
 	if decision.CommandID == "" {
 		return nil, nil, errors.New("approval command id is required")
+	}
+	if principal, ok := authz.PrincipalFromContext(ctx); ok {
+		decision.WorkspaceID = authz.NormalizeWorkspaceID(firstNonEmpty(decision.WorkspaceID, principal.WorkspaceID))
+		decision.ActorID = firstNonEmpty(decision.ActorID, principal.ActorID)
+		decision.ActorRole = firstNonEmpty(decision.ActorRole, string(principal.Role))
+	} else {
+		decision.WorkspaceID = authz.NormalizeWorkspaceID(decision.WorkspaceID)
+	}
+	if decision.ActorRole == "" {
+		decision.ActorRole = string(authz.RoleOperator)
 	}
 
 	now := m.timeNow()
@@ -271,6 +330,12 @@ func (m *Manager) DecideApproval(ctx context.Context, decision ApprovalDecision)
 			CreatedAt: now.Unix(),
 		})
 		return nil, nil, errors.New("approval request not found")
+	}
+	if !sameWorkspace(decision.WorkspaceID, approval.WorkspaceID) {
+		return &approval, nil, errors.New("approval belongs to a different workspace")
+	}
+	if !canResolveApproval(decision.ActorRole) {
+		return &approval, nil, errors.New("owner, admin, or operator role is required to resolve approval")
 	}
 
 	if approval.ExpiresAt > 0 && approval.ExpiresAt <= now.Unix() {
@@ -367,6 +432,7 @@ func (m *Manager) DecideApproval(ctx context.Context, decision ApprovalDecision)
 	if mode == ApprovalModeAllowSession {
 		grant := ApprovalGrant{
 			ID:         approval.ID,
+			WorkspaceID: approval.WorkspaceID,
 			SessionID:  approval.SessionID,
 			UserID:     approval.UserID,
 			NodeID:     approval.NodeID,
@@ -374,6 +440,7 @@ func (m *Manager) DecideApproval(ctx context.Context, decision ApprovalDecision)
 			Mode:       mode,
 			Summary:    approval.Summary,
 			Binding: ApprovalBinding{
+				WorkspaceID:    approval.Binding.WorkspaceID,
 				SessionID:      approval.Binding.SessionID,
 				UserID:         approval.Binding.UserID,
 				NodeID:         approval.Binding.NodeID,
@@ -395,6 +462,7 @@ func (m *Manager) DecideApproval(ctx context.Context, decision ApprovalDecision)
 	}
 
 	target, err := m.pickNode(NodeCommandRequest{
+		WorkspaceID: approval.WorkspaceID,
 		NodeID:     approval.NodeID,
 		Capability: approval.Capability,
 	})
@@ -416,6 +484,9 @@ func (m *Manager) DecideApproval(ctx context.Context, decision ApprovalDecision)
 
 	req := NodeCommandRequest{
 		ID:              approval.ID,
+		WorkspaceID:     approval.WorkspaceID,
+		ActorID:         approval.ActorID,
+		ActorRole:       approval.ActorRole,
 		NodeID:          approval.NodeID,
 		SessionID:       approval.SessionID,
 		UserID:          approval.UserID,
@@ -526,7 +597,7 @@ func (m *Manager) matchGrant(req NodeCommandRequest, binding ApprovalBinding, no
 	items := m.grants[req.SessionID]
 	for index := range items {
 		item := &items[index]
-		if item.SessionID != req.SessionID || item.UserID != req.UserID || item.NodeID != req.NodeID || item.Capability != req.Capability {
+		if !sameWorkspace(item.WorkspaceID, req.WorkspaceID) || item.SessionID != req.SessionID || item.UserID != req.UserID || item.NodeID != req.NodeID || item.Capability != req.Capability {
 			continue
 		}
 		if !bindingMatches(item.Binding, binding) {
@@ -592,15 +663,45 @@ func (m *Manager) pickNode(req NodeCommandRequest) (*connectedNode, error) {
 		if !ok {
 			return nil, errors.New("target node not found")
 		}
+		if !sameWorkspace(req.WorkspaceID, target.desc.WorkspaceID) {
+			return nil, errors.New("target node belongs to a different workspace")
+		}
+		if !supports(target.desc.Capabilities, req.Capability) {
+			return nil, errors.New("target node does not declare this capability")
+		}
 		return target, nil
 	}
 
+	candidates := make([]*connectedNode, 0, len(m.nodes))
 	for _, current := range m.nodes {
-		if supports(current.desc.Capabilities, req.Capability) {
-			return current, nil
+		if sameWorkspace(req.WorkspaceID, current.desc.WorkspaceID) && supports(current.desc.Capabilities, req.Capability) {
+			candidates = append(candidates, current)
 		}
 	}
-	return nil, errors.New("no connected node supports this capability")
+	if len(candidates) == 0 {
+		return nil, errors.New("no connected node supports this capability")
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].desc.LastSeenAt != candidates[j].desc.LastSeenAt {
+			return candidates[i].desc.LastSeenAt > candidates[j].desc.LastSeenAt
+		}
+		return candidates[i].desc.ID < candidates[j].desc.ID
+	})
+	return candidates[0], nil
+}
+
+func sameWorkspace(left, right string) bool {
+	return authz.NormalizeWorkspaceID(left) == authz.NormalizeWorkspaceID(right)
+}
+
+func canResolveApproval(role string) bool {
+	switch authz.NormalizeRole(authz.Role(role)) {
+	case authz.RoleOwner, authz.RoleAdmin, authz.RoleOperator:
+		return true
+	default:
+		return false
+	}
 }
 
 func supports(capabilities []NodeCapability, capability string) bool {
@@ -633,7 +734,8 @@ func containsApprovalMode(items []ApprovalMode, target ApprovalMode) bool {
 }
 
 func bindingMatches(left, right ApprovalBinding) bool {
-	return left.SessionID == right.SessionID &&
+	return sameWorkspace(left.WorkspaceID, right.WorkspaceID) &&
+		left.SessionID == right.SessionID &&
 		left.UserID == right.UserID &&
 		left.NodeID == right.NodeID &&
 		left.Capability == right.Capability &&
