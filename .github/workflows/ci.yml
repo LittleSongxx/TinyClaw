@@ -32,6 +32,9 @@ jobs:
         with:
           go-version: 1.24  # 指定 Go 版本
 
+      - name: Check Repository Hygiene
+        run: bash ./scripts/check-repo-hygiene.sh
+
       # 下载依赖
       - name: Install Dependencies
         run: |

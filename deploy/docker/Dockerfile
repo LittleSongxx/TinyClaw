@@ -104,7 +104,8 @@ RUN set -eux; \
 COPY deploy/docker/start-tinyclaw.sh /app/start-tinyclaw.sh
 COPY deploy/docker/start-services.sh /app/start-services.sh
 
-RUN mkdir -p /app/data /app/data/sessions /app/log && \
+RUN sed -i 's/\r$//' /app/start-tinyclaw.sh /app/start-services.sh && \
+    mkdir -p /app/data /app/data/sessions /app/log && \
     chmod +x /app/start-tinyclaw.sh /app/start-services.sh
 
 # Expose application port
