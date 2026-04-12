@@ -36,7 +36,7 @@ const (
 )
 
 var (
-	ToolsJsonErr = errors.New("tools json error")
+	ErrToolsJSON = errors.New("tools json error")
 )
 
 type LLM struct {

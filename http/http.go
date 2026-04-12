@@ -226,13 +226,13 @@ func WithRequestContext(next http.Handler) http.Handler {
 		if logID == "" {
 			logID = uuid.New().String()
 		}
-		ctx = context.WithValue(ctx, "log_id", logID)
+		ctx = logger.WithLogID(ctx, logID)
 
 		if conf.BaseConfInfo.BotName != "" {
-			ctx = context.WithValue(ctx, "bot_name", conf.BaseConfInfo.BotName)
+			ctx = logger.WithBotName(ctx, conf.BaseConfInfo.BotName)
 		}
 
-		ctx = context.WithValue(ctx, "start_time", time.Now())
+		ctx = logger.WithStartTime(ctx, time.Now())
 
 		r = r.WithContext(ctx)
 

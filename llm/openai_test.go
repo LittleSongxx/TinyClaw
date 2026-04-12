@@ -29,7 +29,7 @@ func TestOpenAISend(t *testing.T) {
 	conf.BaseConfInfo.CustomUrl = os.Getenv("TEST_CUSTOM_URL")
 	conf.BaseConfInfo.Type = param.OpenAi
 
-	ctx := context.WithValue(context.Background(), "user_info", &db.User{
+	ctx := db.WithCtxUserInfo(context.Background(), &db.User{
 		LLMConfig:    `{"type":"openai"}`,
 		LLMConfigRaw: &param.LLMConfig{TxtType: param.OpenAi},
 	})
@@ -74,7 +74,7 @@ func TestOpenAIReq_GetModel_Default(t *testing.T) {
 	}()
 
 	req := &OpenAIReq{}
-	ctx := context.WithValue(context.Background(), "user_info", &db.User{
+	ctx := db.WithCtxUserInfo(context.Background(), &db.User{
 		LLMConfig:    `{"type":"openai"}`,
 		LLMConfigRaw: &param.LLMConfig{TxtType: param.OpenAi},
 	})
@@ -106,5 +106,85 @@ func TestRequestToolsCall_InvalidJSON(t *testing.T) {
 	}
 
 	err := req.RequestToolsCall(context.Background(), streamChoice, nil)
-	assert.Equal(t, ToolsJsonErr, err)
+	assert.Equal(t, ErrToolsJSON, err)
+}
+
+func TestRequestToolsCall_StoresArgumentsWhenNameAndArgumentsArriveTogether(t *testing.T) {
+	req := &OpenAIReq{
+		ToolCall: []openai.ToolCall{},
+	}
+
+	idx := 0
+	streamChoice := openai.ChatCompletionStreamChoice{
+		Delta: openai.ChatCompletionStreamChoiceDelta{
+			ToolCalls: []openai.ToolCall{
+				{
+					Index: &idx,
+					ID:    "tool-id",
+					Type:  "function",
+					Function: openai.FunctionCall{
+						Name:      "mockTool",
+						Arguments: "{\"value\":",
+					},
+				},
+			},
+		},
+	}
+
+	err := req.RequestToolsCall(context.Background(), streamChoice, nil)
+	assert.Equal(t, ErrToolsJSON, err)
+	if assert.Len(t, req.ToolCall, 1) {
+		assert.Equal(t, "mockTool", req.ToolCall[0].Function.Name)
+		assert.Equal(t, "{\"value\":", req.ToolCall[0].Function.Arguments)
+	}
+}
+
+func TestRequestToolsCall_KeepsToolCallsSeparatedByIndex(t *testing.T) {
+	req := &OpenAIReq{
+		ToolCall: []openai.ToolCall{},
+	}
+
+	firstIdx := 0
+	secondIdx := 1
+
+	err := req.RequestToolsCall(context.Background(), openai.ChatCompletionStreamChoice{
+		Delta: openai.ChatCompletionStreamChoiceDelta{
+			ToolCalls: []openai.ToolCall{
+				{
+					Index: &firstIdx,
+					ID:    "tool-1",
+					Type:  "function",
+					Function: openai.FunctionCall{
+						Name:      "toolOne",
+						Arguments: "{\"first\":",
+					},
+				},
+			},
+		},
+	}, nil)
+	assert.Equal(t, ErrToolsJSON, err)
+
+	err = req.RequestToolsCall(context.Background(), openai.ChatCompletionStreamChoice{
+		Delta: openai.ChatCompletionStreamChoiceDelta{
+			ToolCalls: []openai.ToolCall{
+				{
+					Index: &secondIdx,
+					ID:    "tool-2",
+					Type:  "function",
+					Function: openai.FunctionCall{
+						Name:      "toolTwo",
+						Arguments: "{\"second\":",
+					},
+				},
+			},
+		},
+	}, nil)
+	assert.Equal(t, ErrToolsJSON, err)
+
+	if assert.Len(t, req.ToolCall, 2) {
+		assert.Equal(t, "toolOne", req.ToolCall[0].Function.Name)
+		assert.Equal(t, "{\"first\":", req.ToolCall[0].Function.Arguments)
+		assert.Equal(t, "toolTwo", req.ToolCall[1].Function.Name)
+		assert.Equal(t, "{\"second\":", req.ToolCall[1].Function.Arguments)
+	}
 }

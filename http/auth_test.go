@@ -57,6 +57,22 @@ func TestIsTrustedManagementRequestRejectsLoopbackWithoutActorToken(t *testing.T
 	}
 }
 
+func TestIsTrustedManagementRequestRejectsPlainSharedSecretBearer(t *testing.T) {
+	oldSecret := conf.RuntimeConfInfo.Gateway.SharedSecret
+	conf.RuntimeConfInfo.Gateway.SharedSecret = "shared-secret-with-enough-length-123"
+	defer func() {
+		conf.RuntimeConfInfo.Gateway.SharedSecret = oldSecret
+	}()
+
+	req := httptest.NewRequest("GET", "http://example.com/conf/get", nil)
+	req.RemoteAddr = "203.0.113.7:3456"
+	req.Header.Set("Authorization", "Bearer "+conf.RuntimeConfInfo.Gateway.SharedSecret)
+
+	if isTrustedManagementRequest(req) {
+		t.Fatalf("expected plain shared secret bearer to be rejected")
+	}
+}
+
 func TestActingUserIDFromRequestRequiresTrustedRequest(t *testing.T) {
 	trustedReq := httptest.NewRequest("GET", "http://example.com/communicate?user_id=query-user", nil)
 	trustedReq = trustedReq.WithContext(authz.WithPrincipal(trustedReq.Context(), authz.NewPrincipal("default", "token-user", authz.RoleAdmin, nil)))

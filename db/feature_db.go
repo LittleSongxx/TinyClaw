@@ -58,8 +58,8 @@ func initializeFeatureTables(db *sql.DB) error {
 		`CREATE EXTENSION IF NOT EXISTS vector;`,
 		`CREATE EXTENSION IF NOT EXISTS pg_trgm;`,
 		`
-		CREATE TABLE IF NOT EXISTS agent_runs (
-			id BIGSERIAL PRIMARY KEY,
+			CREATE TABLE IF NOT EXISTS agent_runs (
+				id BIGSERIAL PRIMARY KEY,
 			workspace_id VARCHAR(100) NOT NULL DEFAULT 'default',
 			user_id VARCHAR(100) NOT NULL DEFAULT '',
 			chat_id VARCHAR(255) NOT NULL DEFAULT '',
@@ -79,17 +79,16 @@ func initializeFeatureTables(db *sql.DB) error {
 			create_time BIGINT NOT NULL DEFAULT 0,
 			update_time BIGINT NOT NULL DEFAULT 0,
 			from_bot VARCHAR(255) NOT NULL DEFAULT ''
-		);
-		CREATE INDEX IF NOT EXISTS idx_agent_runs_user_id ON agent_runs(user_id);
-		CREATE INDEX IF NOT EXISTS idx_agent_runs_workspace ON agent_runs(workspace_id, create_time);
-		CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status);
-		CREATE INDEX IF NOT EXISTS idx_agent_runs_mode ON agent_runs(mode);
-		CREATE INDEX IF NOT EXISTS idx_agent_runs_replay_of ON agent_runs(replay_of);
+			);
+			CREATE INDEX IF NOT EXISTS idx_agent_runs_user_id ON agent_runs(user_id);
+			CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status);
+			CREATE INDEX IF NOT EXISTS idx_agent_runs_mode ON agent_runs(mode);
+			CREATE INDEX IF NOT EXISTS idx_agent_runs_replay_of ON agent_runs(replay_of);
 		CREATE INDEX IF NOT EXISTS idx_agent_runs_create_time ON agent_runs(create_time);
 	`,
 		`
-		CREATE TABLE IF NOT EXISTS agent_steps (
-			id BIGSERIAL PRIMARY KEY,
+			CREATE TABLE IF NOT EXISTS agent_steps (
+				id BIGSERIAL PRIMARY KEY,
 			workspace_id VARCHAR(100) NOT NULL DEFAULT 'default',
 			run_id BIGINT NOT NULL,
 			step_index INTEGER NOT NULL DEFAULT 0,
@@ -112,11 +111,10 @@ func initializeFeatureTables(db *sql.DB) error {
 			create_time BIGINT NOT NULL DEFAULT 0,
 			update_time BIGINT NOT NULL DEFAULT 0,
 			from_bot VARCHAR(255) NOT NULL DEFAULT ''
-		);
-		CREATE INDEX IF NOT EXISTS idx_agent_steps_workspace ON agent_steps(workspace_id, run_id);
-		CREATE INDEX IF NOT EXISTS idx_agent_steps_run_id ON agent_steps(run_id);
-		CREATE INDEX IF NOT EXISTS idx_agent_steps_run_idx ON agent_steps(run_id, step_index);
-	`,
+			);
+			CREATE INDEX IF NOT EXISTS idx_agent_steps_run_id ON agent_steps(run_id);
+			CREATE INDEX IF NOT EXISTS idx_agent_steps_run_idx ON agent_steps(run_id, step_index);
+		`,
 		`
 		CREATE TABLE IF NOT EXISTS knowledge_bases (
 			id BIGSERIAL PRIMARY KEY,

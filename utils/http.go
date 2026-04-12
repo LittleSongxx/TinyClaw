@@ -22,7 +22,7 @@ type Response struct {
 
 func Failure(ctx context.Context, w http.ResponseWriter, r *http.Request, code int, message string, data interface{}) {
 	_, logId := logger.GetBotNameAndLogId(ctx)
-	start := ctx.Value("start_time").(time.Time)
+	start := logger.StartTimeFromContext(ctx)
 
 	resp := Response{
 		Code:    code,
@@ -43,7 +43,7 @@ func Failure(ctx context.Context, w http.ResponseWriter, r *http.Request, code i
 
 func Success(ctx context.Context, w http.ResponseWriter, r *http.Request, data interface{}) {
 	_, logId := logger.GetBotNameAndLogId(ctx)
-	start := ctx.Value("start_time").(time.Time)
+	start := logger.StartTimeFromContext(ctx)
 
 	resp := Response{
 		Code:    param.CodeSuccess,

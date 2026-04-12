@@ -22,6 +22,7 @@ func setup() {
 }
 
 func TestScheduleBotChecks(t *testing.T) {
+	t.Setenv("ENABLE_LEGACY_BOTS", "true")
 	err := db.CreateBot("http://127.0.0.1:19019", "testbot", "", "", "", "")
 	if err != nil {
 		t.Fatal(err)

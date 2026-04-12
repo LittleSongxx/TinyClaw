@@ -1,7 +1,6 @@
 package robot
 
 import (
-	"context"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -276,7 +275,7 @@ func (web *Web) AddUserInfo() bool {
 		}
 	}
 
-	web.Robot.Ctx = context.WithValue(web.Robot.Ctx, "user_info", userInfo)
+	web.Robot.Ctx = db.WithCtxUserInfo(web.Robot.Ctx, userInfo)
 
 	return true
 }

@@ -162,8 +162,8 @@ func WithRequestContext(next http.Handler) http.Handler {
 		}
 
 		// 通用的 context 值
-		ctx = context.WithValue(ctx, "log_id", logID)
-		ctx = context.WithValue(ctx, "start_time", time.Now())
+		ctx = logger.WithLogID(ctx, logID)
+		ctx = logger.WithStartTime(ctx, time.Now())
 		r = r.WithContext(ctx)
 
 		logger.InfoCtx(ctx, "request start", "path", r.URL.Path)

@@ -21,6 +21,24 @@ step_fail() {
   printf '[error] %s\n' "$1" >&2
 }
 
+show_log_summary() {
+  local logfile="$1"
+  local pattern='FATAL|ERROR|PANIC|panic|deprecated|unsupported|failed|timed out'
+
+  if [[ ! -f "${logfile}" ]]; then
+    return
+  fi
+
+  if grep -Eiq "${pattern}" "${logfile}"; then
+    echo "Key log lines from ${logfile}:" >&2
+    grep -Ei "${pattern}" "${logfile}" | tail -n 20 >&2 || true
+  else
+    echo "Last 20 lines from ${logfile}:" >&2
+    tail -n 20 "${logfile}" >&2 || true
+  fi
+  echo "Full log: ${logfile}" >&2
+}
+
 run_step() {
   local title="$1"
   local logfile="$2"
@@ -36,9 +54,7 @@ run_step() {
   else
     if ! "$@" >"${logfile}" 2>&1; then
       step_fail "${title}"
-      echo "Last 80 lines from ${logfile}:" >&2
-      tail -n 80 "${logfile}" >&2 || true
-      echo "Full log: ${logfile}" >&2
+      show_log_summary "${logfile}"
       echo "Tip: rerun with START_VERBOSE=true ./scripts/start.sh for full output." >&2
       exit 1
     fi
@@ -62,6 +78,10 @@ fi
 source_env_file "${ENV_FILE}"
 
 mkdir -p "${DATA_DIR}" "${DATA_DIR}/knowledge" "${LOG_DIR}" "${START_LOG_DIR}"
+
+if [[ -n "${NODE_PAIRING_TOKEN:-}" ]]; then
+  script_warn "Ignoring deprecated NODE_PAIRING_TOKEN during app startup. Remove it from deploy/docker/.env and use Device Pairing instead."
+fi
 
 ENABLE_CLOUDFLARED="${ENABLE_CLOUDFLARED:-false}"
 ENABLE_KNOWLEDGE="${ENABLE_KNOWLEDGE:-false}"
@@ -149,9 +169,7 @@ step "Waiting for TinyClaw HTTP"
 if ! wait_for_http "http://127.0.0.1:${HOST_HTTP_PORT}/pong" "TinyClaw HTTP /pong" 90; then
   app_wait_log="${START_LOG_DIR}/${START_RUN_ID}-app-wait.log"
   docker_compose logs --tail=120 app >"${app_wait_log}" 2>&1 || true
-  echo "Recent app logs:" >&2
-  tail -n 80 "${app_wait_log}" >&2 || true
-  echo "Full log: ${app_wait_log}" >&2
+  show_log_summary "${app_wait_log}"
   exit 1
 fi
 step_done "TinyClaw HTTP is ready"
@@ -160,9 +178,7 @@ step "Waiting for TinyClaw Admin"
 if ! wait_for_http "http://127.0.0.1:${HOST_ADMIN_PORT}/" "TinyClaw Admin" 90; then
   app_wait_log="${START_LOG_DIR}/${START_RUN_ID}-app-wait.log"
   docker_compose logs --tail=120 app >"${app_wait_log}" 2>&1 || true
-  echo "Recent app logs:" >&2
-  tail -n 80 "${app_wait_log}" >&2 || true
-  echo "Full log: ${app_wait_log}" >&2
+  show_log_summary "${app_wait_log}"
   exit 1
 fi
 step_done "TinyClaw Admin is ready"
@@ -183,11 +199,9 @@ if [[ "${ENABLE_CLOUDFLARED}" == "true" ]]; then
   fi
 fi
 
-printf 'TinyClaw HTTP: http://127.0.0.1:%s\n' "${HOST_HTTP_PORT}"
-printf 'TinyClaw Admin: http://127.0.0.1:%s\n' "${HOST_ADMIN_PORT}"
-printf 'Auto-start: enabled (Docker restart policy: unless-stopped)\n'
-printf 'Verify: ./scripts/verify.sh\n'
-printf 'Startup logs: %s\n' "${START_LOG_DIR}"
+step_done "TinyClaw started"
+printf 'HTTP  http://127.0.0.1:%s\n' "${HOST_HTTP_PORT}"
+printf 'Admin http://127.0.0.1:%s\n' "${HOST_ADMIN_PORT}"
 if [[ -n "${tunnel_url}" ]]; then
-  printf 'QQ Webhook: %s/qq\n' "${tunnel_url}"
+  printf 'Tunnel %s/qq\n' "${tunnel_url}"
 fi

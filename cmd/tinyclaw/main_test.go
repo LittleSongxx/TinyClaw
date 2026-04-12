@@ -57,7 +57,7 @@ func TestSendTelegramMsg(t *testing.T) {
 
 	conf.BaseConfInfo.Type = param.DeepSeek
 
-	ctx := context.WithValue(context.Background(), "user_info", &db.User{
+	ctx := db.WithCtxUserInfo(context.Background(), &db.User{
 		LLMConfig:    `{"type":"deepseek"}`,
 		LLMConfigRaw: &param.LLMConfig{TxtType: param.DeepSeek},
 	})

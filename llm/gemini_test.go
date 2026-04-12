@@ -28,7 +28,7 @@ func TestGeminiSend(t *testing.T) {
 
 	conf.BaseConfInfo.Type = param.Gemini
 
-	ctx := context.WithValue(context.Background(), "user_info", &db.User{
+	ctx := db.WithCtxUserInfo(context.Background(), &db.User{
 		LLMConfig:    `{"type":"gemini"}`,
 		LLMConfigRaw: &param.LLMConfig{TxtType: param.Gemini},
 	})
@@ -42,7 +42,7 @@ func TestGeminiSend(t *testing.T) {
 }
 
 func TestGenerateGeminiText_EmptyAudio(t *testing.T) {
-	ctx := context.WithValue(context.Background(), "user_info", &db.User{
+	ctx := db.WithCtxUserInfo(context.Background(), &db.User{
 		LLMConfig:    `{"type":"gemini"}`,
 		LLMConfigRaw: &param.LLMConfig{TxtType: param.Gemini},
 	})
@@ -52,7 +52,7 @@ func TestGenerateGeminiText_EmptyAudio(t *testing.T) {
 }
 
 func TestGenerateGeminiImage_EmptyPrompt(t *testing.T) {
-	ctx := context.WithValue(context.Background(), "user_info", &db.User{
+	ctx := db.WithCtxUserInfo(context.Background(), &db.User{
 		LLMConfig:    `{"type":"gemini"}`,
 		LLMConfigRaw: &param.LLMConfig{TxtType: param.Gemini},
 	})
@@ -62,7 +62,7 @@ func TestGenerateGeminiImage_EmptyPrompt(t *testing.T) {
 }
 
 func TestGenerateGeminiVideo_InvalidPrompt(t *testing.T) {
-	ctx := context.WithValue(context.Background(), "user_info", &db.User{
+	ctx := db.WithCtxUserInfo(context.Background(), &db.User{
 		LLMConfig:    `{"type":"gemini"}`,
 		LLMConfigRaw: &param.LLMConfig{TxtType: param.Gemini},
 	})

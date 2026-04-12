@@ -143,10 +143,15 @@ func CreateBot(w http.ResponseWriter, r *http.Request) {
 		isRuning = true
 		defer resp.Body.Close()
 		bodyByte, err := io.ReadAll(resp.Body)
-		httpRes := new(utils.Response)
-		err = json.Unmarshal(bodyByte, httpRes)
-		if err == nil {
-			b.Command, _ = httpRes.Data.(string)
+		if err != nil {
+			logger.WarnCtx(ctx, "read remote command response fail", "err", err)
+		} else {
+			httpRes := new(utils.Response)
+			if err := json.Unmarshal(bodyByte, httpRes); err != nil {
+				logger.WarnCtx(ctx, "decode remote command response fail", "err", err)
+			} else if command, ok := httpRes.Data.(string); ok {
+				b.Command = command
+			}
 		}
 	}
 
@@ -262,10 +267,15 @@ func UpdateBotAddress(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			defer resp.Body.Close()
 			bodyByte, err := io.ReadAll(resp.Body)
-			httpRes := new(utils.Response)
-			err = json.Unmarshal(bodyByte, httpRes)
-			if err == nil {
-				b.Command, _ = httpRes.Data.(string)
+			if err != nil {
+				logger.WarnCtx(ctx, "read remote command response fail", "err", err)
+			} else {
+				httpRes := new(utils.Response)
+				if err := json.Unmarshal(bodyByte, httpRes); err != nil {
+					logger.WarnCtx(ctx, "decode remote command response fail", "err", err)
+				} else if command, ok := httpRes.Data.(string); ok {
+					b.Command = command
+				}
 			}
 		}
 	} else {
@@ -418,6 +428,11 @@ func GetBotConf(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 
 	bodyByte, err := io.ReadAll(resp.Body)
+	if err != nil {
+		logger.ErrorCtx(ctx, "read bot conf response error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
+	}
 	httpRes := new(GetBotConfRes)
 	err = json.Unmarshal(bodyByte, httpRes)
 	if err != nil {
@@ -697,6 +712,25 @@ func GetAllOnlineBot(w http.ResponseWriter, r *http.Request) {
 		return true
 	})
 
+	// When legacy/register status cache is empty, fall back to persisted bot list
+	// so Admin BotSelector still has candidates in non-register deployments.
+	if len(res) == 0 && adminConf.RegisterConfInfo.Type == "" {
+		bots, _, err := db.ListBots(0, 10000, "")
+		if err != nil {
+			logger.ErrorCtx(ctx, "list bots fallback error", "err", err)
+			utils.Failure(ctx, w, r, param.CodeDBQueryFail, param.MsgDBQueryFail, err)
+			return
+		}
+		for _, bot := range bots {
+			res = append(res, &checkpoint.BotStatus{
+				Id:      strconv.Itoa(bot.ID),
+				Name:    bot.Name,
+				Address: bot.Address,
+				Status:  checkpoint.OnlineStatus,
+			})
+		}
+	}
+
 	sort.Slice(res, func(i, j int) bool {
 		return res[i].Id < res[j].Id
 	})
@@ -834,6 +868,11 @@ func DeleteBotMCPConf(w http.ResponseWriter, r *http.Request) {
 
 	defer resp.Body.Close()
 	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		logger.ErrorCtx(ctx, "copy delete mcp response error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
+	}
 }
 
 func DisableBotMCPConf(w http.ResponseWriter, r *http.Request) {
@@ -857,6 +896,11 @@ func DisableBotMCPConf(w http.ResponseWriter, r *http.Request) {
 
 	defer resp.Body.Close()
 	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		logger.ErrorCtx(ctx, "copy disable mcp response error", "err", err)
+		utils.Failure(ctx, w, r, param.CodeServerFail, param.MsgServerFail, err)
+		return
+	}
 }
 
 func GetPrepareMCPServer(w http.ResponseWriter, r *http.Request) {
@@ -1348,7 +1392,7 @@ func applyBotProxyHeaders(ctx context.Context, req *http.Request) {
 	}
 
 	if ctx != nil {
-		if logID, ok := ctx.Value("log_id").(string); ok && strings.TrimSpace(logID) != "" {
+		if logID := logger.LogIDFromContext(ctx); strings.TrimSpace(logID) != "" {
 			req.Header.Set("LogId", logID)
 		}
 	}

@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/LittleSongxx/TinyClaw/db"
 	"github.com/LittleSongxx/TinyClaw/param"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSendMsg_WithMessageChan(t *testing.T) {
@@ -40,7 +40,7 @@ func TestOverLoop(t *testing.T) {
 }
 
 func TestNewLLM_DefaultsToClient(t *testing.T) {
-	ctx := context.WithValue(context.Background(), "user_info", &db.User{
+	ctx := db.WithCtxUserInfo(context.Background(), &db.User{
 		LLMConfig:    `{"type":"gemini"}`,
 		LLMConfigRaw: &param.LLMConfig{TxtType: param.Gemini},
 	})

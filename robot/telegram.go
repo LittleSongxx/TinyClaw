@@ -821,6 +821,11 @@ func (t *TelegramRobot) sendVideo() {
 			replyToMessageID, tgbotapi.ModeMarkdown, nil)
 
 		videoContent, totalToken, err := t.Robot.CreateVideo(prompt, imageContent)
+		if err != nil {
+			logger.WarnCtx(t.Robot.Ctx, "create video fail", "err", err)
+			t.Robot.SendMsg(chatId, err.Error(), replyToMessageID, "", nil)
+			return
+		}
 
 		video := tgbotapi.NewInputMediaVideo(tgbotapi.FileBytes{
 			Name:  "video." + utils.DetectVideoMimeType(videoContent),

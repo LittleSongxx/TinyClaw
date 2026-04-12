@@ -136,11 +136,11 @@ func NewRobot(options ...botOption) *RobotInfo {
 
 	ctx, cancel := context.WithTimeout(r.Ctx, 15*time.Minute)
 
-	if ctx.Value("bot_name") == nil {
-		ctx = context.WithValue(ctx, "bot_name", conf.BaseConfInfo.BotName)
+	if logger.BotNameFromContext(ctx) == "" {
+		ctx = logger.WithBotName(ctx, conf.BaseConfInfo.BotName)
 	}
-	if ctx.Value("log_id") == nil {
-		ctx = context.WithValue(ctx, "log_id", uuid.New().String())
+	if logger.LogIDFromContext(ctx) == "" {
+		ctx = logger.WithLogID(ctx, uuid.New().String())
 	}
 
 	r.Ctx = ctx
@@ -189,7 +189,7 @@ func (r *RobotInfo) AddUserInfo() bool {
 		userInfo.LLMConfigRaw = new(param.LLMConfig)
 	}
 
-	r.Ctx = context.WithValue(r.Ctx, "user_info", userInfo)
+	r.Ctx = db.WithCtxUserInfo(r.Ctx, userInfo)
 	return true
 
 }
@@ -573,7 +573,7 @@ func cloneContextState(cs *param.ContextState) *param.ContextState {
 func StartRobot() {
 	ctx, cancel := context.WithCancel(context.Background())
 	RobotControl.Cancel = cancel
-	ctx = context.WithValue(ctx, "bot_name", conf.BaseConfInfo.BotName)
+	ctx = logger.WithBotName(ctx, conf.BaseConfInfo.BotName)
 
 	if conf.BaseConfInfo.LarkAPPID != "" && conf.BaseConfInfo.LarkAppSecret != "" {
 		go func() {
@@ -2103,6 +2103,9 @@ func (r *RobotInfo) GetVoiceBaseTTS(content, encoding string) ([]byte, int, erro
 		ttsContent, token, duration, err = llm.OpenAITTS(r.Ctx, content, encoding)
 	case param.Aliyun:
 		ttsContent, token, duration, err = llm.AliyunTTS(r.Ctx, content, encoding)
+	}
+	if err != nil {
+		return nil, 0, err
 	}
 
 	err = db.AddRecordToken(r.Ctx, r.cs.RecordID, userId, token)

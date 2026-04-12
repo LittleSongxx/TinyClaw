@@ -33,7 +33,7 @@ func main() {
 	conf.InitConf()
 	conf.InitRuntimeConf()
 	if conf.RuntimeConfInfo.Nodes.LegacyNodeTokenPresent {
-		logger.Fatal("NODE_PAIRING_TOKEN is no longer supported; remove it and pair devices with the Device Pairing flow")
+		logger.Warn("NODE_PAIRING_TOKEN is deprecated and ignored by tinyclaw app startup; remove it and pair devices with the Device Pairing flow")
 	}
 	i18n.InitI18n()
 	db.InitTable()

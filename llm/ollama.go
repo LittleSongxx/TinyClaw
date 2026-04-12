@@ -12,15 +12,15 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/cohesion-org/deepseek-go"
-	"github.com/cohesion-org/deepseek-go/constants"
-	deepseekUtils "github.com/cohesion-org/deepseek-go/utils"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/db"
 	"github.com/LittleSongxx/TinyClaw/logger"
 	"github.com/LittleSongxx/TinyClaw/metrics"
 	"github.com/LittleSongxx/TinyClaw/param"
 	"github.com/LittleSongxx/TinyClaw/utils"
+	"github.com/cohesion-org/deepseek-go"
+	"github.com/cohesion-org/deepseek-go/constants"
+	deepseekUtils "github.com/cohesion-org/deepseek-go/utils"
 )
 
 type OllamaReq struct {
@@ -31,7 +31,7 @@ type OllamaReq struct {
 	OllamaMsgs []deepseek.ChatCompletionMessage
 }
 
-func (o OllamaReq) GetModel(l *LLM) {
+func (o *OllamaReq) GetModel(l *LLM) {
 	userInfo := db.GetCtxUserInfo(l.Ctx)
 	model := ""
 	if userInfo != nil && userInfo.LLMConfigRaw != nil {
@@ -47,7 +47,7 @@ func (o OllamaReq) GetModel(l *LLM) {
 	}
 }
 
-func (o OllamaReq) Send(ctx context.Context, l *LLM) error {
+func (o *OllamaReq) Send(ctx context.Context, l *LLM) error {
 	if l.OverLoop() {
 		return errors.New("too many loops")
 	}
@@ -114,7 +114,7 @@ func (o OllamaReq) Send(ctx context.Context, l *LLM) error {
 				hasTools = true
 				err = o.RequestToolsCall(ctx, choice, l)
 				if err != nil {
-					if errors.Is(err, ToolsJsonErr) {
+					if errors.Is(err, ErrToolsJSON) {
 						continue
 					} else {
 						logger.ErrorCtx(l.Ctx, "requestToolsCall error", "updateMsgID", l.MsgId, "err", err)
@@ -158,23 +158,23 @@ func (o OllamaReq) Send(ctx context.Context, l *LLM) error {
 	return nil
 }
 
-func (o OllamaReq) GetUserMessage(msg string) {
+func (o *OllamaReq) GetUserMessage(msg string) {
 	o.GetMessage(constants.ChatMessageRoleUser, msg)
 }
 
-func (o OllamaReq) GetAssistantMessage(msg string) {
+func (o *OllamaReq) GetAssistantMessage(msg string) {
 	o.GetMessage(constants.ChatMessageRoleAssistant, msg)
 }
 
-func (o OllamaReq) GetSystemMessage(msg string) {
+func (o *OllamaReq) GetSystemMessage(msg string) {
 	o.GetMessage(constants.ChatMessageRoleSystem, msg)
 }
 
-func (o OllamaReq) GetImageMessage(image [][]byte, msg string) {}
+func (o *OllamaReq) GetImageMessage(image [][]byte, msg string) {}
 
-func (o OllamaReq) GetAudioMessage(audio []byte, msg string) {}
+func (o *OllamaReq) GetAudioMessage(audio []byte, msg string) {}
 
-func (o OllamaReq) AppendMessages(client LLMClient) {
+func (o *OllamaReq) AppendMessages(client LLMClient) {
 	if len(o.OllamaMsgs) == 0 {
 		o.OllamaMsgs = make([]deepseek.ChatCompletionMessage, 0)
 	}
@@ -182,7 +182,7 @@ func (o OllamaReq) AppendMessages(client LLMClient) {
 	o.OllamaMsgs = append(o.OllamaMsgs, client.(*OllamaReq).OllamaMsgs...)
 }
 
-func (o OllamaReq) GetMessage(role, msg string) {
+func (o *OllamaReq) GetMessage(role, msg string) {
 	if len(o.OllamaMsgs) == 0 {
 		o.OllamaMsgs = []deepseek.ChatCompletionMessage{
 			{
@@ -199,7 +199,7 @@ func (o OllamaReq) GetMessage(role, msg string) {
 	})
 }
 
-func (o OllamaReq) SyncSend(ctx context.Context, l *LLM) (string, error) {
+func (o *OllamaReq) SyncSend(ctx context.Context, l *LLM) (string, error) {
 
 	start := time.Now()
 
@@ -254,7 +254,7 @@ func (o OllamaReq) SyncSend(ctx context.Context, l *LLM) (string, error) {
 	return response.Choices[0].Message.Content, nil
 }
 
-func (o OllamaReq) requestOneToolsCall(ctx context.Context, toolsCall []deepseek.ToolCall, l *LLM) {
+func (o *OllamaReq) requestOneToolsCall(ctx context.Context, toolsCall []deepseek.ToolCall, l *LLM) {
 	for _, tool := range toolsCall {
 		property := make(map[string]interface{})
 		err := json.Unmarshal([]byte(tool.Function.Arguments), &property)
@@ -277,34 +277,38 @@ func (o OllamaReq) requestOneToolsCall(ctx context.Context, toolsCall []deepseek
 	}
 }
 
-func (o OllamaReq) RequestToolsCall(ctx context.Context, choice deepseek.StreamChoices, l *LLM) error {
+func (o *OllamaReq) RequestToolsCall(ctx context.Context, choice deepseek.StreamChoices, l *LLM) error {
 
 	for _, toolCall := range choice.Delta.ToolCalls {
 		property := make(map[string]interface{})
+		current := ensureDeepseekToolCallSlot(&o.ToolCall, toolCall.Index)
 
 		if toolCall.Function.Name != "" {
-			o.ToolCall = append(o.ToolCall, toolCall)
-			o.ToolCall[len(o.ToolCall)-1].Function.Name = toolCall.Function.Name
+			current.Function.Name = toolCall.Function.Name
 		}
 
 		if toolCall.ID != "" {
-			o.ToolCall[len(o.ToolCall)-1].ID = toolCall.ID
+			current.ID = toolCall.ID
 		}
 
 		if toolCall.Type != "" {
-			o.ToolCall[len(o.ToolCall)-1].Type = toolCall.Type
+			current.Type = toolCall.Type
 		}
 
-		if toolCall.Function.Arguments != "" && toolCall.Function.Name == "" {
-			o.ToolCall[len(o.ToolCall)-1].Function.Arguments += toolCall.Function.Arguments
+		if toolCall.Function.Arguments != "" {
+			current.Function.Arguments += toolCall.Function.Arguments
 		}
 
-		err := json.Unmarshal([]byte(o.ToolCall[len(o.ToolCall)-1].Function.Arguments), &property)
+		if current.Function.Arguments == "" {
+			return ErrToolsJSON
+		}
+
+		err := json.Unmarshal([]byte(current.Function.Arguments), &property)
 		if err != nil {
-			return ToolsJsonErr
+			return ErrToolsJSON
 		}
 
-		tool := o.ToolCall[len(o.ToolCall)-1]
+		tool := *current
 		toolsData, err := l.ExecMcpReq(ctx, tool.Function.Name, property)
 		if err != nil {
 			logger.ErrorCtx(ctx, "Error executing MCP request", "toolId", tool.ID, "err", err)
@@ -322,13 +326,24 @@ func (o OllamaReq) RequestToolsCall(ctx context.Context, choice deepseek.StreamC
 
 }
 
+func ensureDeepseekToolCallSlot(toolCalls *[]deepseek.ToolCall, index int) *deepseek.ToolCall {
+	if index < 0 {
+		index = 0
+	}
+	for len(*toolCalls) <= index {
+		*toolCalls = append(*toolCalls, deepseek.ToolCall{})
+	}
+	return &(*toolCalls)[index]
+}
+
 func GetDeepseekClient(ctx context.Context) *deepseek.Client {
 	httpClient := utils.GetLLMProxyClient()
 	txtType := utils.GetTxtType(db.GetCtxUserInfo(ctx).LLMConfigRaw)
+	token := conf.BaseConfInfo.DeepseekToken
 	if txtType == param.Ollama {
-		conf.BaseConfInfo.DeepseekToken = "ollama"
+		token = "ollama"
 	}
-	client, err := deepseek.NewClientWithOptions(conf.BaseConfInfo.DeepseekToken, deepseek.WithHTTPClient(httpClient))
+	client, err := deepseek.NewClientWithOptions(token, deepseek.WithHTTPClient(httpClient))
 	if err != nil {
 		logger.ErrorCtx(ctx, "Error creating deepseek client", "err", err)
 		return nil

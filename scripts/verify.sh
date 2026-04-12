@@ -23,10 +23,31 @@ HTTP_BASE="http://127.0.0.1:${HOST_HTTP_PORT}"
 ADMIN_BASE="http://127.0.0.1:${HOST_ADMIN_PORT}"
 
 CURL_AUTH_ARGS=()
-if [[ -n "${GATEWAY_SHARED_SECRET:-}" ]]; then
+VERIFY_ACTOR_ID="${VERIFY_ACTOR_ID:-verify-script}"
+VERIFY_WORKSPACE_ID="${VERIFY_WORKSPACE_ID:-default}"
+VERIFY_TOKEN_TTL_SECONDS="${VERIFY_TOKEN_TTL_SECONDS:-300}"
+
+AUTH_SIGNING_SECRET="${HTTP_SHARED_SECRET:-${GATEWAY_SHARED_SECRET:-}}"
+ACTOR_TOKEN="${VERIFY_ACTOR_TOKEN:-}"
+if [[ -z "${ACTOR_TOKEN}" && -n "${AUTH_SIGNING_SECRET}" ]]; then
+  if ! command -v go >/dev/null 2>&1; then
+    script_error "go command is required to sign actor token for verification"
+    exit 1
+  fi
+
+  ACTOR_TOKEN="$(go run ./scripts/generate_actor_token.go \
+    --secret "${AUTH_SIGNING_SECRET}" \
+    --workspace-id "${VERIFY_WORKSPACE_ID}" \
+    --actor-id "${VERIFY_ACTOR_ID}" \
+    --role admin \
+    --scopes '*' \
+    --ttl-seconds "${VERIFY_TOKEN_TTL_SECONDS}")"
+fi
+
+if [[ -n "${ACTOR_TOKEN}" ]]; then
   CURL_AUTH_ARGS+=(
-    -H "Authorization: Bearer ${GATEWAY_SHARED_SECRET}"
-    -H "X-TinyClaw-Token: ${GATEWAY_SHARED_SECRET}"
+    -H "Authorization: Bearer ${ACTOR_TOKEN}"
+    -H "X-TinyClaw-Actor-Token: ${ACTOR_TOKEN}"
   )
 fi
 

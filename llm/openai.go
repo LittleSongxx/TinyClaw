@@ -13,16 +13,16 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/cohesion-org/deepseek-go"
-	"github.com/cohesion-org/deepseek-go/constants"
-	"github.com/devinyf/dashscopego/qwen"
-	"github.com/sashabaranov/go-openai"
 	"github.com/LittleSongxx/TinyClaw/conf"
 	"github.com/LittleSongxx/TinyClaw/db"
 	"github.com/LittleSongxx/TinyClaw/logger"
 	"github.com/LittleSongxx/TinyClaw/metrics"
 	"github.com/LittleSongxx/TinyClaw/param"
 	"github.com/LittleSongxx/TinyClaw/utils"
+	"github.com/cohesion-org/deepseek-go"
+	"github.com/cohesion-org/deepseek-go/constants"
+	"github.com/devinyf/dashscopego/qwen"
+	"github.com/sashabaranov/go-openai"
 )
 
 type OpenAIReq struct {
@@ -148,7 +148,7 @@ func (d *OpenAIReq) Send(ctx context.Context, l *LLM) error {
 				hasTools = true
 				err = d.RequestToolsCall(ctx, choice, l)
 				if err != nil {
-					if errors.Is(err, ToolsJsonErr) {
+					if errors.Is(err, ErrToolsJSON) {
 						continue
 					} else {
 						logger.ErrorCtx(l.Ctx, "requestToolsCall error", "updateMsgID", l.MsgId, "err", err)
@@ -337,30 +337,34 @@ func (d *OpenAIReq) requestOneToolsCall(ctx context.Context, toolsCall []openai.
 func (d *OpenAIReq) RequestToolsCall(ctx context.Context, choice openai.ChatCompletionStreamChoice, l *LLM) error {
 	for _, toolCall := range choice.Delta.ToolCalls {
 		property := make(map[string]interface{})
+		current := ensureOpenAIToolCallSlot(&d.ToolCall, openAIToolCallIndex(toolCall, len(d.ToolCall)))
 
 		if toolCall.Function.Name != "" {
-			d.ToolCall = append(d.ToolCall, toolCall)
-			d.ToolCall[len(d.ToolCall)-1].Function.Name = toolCall.Function.Name
+			current.Function.Name = toolCall.Function.Name
 		}
 
 		if toolCall.ID != "" {
-			d.ToolCall[len(d.ToolCall)-1].ID = toolCall.ID
+			current.ID = toolCall.ID
 		}
 
 		if toolCall.Type != "" {
-			d.ToolCall[len(d.ToolCall)-1].Type = toolCall.Type
+			current.Type = toolCall.Type
 		}
 
-		if toolCall.Function.Arguments != "" && toolCall.Function.Name == "" {
-			d.ToolCall[len(d.ToolCall)-1].Function.Arguments += toolCall.Function.Arguments
+		if toolCall.Function.Arguments != "" {
+			current.Function.Arguments += toolCall.Function.Arguments
 		}
 
-		err := json.Unmarshal([]byte(d.ToolCall[len(d.ToolCall)-1].Function.Arguments), &property)
+		if current.Function.Arguments == "" {
+			return ErrToolsJSON
+		}
+
+		err := json.Unmarshal([]byte(current.Function.Arguments), &property)
 		if err != nil {
-			return ToolsJsonErr
+			return ErrToolsJSON
 		}
 
-		tool := d.ToolCall[len(d.ToolCall)-1]
+		tool := *current
 
 		toolsData, err := l.ExecMcpReq(ctx, tool.Function.Name, property)
 		if err != nil {
@@ -376,6 +380,26 @@ func (d *OpenAIReq) RequestToolsCall(ctx context.Context, choice openai.ChatComp
 
 	return nil
 
+}
+
+func openAIToolCallIndex(toolCall openai.ToolCall, currentLen int) int {
+	if toolCall.Index != nil && *toolCall.Index >= 0 {
+		return *toolCall.Index
+	}
+	if currentLen == 0 {
+		return 0
+	}
+	return currentLen - 1
+}
+
+func ensureOpenAIToolCallSlot(toolCalls *[]openai.ToolCall, index int) *openai.ToolCall {
+	if index < 0 {
+		index = 0
+	}
+	for len(*toolCalls) <= index {
+		*toolCalls = append(*toolCalls, openai.ToolCall{})
+	}
+	return &(*toolCalls)[index]
 }
 
 // GenerateOpenAIImg generate image

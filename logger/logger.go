@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/mgutz/ansi"
 	"github.com/rs/zerolog"
@@ -32,6 +33,10 @@ type Options struct {
 var (
 	LogLevel *string
 )
+
+type botNameContextKey struct{}
+type logIDContextKey struct{}
+type startTimeContextKey struct{}
 
 func init() {
 	LogLevel = flag.String("log_level", "info", "log level")
@@ -311,15 +316,47 @@ func FatalCtx(ctx context.Context, msg string, fields ...interface{}) {
 }
 
 func GetBotNameAndLogId(ctx context.Context) (string, string) {
-	botName := ""
-	if ctx != nil {
-		botName, _ = ctx.Value("bot_name").(string)
-	}
+	return BotNameFromContext(ctx), LogIDFromContext(ctx)
+}
 
-	logId := ""
-	if ctx != nil {
-		logId, _ = ctx.Value("log_id").(string)
-	}
+func WithBotName(ctx context.Context, botName string) context.Context {
+	return context.WithValue(ctx, botNameContextKey{}, botName)
+}
 
-	return botName, logId
+func WithLogID(ctx context.Context, logID string) context.Context {
+	return context.WithValue(ctx, logIDContextKey{}, logID)
+}
+
+func WithStartTime(ctx context.Context, startTime time.Time) context.Context {
+	return context.WithValue(ctx, startTimeContextKey{}, startTime)
+}
+
+func BotNameFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if botName, ok := ctx.Value(botNameContextKey{}).(string); ok {
+		return botName
+	}
+	return ""
+}
+
+func LogIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if logID, ok := ctx.Value(logIDContextKey{}).(string); ok {
+		return logID
+	}
+	return ""
+}
+
+func StartTimeFromContext(ctx context.Context) time.Time {
+	if ctx == nil {
+		return time.Now()
+	}
+	if startTime, ok := ctx.Value(startTimeContextKey{}).(time.Time); ok {
+		return startTime
+	}
+	return time.Now()
 }

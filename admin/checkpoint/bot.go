@@ -3,6 +3,7 @@ package checkpoint
 import (
 	"context"
 	"net/http"
+	"os"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -32,6 +33,9 @@ type BotStatus struct {
 }
 
 func InitStatusCheck() {
+	if !legacyBotStatusEnabled() {
+		return
+	}
 	if conf.RegisterConfInfo.Type != "" {
 		go func() {
 			InitRegister()
@@ -82,6 +86,9 @@ func checkBotStatus(bot *db.Bot) string {
 }
 
 func ScheduleBotChecks() {
+	if !legacyBotStatusEnabled() {
+		return
+	}
 	defer func() {
 		if err := recover(); err != nil {
 			logger.Error("ScheduleBotChecks panic", "err", err, "stack", string(debug.Stack()))
@@ -137,6 +144,19 @@ func ScheduleBotChecks() {
 	}
 
 	wg.Wait()
+}
+
+func legacyBotStatusEnabled() bool {
+	if strings.TrimSpace(conf.RegisterConfInfo.Type) != "" {
+		return true
+	}
+
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("ENABLE_LEGACY_BOTS"))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func InitRegister() {

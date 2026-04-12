@@ -1,7 +1,6 @@
 package http
 
 import (
-	"encoding/json"
 	stdhttp "net/http"
 	"time"
 
@@ -45,7 +44,9 @@ func DeviceApprove(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	var body struct {
 		RequestID string `json:"request_id"`
 	}
-	_ = utils.HandleJsonBody(r, &body)
+	if !decodeAdminJSON(w, r, &body) {
+		return
+	}
 	result, err := gateway.DefaultService().ApproveDevice(r.Context(), body.RequestID)
 	respond(w, r, result, err)
 }
@@ -55,7 +56,9 @@ func DeviceReject(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		RequestID string `json:"request_id"`
 		Reason    string `json:"reason"`
 	}
-	_ = utils.HandleJsonBody(r, &body)
+	if !decodeAdminJSON(w, r, &body) {
+		return
+	}
 	err := gateway.DefaultService().RejectDevice(r.Context(), body.RequestID, body.Reason)
 	respond(w, r, map[string]bool{"ok": err == nil}, err)
 }
@@ -64,7 +67,9 @@ func DeviceRevoke(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	var body struct {
 		DeviceID string `json:"device_id"`
 	}
-	_ = utils.HandleJsonBody(r, &body)
+	if !decodeAdminJSON(w, r, &body) {
+		return
+	}
 	err := gateway.DefaultService().RevokeDevice(r.Context(), body.DeviceID)
 	respond(w, r, map[string]bool{"ok": err == nil}, err)
 }
@@ -78,7 +83,9 @@ func PluginsStatus(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	var body struct {
 		PluginID string `json:"plugin_id"`
 	}
-	_ = utils.HandleJsonBody(r, &body)
+	if !decodeAdminJSON(w, r, &body) {
+		return
+	}
 	result, err := gateway.DefaultService().PluginRegistry().Status(r.Context(), body.PluginID)
 	respond(w, r, result, err)
 }
@@ -93,11 +100,10 @@ func PluginsDisable(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 
 func PluginsValidate(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	var manifest plugins.Manifest
-	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(&manifest)
-	if err == nil {
-		err = gateway.DefaultService().PluginRegistry().Validate(r.Context(), manifest)
+	if !decodeAdminJSON(w, r, &manifest) {
+		return
 	}
+	err := gateway.DefaultService().PluginRegistry().Validate(r.Context(), manifest)
 	respond(w, r, map[string]bool{"ok": err == nil}, err)
 }
 
@@ -106,7 +112,9 @@ func setPluginEnabled(w stdhttp.ResponseWriter, r *stdhttp.Request, enabled bool
 		PluginID string `json:"plugin_id"`
 		Config   string `json:"config"`
 	}
-	_ = utils.HandleJsonBody(r, &body)
+	if !decodeAdminJSON(w, r, &body) {
+		return
+	}
 	err := gateway.DefaultService().PluginRegistry().SetEnabled(r.Context(), body.PluginID, enabled, body.Config)
 	respond(w, r, map[string]bool{"ok": err == nil}, err)
 }
@@ -118,7 +126,9 @@ func FlowsCreate(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		Description string        `json:"description"`
 		Spec        taskflow.Spec `json:"spec"`
 	}
-	_ = utils.HandleJsonBody(r, &body)
+	if !decodeAdminJSON(w, r, &body) {
+		return
+	}
 	result, err := taskflow.CreateOrUpdate(r.Context(), body.FlowID, body.Name, body.Description, body.Spec)
 	respond(w, r, result, err)
 }
@@ -137,7 +147,9 @@ func FlowsGet(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 
 func FlowsValidate(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	var spec taskflow.Spec
-	_ = utils.HandleJsonBody(r, &spec)
+	if !decodeAdminJSON(w, r, &spec) {
+		return
+	}
 	err := taskflow.Validate(spec)
 	respond(w, r, map[string]bool{"ok": err == nil}, err)
 }
@@ -147,7 +159,9 @@ func FlowsRun(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		FlowID string                 `json:"flow_id"`
 		Inputs map[string]interface{} `json:"inputs"`
 	}
-	_ = utils.HandleJsonBody(r, &body)
+	if !decodeAdminJSON(w, r, &body) {
+		return
+	}
 	result, err := gateway.DefaultService().TaskFlowEngine().Run(r.Context(), body.FlowID, body.Inputs)
 	respond(w, r, result, err)
 }
@@ -161,7 +175,9 @@ func FlowRunCancel(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	var body struct {
 		RunID string `json:"run_id"`
 	}
-	_ = utils.HandleJsonBody(r, &body)
+	if !decodeAdminJSON(w, r, &body) {
+		return
+	}
 	run, err := db.GetTaskFlowRun(r.Context(), authz.WorkspaceIDFromContext(r.Context()), body.RunID)
 	if err == nil && run != nil {
 		run.Status = taskflow.StatusCancelled
@@ -176,7 +192,9 @@ func FlowRunRetryNode(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		RunID  string `json:"run_id"`
 		NodeID string `json:"node_id"`
 	}
-	_ = utils.HandleJsonBody(r, &body)
+	if !decodeAdminJSON(w, r, &body) {
+		return
+	}
 	result, err := gateway.DefaultService().TaskFlowEngine().RetryNode(r.Context(), body.RunID, body.NodeID)
 	respond(w, r, result, err)
 }
@@ -187,4 +205,12 @@ func respond(w stdhttp.ResponseWriter, r *stdhttp.Request, payload interface{}, 
 		return
 	}
 	utils.Success(r.Context(), w, r, payload)
+}
+
+func decodeAdminJSON(w stdhttp.ResponseWriter, r *stdhttp.Request, v interface{}) bool {
+	if err := utils.HandleJsonBody(r, v); err != nil {
+		utils.Failure(r.Context(), w, r, param.CodeParamError, param.MsgParamError, err)
+		return false
+	}
+	return true
 }

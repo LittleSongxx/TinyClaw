@@ -201,5 +201,5 @@ func ensureReplayUserContext(ctx context.Context, userID string) (context.Contex
 	if userInfo.LLMConfigRaw == nil {
 		userInfo.LLMConfigRaw = new(param.LLMConfig)
 	}
-	return context.WithValue(ctx, "user_info", userInfo), nil
+	return db.WithCtxUserInfo(ctx, userInfo), nil
 }

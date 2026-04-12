@@ -44,12 +44,12 @@ type UserQuotaBucket struct {
 }
 
 type UserQuotaSummary struct {
-	TotalUsers        int     `json:"total_users"`
-	TotalUsedToken    int     `json:"total_used_token"`
-	TotalRemainToken  int     `json:"total_remaining_token"`
-	TotalQuotaToken   int     `json:"total_quota_token"`
-	AverageUsageRate  float64 `json:"average_usage_rate"`
-	UnlimitedUsers    int     `json:"unlimited_users"`
+	TotalUsers       int     `json:"total_users"`
+	TotalUsedToken   int     `json:"total_used_token"`
+	TotalRemainToken int     `json:"total_remaining_token"`
+	TotalQuotaToken  int     `json:"total_quota_token"`
+	AverageUsageRate float64 `json:"average_usage_rate"`
+	UnlimitedUsers   int     `json:"unlimited_users"`
 }
 
 type UserQuotaStats struct {
@@ -520,12 +520,21 @@ func GetDailyNewUsers(days int) ([]DailyStat, error) {
 }
 
 func GetCtxUserInfo(ctx context.Context) *User {
-	userInfo, ok := ctx.Value("user_info").(*User)
+	if ctx == nil {
+		return nil
+	}
+
+	userInfo, ok := ctx.Value(userInfoContextKey{}).(*User)
 	if ok {
 		return userInfo
 	}
-
 	return nil
+}
+
+type userInfoContextKey struct{}
+
+func WithCtxUserInfo(ctx context.Context, userInfo *User) context.Context {
+	return context.WithValue(ctx, userInfoContextKey{}, userInfo)
 }
 
 func DeleteUserByUserID(ctx context.Context, userId string) error {
